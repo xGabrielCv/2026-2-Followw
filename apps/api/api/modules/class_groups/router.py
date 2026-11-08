@@ -24,7 +24,7 @@ Number = Annotated[str, Path(pattern=r"^[0-9A-Za-z]{1,4}$")]
 _NOT_FOUND = {**SIGAA_ERRORS, 404: {"description": "Turma não encontrada."}}
 
 
-# O login só restringe aos alunos da UnB: quem cadastrou nunca é gravado.
+# Leitura pública; só alunos autenticados podem alterar os links.
 @router.get(
     "",
     response_model=GroupedClassroomPage,
@@ -33,7 +33,6 @@ _NOT_FOUND = {**SIGAA_ERRORS, 404: {"description": "Turma não encontrada."}}
     dependencies=[NoStore],
 )
 async def list_groups(
-    _: SigaaConnectionDep,
     service: GroupServiceDep,
     semester: Annotated[str, Query(pattern=r"^[0-9]{4}\.[0-9]$")],
     q: Annotated[
@@ -55,7 +54,6 @@ async def list_groups(
     dependencies=[NoStore],
 )
 async def get_groups(
-    _: SigaaConnectionDep,
     service: GroupServiceDep,
     code: Code,
     semester: Semester,

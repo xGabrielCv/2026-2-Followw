@@ -26,6 +26,7 @@ const config = defineConfig({
             rollupConfig: { external: [/^@sentry\//] },
             // fora da Vercel (ex.: numa VPS), o próprio servidor manda os cabeçalhos de segurança
             routeRules: {
+                '/admin': { redirect: '/api/admin' },
                 '/**': {
                     headers: {
                         'X-Content-Type-Options': 'nosniff',

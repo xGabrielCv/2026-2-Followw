@@ -23,9 +23,7 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 > ## 🍴 Um fork com vida própria
 >
 > Este repositório é um **fork** do [**Followw UnB**](https://github.com/unb-mds/2026-2-Followw), projeto
-> desenvolvido por estudantes na disciplina de Métodos de Desenvolvimento de Software da UnB. Enquanto
-> a disciplina acontece, o projeto original **não pode receber contribuições externas** — por isso este
-> fork existe.
+> desenvolvido por estudantes na disciplina de Métodos de Desenvolvimento de Software da UnB.
 >
 > Ele parte do **esqueleto e da espinha dorsal** do projeto original (cliente do SIGAA, API, app web e
 > catálogo público), mas traz **muitas adições e uma mudança de arquitetura**: os dados pessoais do
@@ -45,7 +43,10 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 
 * 🍽️ Cardápio do RU por campus e refeição, com opções vegetarianas, para consultar e compartilhar;
 * 🔎 busca de matérias, cursos e docentes, com horários, vagas, requisitos e perfis;
-* 🧭 fluxo de cada curso por semestre, com carga horária, pré e correquisitos.
+* 🧭 fluxo de cada curso por semestre, com carga horária, pré e correquisitos;
+* 🤝 leitura de grupos, avaliações, materiais, dúvidas, posts e guias aprovados, sem conta.
+
+Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias continuam públicas.
 
 ### 🎓 Com a conta do SIGAA
 
@@ -85,8 +86,58 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 | Avaliações, grupos, materiais, posts, guias | ☁️ na nuvem, **sem nome nem matrícula** e cifrados (AES-256-GCM) |
 | Índices de aprovação das turmas | ☁️ só se você liberar, e só a porcentagem da turma |
 
-A autoria anônima vem de um segredo aleatório do aparelho — nunca da matrícula — então nem a
-administração consegue saber o que você publicou. O app explica tudo isso em **Perfil › Uso de dados**.
+A autoria anônima vem de um segredo aleatório do aparelho — nunca da matrícula — e não associamos nome ou matrícula às publicações. O conteúdo compartilhado é público e a moderação
+pode decifrá-lo; não publique informações pessoais no texto ou nos arquivos. Cookies de sessão e perfil são cifrados; cache, preferências e backups locais ainda não têm
+criptografia própria. O app explica tudo isso em **Perfil › Uso de dados**.
+
+---
+
+## 🏠 Execute sua própria instância
+
+No Windows, clone este fork e execute na raiz:
+
+```powershell
+git clone https://github.com/xGabrielCv/2026-2-Followw.git
+cd 2026-2-Followw
+powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1
+```
+
+O inicializador verifica/instala Git, uv, Python 3.14, Node e Bun, prepara um PostgreSQL portátil
+em `.local/`, gera chaves próprias em `apps/api/.env`, instala as dependências e sobe o app em
+<http://localhost:3000>. Requer internet na primeira instalação; o winget pode pedir autorização
+do Windows para instalar ferramentas. Abra <http://localhost:3000/api/admin> para cadastrar
+usuário e senha do administrador local (mínimo 12 caracteres). Se já houver acesso configurado
+e você o perdeu, execute `.\admin-password.cmd --reset`, reinicie e cadastre novamente.
+
+```powershell
+.\run.ps1 -NoBrowser       # inicia sem abrir o navegador
+.\run.ps1 -Offline         # sem consultas externas em execução, após instalar e importar o catálogo
+.\run.ps1 -SkipDataUpdate  # não agenda atualização pública em segundo plano
+.\run.ps1 -Check           # confere dependências
+.\run.ps1 -Test            # valida API, bibliotecas, tipos, lint e testes do front
+.\run.ps1 -Update          # atualiza catálogo público no SIGAA; pode demorar
+.\stop.ps1                # encerra a instância
+.\restart.ps1             # reinicia sem abrir outra aba
+```
+
+O repositório contém código, testes sintéticos e os scripts de instalação, **sem banco, catálogo
+coletado, materiais, credenciais ou configuração privada da sua instância**. Na primeira execução,
+`bootstrap_data.py` importa o catálogo público de referência do projeto original, numa revisão
+fixada com hashes SHA-256. Depois, `update_data.py` atualiza os dados públicos diretamente do SIGAA.
+O calendário público faz parte do código. Uma instalação própria tem banco e comunidade próprios;
+ela não recebe conteúdos ou chaves da instância de outra pessoa.
+
+O servidor fica no próprio PC, assim como o banco e os arquivos. Login e atualizações acadêmicas
+consultam os serviços oficiais da UnB; `-Offline` usa somente o que já existe localmente.
+Guarde uma cópia segura das chaves, do banco e dos materiais se precisar restaurar a instância.
+A documentação interna de desenvolvimento e os backups locais não são publicados.
+
+Para outra plataforma, use Python 3.14+, uv, Node, Bun e PostgreSQL 18: copie `.env.example` para
+`apps/api/.env`, defina chaves aleatórias próprias, rode `uv sync --all-packages --all-groups --locked`,
+`uv run --no-sync python scripts/bootstrap_data.py`, `uv run --no-sync db-init` e
+`uv run --no-sync api` a partir de `apps/api`. Em outro terminal: `cd apps/web; bun install --frozen-lockfile; bun dev`.
+O exemplo é de desenvolvimento. Hospedagem pública precisa de HTTPS, proxy de `/api` para a API,
+configuração de produção e cópias de segurança; o script local só escuta no próprio computador.
 
 ---
 
@@ -107,16 +158,24 @@ packages/
 
 **Projeto original — [unb-mds/2026-2-Followw](https://github.com/unb-mds/2026-2-Followw):**
 
-[@SamukaToned](https://github.com/SamukaToned) ·
-[@eliabexp](https://github.com/eliabexp) ·
-[@diegolxxz](https://github.com/diegolxxz) ·
-[@ed9gaspar](https://github.com/ed9gaspar) ·
-[@Mendezalv](https://github.com/Mendezalv) ·
-[@ratatta-na-nite](https://github.com/ratatta-na-nite) ·
-[@gabrielcrzojo](https://github.com/gabrielcrzojo) ·
-[@RochaCarla](https://github.com/RochaCarla)
+<table>
+<tr>
+<td align="center"><a href="https://github.com/SamukaToned"><img src="https://github.com/SamukaToned.png?size=96" width="72" height="72" alt="Avatar de SamukaToned"><br><strong>@SamukaToned</strong></a></td>
+<td align="center"><a href="https://github.com/eliabexp"><img src="https://github.com/eliabexp.png?size=96" width="72" height="72" alt="Avatar de eliabexp"><br><strong>@eliabexp</strong></a></td>
+<td align="center"><a href="https://github.com/diegolxxz"><img src="https://github.com/diegolxxz.png?size=96" width="72" height="72" alt="Avatar de diegolxxz"><br><strong>@diegolxxz</strong></a></td>
+<td align="center"><a href="https://github.com/ed9gaspar"><img src="https://github.com/ed9gaspar.png?size=96" width="72" height="72" alt="Avatar de ed9gaspar"><br><strong>@ed9gaspar</strong></a></td>
+</tr>
+<tr>
+<td align="center"><a href="https://github.com/Mendezalv"><img src="https://github.com/Mendezalv.png?size=96" width="72" height="72" alt="Avatar de Mendezalv"><br><strong>@Mendezalv</strong></a></td>
+<td align="center"><a href="https://github.com/ratatta-na-nite"><img src="https://github.com/ratatta-na-nite.png?size=96" width="72" height="72" alt="Avatar de ratatta-na-nite"><br><strong>@ratatta-na-nite</strong></a></td>
+<td align="center"><a href="https://github.com/gabrielcrzojo"><img src="https://github.com/gabrielcrzojo.png?size=96" width="72" height="72" alt="Avatar de gabrielcrzojo"><br><strong>@gabrielcrzojo</strong></a></td>
+<td align="center"><a href="https://github.com/RochaCarla"><img src="https://github.com/RochaCarla.png?size=96" width="72" height="72" alt="Avatar de RochaCarla"><br><strong>@RochaCarla</strong></a></td>
+</tr>
+</table>
 
-**Este fork:** [@xGabrielCv](https://github.com/xGabrielCv) — Jesus Gabriel Carvalho Ventura
+**Desenvolvimento deste fork:**
+
+<table><tr><td align="center"><a href="https://github.com/xGabrielCv"><img src="https://github.com/xGabrielCv.png?size=96" width="80" height="80" alt="Avatar de Gabriel"><br><strong>@xGabrielCv</strong></a><br>Jesus Gabriel Carvalho Ventura</td></tr></table>
 
 Veja também o [**Automatrícula UnB (SIGAA Sniper)**](https://github.com/xGabrielCv/Auto-Matricula-SIGAA-UnB).
 

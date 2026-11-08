@@ -6,14 +6,13 @@ que vence em horas; as rotas que mudam algo exigem também o header `X-Admin-Req
 de fora não consegue mandar.
 """
 
-import base64
 import hashlib
 import hmac
-import os
 import secrets
 import time
 from collections import deque
 from datetime import UTC, datetime, timedelta
+from ipaddress import ip_address
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, Response
@@ -21,46 +20,14 @@ from fastapi import Depends, HTTPException, Request, Response
 from api.cookies import decrypt_cookie, encrypt_cookie
 from api.core.config import settings
 from api.logger import event
+from api.modules.admin.passwords import MIN_PASSWORD, hash_password, verify_password
 
 ADMIN_COOKIE = "admin_session"
 SESSION_HOURS = 8
-# scrypt: ~64 MB e dezenas de ms por tentativa, caro para quem testa senhas em massa.
-_N, _R, _P = 2**15, 8, 1
-_MAXMEM = 128 * 1024 * 1024
-MIN_PASSWORD = 12
 # Tentativas erradas por IP numa janela; além disso, o login fica bloqueado para o IP.
 _MAX_FAILURES = 5
 _WINDOW = 15 * 60
 _failures: dict[str, deque[float]] = {}
-
-
-def hash_password(password: str) -> str:
-    salt = os.urandom(16)
-    digest = hashlib.scrypt(
-        password.encode(), salt=salt, n=_N, r=_R, p=_P, maxmem=_MAXMEM, dklen=32
-    )
-    encode = base64.b64encode
-    return f"scrypt${_N}${_R}${_P}${encode(salt).decode()}${encode(digest).decode()}"
-
-
-def verify_password(password: str, stored: str) -> bool:
-    try:
-        scheme, n, r, p, salt, digest = stored.split("$")
-        if scheme != "scrypt":
-            return False
-        expected = base64.b64decode(digest)
-        given = hashlib.scrypt(
-            password.encode(),
-            salt=base64.b64decode(salt),
-            n=int(n),
-            r=int(r),
-            p=int(p),
-            maxmem=_MAXMEM,
-            dklen=len(expected),
-        )
-    except ValueError:
-        return False
-    return hmac.compare_digest(given, expected)
 
 
 def enabled() -> bool:
@@ -90,13 +57,28 @@ def setup(request: Request, username: str, password: str) -> None:
             422, f"A senha precisa de pelo menos {MIN_PASSWORD} caracteres."
         )
     digest = hash_password(password)
-    write_credentials(username, digest)
+    try:
+        write_credentials(username, digest, first_setup=True)
+    except FileExistsError:
+        raise HTTPException(
+            409, "O acesso já foi configurado. Recarregue a página."
+        ) from None
+    except OSError:
+        raise HTTPException(
+            503,
+            "Não foi possível salvar o acesso. Confira a permissão de escrita da configuração da API.",
+        ) from None
     settings.admin_username = username
     settings.admin_password_hash = digest
 
 
 def _client(request: Request) -> str:
-    return request.client.host if request.client else "?"
+    host = request.client.host if request.client else "?"
+    try:
+        address = ip_address(host)
+        return str(getattr(address, "ipv4_mapped", None) or address)
+    except ValueError:
+        return host
 
 
 def _blocked(host: str) -> bool:
@@ -129,6 +111,9 @@ def login(request: Request, response: Response, username: str, password: str) ->
         {
             "sub": settings.admin_username,
             "sid": secrets.token_hex(16),
+            "credential": hashlib.sha256(
+                settings.admin_password_hash.encode()
+            ).hexdigest(),
             "exp": int(expires.timestamp()),
         },
     )
@@ -156,6 +141,9 @@ def require_admin(request: Request) -> str:
         str(claims.get("sub", "")).encode(), (settings.admin_username or "").encode()
     ):
         raise HTTPException(401, "Faça login no painel.")
+    expected = hashlib.sha256((settings.admin_password_hash or "").encode()).hexdigest()
+    if not hmac.compare_digest(str(claims.get("credential", "")), expected):
+        raise HTTPException(401, "A senha mudou. Entre novamente.")
     # Contra CSRF: um site de fora não manda header próprio sem passar pelo CORS.
     if request.method not in ("GET", "HEAD") and (
         request.headers.get("X-Admin-Request") != "1"

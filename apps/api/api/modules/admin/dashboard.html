@@ -19,6 +19,7 @@
     }
   }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   button, input, select, textarea { font:inherit; color:inherit; }
   button { background:var(--side); border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer; }
@@ -92,7 +93,7 @@
 <body>
 <form id="login" hidden>
   <h1>Followw · Administração</h1>
-  <p class="muted" id="login-hint">Entre com o usuário e a senha definidos por <code>uv run admin-password</code>.</p>
+  <p class="muted" id="login-hint">Entre com o usuário e a senha desta instância. Esqueceu? No computador que executa o servidor, rode <code>.\admin-password.cmd --reset</code> e recarregue esta página para cadastrar outro acesso.</p>
   <label>Usuário <input id="user" autocomplete="username" required maxlength="64"></label>
   <label>Senha <input id="password" type="password" autocomplete="current-password" required maxlength="256"></label>
   <button class="primary" type="submit">Entrar</button>
@@ -118,7 +119,7 @@
 
 <script>
 "use strict";
-const base = location.pathname.replace(/\/admin\/?$/, "") + "/admin/api";
+const base = location.pathname.replace(/\/+$/, "") + "/api";
 const $ = (selector) => document.querySelector(selector);
 const LABELS = { review:"Avaliações", group:"Grupos", material:"Materiais", post:"Publicações", reply:"Respostas", tutorial:"Guias", report:"Denúncias" };
 const REASONS = { ofensivo:"Ofensivo", dados_pessoais:"Expõe alguém", spam:"Spam", falso:"Falso", direitos_autorais:"Direitos autorais", outro:"Outro" };
@@ -230,10 +231,14 @@ function showSetup() {
     event.preventDefault();
     event.stopImmediatePropagation();
     if ($("#password").value !== confirm.value) { $("#login-error").textContent = "As senhas não conferem."; return; }
+    button.disabled = true;
+    try {
     const response = await fetch(base + "/setup", { method:"POST", credentials:"same-origin", headers:{ "Content-Type":"application/json", "X-Admin-Request":"1" }, body:JSON.stringify({ username:$("#user").value, password:$("#password").value }) });
     $("#password").value = ""; confirm.value = "";
     if (!response.ok) { const body = await response.json().catch(() => ({})); $("#login-error").textContent = typeof body.detail === "string" ? body.detail : "Use de 3 a 64 letras, números, ponto, hífen ou sublinhado no usuário e 12+ caracteres na senha."; return; }
     location.reload();
+    } catch { $("#login-error").textContent = "Sem conexão com a API. Tente novamente."; }
+    finally { button.disabled = false; }
   };
 }
 
@@ -536,7 +541,7 @@ async function system() {
           el("tr", {}, el("td", {}, "Arquivos de materiais, cifrados (servidor)"), el("td", { class:"num" }, bytes(o.materials_bytes))),
           el("tr", {}, el("td", {}, `Aparelho de um aluno com ${o.device.typical_classrooms} turmas (estimativa)`), el("td", { class:"num" }, bytes(o.device.typical_bytes))),
           el("tr", {}, el("td", {}, "Cada turma a mais no aparelho"), el("td", { class:"num" }, bytes(o.device.per_classroom_bytes))))),
-        el("p", { class:"muted" }, "O aparelho guarda o cache do app (turmas, frequência, postagens, pessoas, estágios) e as configurações; o servidor não guarda nada disso. A estimativa foi medida num navegador real.")),
+        el("p", { class:"muted" }, "O aparelho guarda o cache do app (turmas, frequência, postagens, pessoas, estágios) e as configurações; o servidor não guarda nada disso. A estimativa foi medida num navegador real."),
 
         el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Tabela"), el("th", { class:"num" }, "Linhas"), el("th", { class:"num" }, "Tamanho"))),
           el("tbody", {}, o.tables.map((t) => el("tr", {}, el("td", {}, t.table), el("td", { class:"num" }, fmt(t.rows)), el("td", { class:"num" }, bytes(t.bytes))))))),

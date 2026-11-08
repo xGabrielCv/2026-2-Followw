@@ -6,6 +6,7 @@ import type { ClassroomGroups } from '#/queries/groups';
 import { GroupsContent } from '#/components/community/GroupsDialog';
 import { apiClient } from '#/queries/client';
 import { classroomGroupsQueryOptions } from '#/queries/groups';
+import { meQueryOptions } from '#/queries/me';
 
 import { useDom } from '../../helpers/dom';
 
@@ -15,9 +16,13 @@ afterEach(() => dom.testing.cleanup());
 const key = { code: 'FGA0030', semester: '2026.2', number: '01' };
 const classroom = { ...key, name: 'ESTRUTURAS DE DADOS 2' };
 
-function render(groups: ClassroomGroups['groups']) {
+function render(groups: ClassroomGroups['groups'], loggedIn = true) {
     const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
     client.setQueryData(classroomGroupsQueryOptions(key).queryKey, { classroom, groups });
+    client.setQueryData<{ registration: string } | null>(
+        meQueryOptions.queryKey,
+        loggedIn ? { registration: '202600001' } : null
+    );
     return dom.testing.render(
         <QueryClientProvider client={client}>
             <GroupsContent classroom={key} />
@@ -101,4 +106,14 @@ test('sem grupos, inicia o cadastro e salva só a turma e os links', async () =>
     } finally {
         put.mockRestore();
     }
+});
+
+test('visitante abre grupos sem controles de cadastro ou edição', async () => {
+    const page = render(
+        [{ id: 'g1', platform: 'whatsapp', url: 'https://chat.whatsapp.com/AbC', password: null }],
+        false
+    );
+    expect(await page.findByRole('link', { name: 'Entrar no grupo do WhatsApp' })).toBeDefined();
+    expect(page.queryByRole('button', { name: 'Editar grupos' })).toBeNull();
+    expect(page.queryByRole('button', { name: 'Cadastrar grupo' })).toBeNull();
 });

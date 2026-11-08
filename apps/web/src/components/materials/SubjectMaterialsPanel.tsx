@@ -26,6 +26,7 @@ import {
     subjectMaterialsQueryOptions,
     useDeleteMaterial
 } from '#/queries/community';
+import { meQueryOptions } from '#/queries/me';
 import { nameKey } from '#/queries/outcomes';
 
 interface SubjectMaterialsPanelProps {
@@ -37,6 +38,7 @@ interface SubjectMaterialsPanelProps {
 /** Material compartilhado da matéria: provas, listas e resumos, anônimos. */
 export function SubjectMaterialsPanel({ code, classroom }: SubjectMaterialsPanelProps) {
     const query = useQuery(subjectMaterialsQueryOptions(code));
+    const { data: user } = useQuery(meQueryOptions);
     const [uploading, setUploading] = useState(false);
 
     if (query.isPending) return <LoadingText>Carregando materiais...</LoadingText>;
@@ -57,15 +59,17 @@ export function SubjectMaterialsPanel({ code, classroom }: SubjectMaterialsPanel
             data={query.data}
             code={code}
             classroom={classroom}
-            onUpload={() => setUploading(true)}
+            onUpload={user ? () => setUploading(true) : undefined}
         >
-            <UploadMaterialDialog
-                open={uploading}
-                onOpenChange={setUploading}
-                code={code}
-                data={query.data}
-                classroom={classroom}
-            />
+            {user && (
+                <UploadMaterialDialog
+                    open={uploading}
+                    onOpenChange={setUploading}
+                    code={code}
+                    data={query.data}
+                    classroom={classroom}
+                />
+            )}
         </MaterialsView>
     );
 }
@@ -80,7 +84,7 @@ export function MaterialsView({
     data: SubjectMaterials;
     code: string;
     classroom?: SubjectMaterialsPanelProps['classroom'];
-    onUpload: () => void;
+    onUpload?: () => void;
     children?: React.ReactNode;
 }) {
     const { usage, limits } = data;
@@ -101,10 +105,12 @@ export function MaterialsView({
                             anonimamente. Guardados por {limits.keep_semesters} semestres.
                         </p>
                     </div>
-                    <Button size="sm" onClick={onUpload} disabled={full}>
-                        <Upload aria-hidden="true" />
-                        Enviar
-                    </Button>
+                    {onUpload && (
+                        <Button size="sm" onClick={onUpload} disabled={full}>
+                            <Upload aria-hidden="true" />
+                            Enviar
+                        </Button>
+                    )}
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                     <Meter label="Arquivos" value={usage.files} max={limits.max_per_subject} />
@@ -114,9 +120,15 @@ export function MaterialsView({
                         max={limits.max_subject_bytes}
                         format={formatBytes}
                     />
-                    <Meter label="Seus envios" value={usage.mine} max={limits.max_per_student} />
+                    {onUpload && (
+                        <Meter
+                            label="Seus envios"
+                            value={usage.mine}
+                            max={limits.max_per_student}
+                        />
+                    )}
                 </div>
-                {full && (
+                {onUpload && full && (
                     <p className="text-xs text-warning">
                         {usage.mine >= limits.max_per_student
                             ? `Você já enviou ${limits.max_per_student} arquivos nesta matéria. Apague um para enviar outro.`
@@ -126,7 +138,7 @@ export function MaterialsView({
             </div>
             {data.items.length === 0 ? (
                 <p className="rounded-2xl bg-card p-4 text-center text-sm text-muted-foreground">
-                    Ninguém compartilhou material desta matéria ainda. Seja o primeiro!
+                    Ninguém compartilhou material desta matéria ainda.
                 </p>
             ) : (
                 semesters.map((semester) => (
@@ -141,6 +153,7 @@ export function MaterialsView({
                                     <MaterialRow
                                         key={item.id}
                                         item={item}
+                                        canEdit={Boolean(onUpload)}
                                         code={code}
                                         classroom={classroom}
                                     />
@@ -207,9 +220,11 @@ export function originLabel(
 function MaterialRow({
     item,
     code,
-    classroom
+    classroom,
+    canEdit
 }: {
     item: MaterialItem;
+    canEdit: boolean;
     code: string;
     classroom?: SubjectMaterialsPanelProps['classroom'];
 }) {
@@ -289,7 +304,7 @@ function MaterialRow({
                         <Download aria-hidden="true" />
                         Baixar
                     </Button>
-                    {item.mine ? (
+                    {canEdit && item.mine ? (
                         <Button
                             size="sm"
                             variant="ghost"

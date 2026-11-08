@@ -35,6 +35,7 @@ import {
 } from '#/lib/groups';
 import { useOnline } from '#/lib/online';
 import { classroomGroupsQueryOptions, useSaveGroups } from '#/queries/groups';
+import { meQueryOptions } from '#/queries/me';
 
 interface GroupsDialogProps extends ClassroomKey {
     // nome da matéria, para o título
@@ -48,7 +49,7 @@ let nextDraft = 0;
 const draft = (group: GroupLink) => ({ ...group, key: String(nextDraft++) });
 
 const PRIVACY =
-    'Qualquer aluno logado vê e edita estes grupos. Só a turma e os links são salvos, nunca quem cadastrou.';
+    'Qualquer pessoa pode ver os grupos. Entre com o SIGAA para cadastrar ou editar. Só a turma e os links são salvos, nunca quem cadastrou.';
 
 /** Os grupos de conversa da turma (até 3): ver, cadastrar e editar, aberto a todos os alunos. */
 export function GroupsDialog({ open, onOpenChange, name, ...key }: GroupsDialogProps) {
@@ -72,6 +73,7 @@ export function GroupsDialog({ open, onOpenChange, name, ...key }: GroupsDialogP
 /** O conteúdo do diálogo: a lista salva ou o formulário de edição. */
 export function GroupsContent({ classroom }: { classroom: ClassroomKey }) {
     const groups = useQuery(classroomGroupsQueryOptions(classroom));
+    const { data: user } = useQuery(meQueryOptions);
     const [editing, setEditing] = useState<GroupLink[] | null>(null);
 
     if (groups.isPending) return <LoadingText>Carregando grupos...</LoadingText>;
@@ -83,7 +85,7 @@ export function GroupsContent({ classroom }: { classroom: ClassroomKey }) {
         );
 
     const saved = groups.data.groups;
-    if (editing)
+    if (user && editing)
         return (
             <GroupsForm classroom={classroom} initial={editing} onDone={() => setEditing(null)} />
         );
@@ -95,10 +97,12 @@ export function GroupsContent({ classroom }: { classroom: ClassroomKey }) {
                     <p className="text-sm text-muted-foreground">
                         Ninguém cadastrou um grupo desta turma ainda.
                     </p>
-                    <Button onClick={() => setEditing([EMPTY_GROUP])}>
-                        <Plus aria-hidden="true" />
-                        Cadastrar grupo
-                    </Button>
+                    {user && (
+                        <Button onClick={() => setEditing([EMPTY_GROUP])}>
+                            <Plus aria-hidden="true" />
+                            Cadastrar grupo
+                        </Button>
+                    )}
                 </div>
             ) : (
                 <ul className="flex flex-col gap-2" aria-label="Grupos cadastrados">
@@ -108,7 +112,7 @@ export function GroupsContent({ classroom }: { classroom: ClassroomKey }) {
                 </ul>
             )}
             <p className="text-xs text-muted-foreground">{PRIVACY}</p>
-            {saved.length > 0 && (
+            {user && saved.length > 0 && (
                 <DialogFooter>
                     <Button variant="outline" onClick={() => setEditing(cleanGroups(saved))}>
                         Editar grupos

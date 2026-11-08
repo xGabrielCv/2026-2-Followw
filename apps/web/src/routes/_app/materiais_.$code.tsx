@@ -3,7 +3,6 @@ import { createFileRoute, notFound, rootRouteId } from '@tanstack/react-router';
 
 import { ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
-import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { SubjectMaterialsPanel } from '#/components/materials/SubjectMaterialsPanel';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { subjectMaterialsQueryOptions } from '#/queries/community';
@@ -29,10 +28,11 @@ function MaterialPage() {
     const { code } = Route.useParams();
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const classrooms = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
-    const materials = useQuery({ ...subjectMaterialsQueryOptions(code), enabled: Boolean(user) });
-    if (!user) return <LoginPromptCard />;
+    const materials = useQuery(subjectMaterialsQueryOptions(code));
     // se o aluno cursa a matéria agora, o envio já vem com a turma dele
-    const current = classrooms.data?.find((item) => item.current && item.subject.code === code);
+    const current = user
+        ? classrooms.data?.find((item) => item.current && item.subject.code === code)
+        : undefined;
 
     return (
         <div className="flex flex-col gap-3 pb-8">

@@ -11,7 +11,8 @@ export function LoginPrivacyInfo() {
                     Seus dados pessoais não ficam no servidor do Followw.
                 </strong>{' '}
                 O que identifica você fica neste aparelho; o servidor só guarda o que é da
-                comunidade, sem dizer quem escreveu. Suas credenciais não são armazenadas.{' '}
+                comunidade, sem associar seu nome ou matrícula às publicações. Suas credenciais
+                ficam em cookies cifrados no navegador; não são gravadas no banco ou nos logs.{' '}
                 <Link to="/perfil/dados" className="font-semibold text-primary">
                     Saiba mais
                 </Link>

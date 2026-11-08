@@ -49,10 +49,10 @@ def logado(client, cookies):
     return client
 
 
-def test_grupos_exigem_login(client, turmas):
-    assert client.get(TURMA).status_code == 401
+def test_grupos_tem_leitura_publica_e_escrita_autenticada(client, turmas):
+    assert client.get(TURMA).status_code == 200
     assert client.put(TURMA, json={"groups": []}).status_code == 401
-    assert client.get("/groups", params={"semester": "2026.2"}).status_code == 401
+    assert client.get("/groups", params={"semester": "2026.2"}).status_code == 200
 
 
 def test_turma_sem_grupos_e_cadastro_de_ate_tres_grupos(logado, turmas, database):

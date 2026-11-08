@@ -17,7 +17,6 @@ import { GroupsDialog } from '#/components/community/GroupsDialog';
 import { WhatsAppIcon } from '#/components/community/PlatformIcon';
 import { ErrorCard, ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
-import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
 import { Button } from '#/components/ui/button';
@@ -60,7 +59,7 @@ export const Route = createFileRoute('/_app/grupos')({
 
 function GruposPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
-    return user ? <Groups unitId={user.unit?.id} /> : <LoginPromptCard />;
+    return <Groups unitId={user?.unit?.id} />;
 }
 
 function Groups({ unitId }: { unitId?: number }) {
@@ -183,7 +182,7 @@ function GroupList({
     return (
         <section aria-label="Turmas" className="flex flex-col gap-2">
             <p className="px-1 text-xs text-muted-foreground">
-                {total} {total === 1 ? 'turma' : 'turmas'} · toque para ver ou cadastrar grupos
+                {total} {total === 1 ? 'turma' : 'turmas'} · toque para ver os grupos
             </p>
             <ul className="flex flex-col gap-2">
                 {items.map((item) => (
@@ -244,7 +243,7 @@ function GroupedClassroomCard({ item, onOpen }: { item: GroupedClassroom; onOpen
                 )}
             >
                 <WhatsAppIcon className="size-3.5" />
-                {item.groups > 0 ? item.groups : 'Cadastrar'}
+                {item.groups > 0 ? item.groups : 'Sem grupo'}
             </span>
         </button>
     );

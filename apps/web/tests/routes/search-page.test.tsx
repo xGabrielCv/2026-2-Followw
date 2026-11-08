@@ -209,6 +209,16 @@ describe('página de busca com estado na URL', () => {
                 if (url.pathname.endsWith('/statistics')) return Response.json(noStatistics);
                 if (url.pathname.endsWith('/outcomes'))
                     return Response.json({ subject: null, professors: [] });
+                if (url.pathname.includes('/groups/'))
+                    return Response.json({
+                        groups: [],
+                        classroom: {
+                            code: 'MAT0025',
+                            name: 'Cálculo 1',
+                            semester: '2026.2',
+                            number: '01'
+                        }
+                    });
                 // os semestres da oferta não são uma busca
                 if (url.pathname.endsWith('/public/subjects/semesters'))
                     return Response.json(offerSemesters);
@@ -782,6 +792,16 @@ describe('página de busca com estado na URL', () => {
                 if (url.pathname.endsWith('/statistics')) return Response.json(noStatistics);
                 if (url.pathname.endsWith('/outcomes'))
                     return Response.json({ subject: null, professors: [] });
+                if (url.pathname.includes('/groups/'))
+                    return Response.json({
+                        groups: [],
+                        classroom: {
+                            code: 'FGA0173',
+                            name: 'IHC',
+                            semester: '2026.2',
+                            number: '01'
+                        }
+                    });
                 // os semestres da oferta não são uma busca
                 if (url.pathname.endsWith('/public/subjects/semesters'))
                     return Response.json(offerSemesters);

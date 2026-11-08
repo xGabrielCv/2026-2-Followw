@@ -57,11 +57,11 @@ const DEVICE: Item[] = [
     },
     {
         what: 'Turmas, menções, frequência, colegas, postagens, notícias, estágios e extrato do RU',
-        how: 'No cache do app, neste aparelho, por até 400 dias. Ao abrir o app, ele busca primeiro a agenda e as turmas e depois o resto, em segundo plano, para as telas já abrirem prontas; de novo só quando o dado envelhece.'
+        how: 'No cache do app, neste aparelho, por até 400 dias. Esse cache não tem uma camada própria de criptografia. Ao abrir o app, ele busca primeiro a agenda e as turmas e depois o resto, em segundo plano; de novo só quando o dado envelhece.'
     },
     {
         what: 'Configurações, calendário, marcações de presença, grades do simulador e o segredo das suas avaliações',
-        how: 'Só no armazenamento deste navegador, separado por matrícula. Para levar a outro aparelho, use o backup.'
+        how: 'Só no armazenamento deste navegador, separado por matrícula. Preferências e backup não têm criptografia própria: proteja o aparelho e o arquivo. Para levar a outro aparelho, use o backup.'
     },
     {
         what: 'Segredo do aparelho (chave de autoria)',
@@ -91,7 +91,7 @@ const PASSING: Item[] = [
 const CLOUD: Item[] = [
     {
         what: 'Avaliações de docentes, grupos das turmas, materiais, dúvidas e posts, guias e denúncias',
-        how: 'Sem nome, matrícula ou e-mail. O texto fica cifrado no banco (AES-256), e os arquivos ficam cifrados e sem metadados (autor, aparelho, local da foto).'
+        how: 'Leitura pública, sem associar nome ou matrícula à autoria. Texto e arquivos ficam cifrados em repouso (AES-256-GCM); a API e a moderação conseguem decifrá-los. Metadados são removidos, mas o próprio conteúdo pode identificar pessoas: revise antes de publicar.'
     },
     {
         what: 'Índices de aprovação das turmas (só se você liberar)',

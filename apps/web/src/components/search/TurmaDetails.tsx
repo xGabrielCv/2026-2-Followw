@@ -1,5 +1,8 @@
+import { Link } from '@tanstack/react-router';
+
 import type { TurmaProps } from '#/components/search/TurmaCard';
 
+import { ClassroomCommunity } from '#/components/community/ClassroomCommunity';
 import { ProfessorRatings } from '#/components/community/ProfessorRatings';
 import { useProfessorRatings } from '#/components/community/RatingBadge';
 import { SubjectOutcomesSection } from '#/components/OutcomeRates';
@@ -89,6 +92,20 @@ export function TurmaDetails({ subject, classroom }: TurmaProps) {
                     </span>
                 </Detail>
             </dl>
+            <ClassroomCommunity
+                code={subject.code}
+                semester={classroom.semester}
+                number={classroom.number}
+                name={subject.name}
+                professors={classroom.professors}
+            />
+            <Link
+                to="/materiais/$code"
+                params={{ code: subject.code }}
+                className="text-sm font-medium text-primary"
+            >
+                Ver materiais desta matéria
+            </Link>
             <SubjectOutcomesSection
                 code={subject.code}
                 professors={classroom.professors.map(({ name }) => name)}

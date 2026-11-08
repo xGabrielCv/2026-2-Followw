@@ -47,7 +47,7 @@ def base(database):
 
 @pytest.fixture
 def painel(monkeypatch):
-    monkeypatch.setattr(settings, "admin_username", "moderacao")
+    monkeypatch.setattr(settings, "admin_username", "admin-teste")
     monkeypatch.setattr(settings, "admin_password_hash", HASH_ADMIN)
     auth._failures.clear()
 
@@ -55,7 +55,7 @@ def painel(monkeypatch):
 def _entrar_admin(client, senha=SENHA_ADMIN):
     return client.post(
         "/admin/api/login",
-        json={"username": "moderacao", "password": senha},
+        json={"username": "admin-teste", "password": senha},
         headers=ADMIN,
     )
 
@@ -90,8 +90,8 @@ def _postar(client, **body):
     return response.json()
 
 
-def test_comunidade_exige_login(client, base):
-    assert client.get("/forum").status_code == 401
+def test_comunidade_leitura_publica_e_publicacao_com_login(client, base):
+    assert client.get("/forum").status_code == 200
     assert client.post("/forum", json={}).status_code == 401
 
 
@@ -327,7 +327,7 @@ def test_login_do_painel_com_sessao_em_cookie_seguro(client, base, painel, ler_c
     assert _entrar_admin(client, "senha-errada").status_code == 401
     # sem o header próprio, nem o login passa (um site de fora não consegue mandá-lo)
     sem_header = client.post(
-        "/admin/api/login", json={"username": "moderacao", "password": SENHA_ADMIN}
+        "/admin/api/login", json={"username": "admin-teste", "password": SENHA_ADMIN}
     )
     assert sem_header.status_code == 403
 
@@ -338,7 +338,7 @@ def test_login_do_painel_com_sessao_em_cookie_seguro(client, base, painel, ler_c
     assert SENHA_ADMIN not in cookie.value
     assert client.get("/admin/api/session").json() == {
         "enabled": True,
-        "user": "moderacao",
+        "user": "admin-teste",
     }
     assert client.get("/admin/api/overview").status_code == 200
     # mudar algo sem o header é recusado mesmo com a sessão
@@ -569,9 +569,9 @@ def test_primeiro_acesso_do_admin_pela_pagina_so_local(
     monkeypatch.setattr(cli, "ENV_FILE", env)
     monkeypatch.setattr(auth, "_client", lambda request: "127.0.0.1")
     assert client.get("/admin/api/session").json()["setup"] is True
-    curta = {"username": "moderacao", "password": "curta"}
+    curta = {"username": "admin-teste", "password": "curta"}
     assert client.post("/admin/api/setup", json=curta, headers=ADMIN).status_code == 422
-    corpo = {"username": "moderacao", "password": "uma-senha-bem-longa"}
+    corpo = {"username": "admin-teste", "password": "uma-senha-bem-longa"}
     assert client.post("/admin/api/setup", json=corpo).status_code == 403
     assert client.post("/admin/api/setup", json=corpo, headers=ADMIN).status_code == 204
     # já entra logado, e a senha só existe como hash no .env
@@ -588,7 +588,7 @@ def test_cadastro_do_admin_recusado_fora_do_pc(client, base, monkeypatch):
     monkeypatch.setattr(settings, "admin_username", None)
     monkeypatch.setattr(settings, "admin_password_hash", None)
     monkeypatch.setattr(auth, "_client", lambda request: "203.0.113.9")
-    corpo = {"username": "moderacao", "password": "uma-senha-bem-longa"}
+    corpo = {"username": "admin-teste", "password": "uma-senha-bem-longa"}
     assert client.post("/admin/api/setup", json=corpo, headers=ADMIN).status_code == 403
 
 
@@ -607,3 +607,67 @@ def test_painel_mostra_armazenamento_e_estimativa_do_aparelho(client, base, pain
         overview["device"]["typical_bytes"] > overview["device"]["per_classroom_bytes"]
     )
     assert overview["database_bytes"] > 0
+
+
+def test_visitante_le_conversa_e_respostas_mas_nao_pode_interagir(ana, base):
+    post = _postar(ana)
+    reply = ana.post(
+        f"/forum/{post['id']}/replies", json={"body": "Resposta pública"}
+    ).json()["replies"][0]
+    ana.cookies.clear()
+    assert ana.get("/forum").json()["total"] == 1
+    assert (
+        ana.get(f"/forum/{post['id']}").json()["replies"][0]["body"]
+        == "Resposta pública"
+    )
+    assert (
+        ana.post(f"/forum/{post['id']}/replies", json={"body": "Tentativa"}).status_code
+        == 401
+    )
+    assert ana.delete(f"/forum/{post['id']}").status_code == 401
+    assert ana.delete(f"/forum/{post['id']}/replies/{reply['id']}").status_code == 401
+
+
+def test_trocar_senha_invalida_sessao_admin_existente(client, painel, monkeypatch):
+    assert _entrar_admin(client).status_code == 204
+    monkeypatch.setattr(
+        settings, "admin_password_hash", hash_password("outra-senha-do-admin")
+    )
+    assert client.get("/admin/api/overview").status_code == 401
+
+
+def test_recuperacao_local_remove_so_credenciais_admin(tmp_path):
+    from api.modules.admin.cli import reset_credentials
+
+    env = tmp_path / ".env"
+    env.write_text(
+        "JWT_SECRET_KEY=preservar\nADMIN_USERNAME=admin\nADMIN_PASSWORD_HASH='hash'\nDATA_ENCRYPTION_KEY=preservar-tambem\n",
+        encoding="utf-8",
+    )
+    reset_credentials(env)
+    assert (
+        env.read_text(encoding="utf-8")
+        == "JWT_SECRET_KEY=preservar\nDATA_ENCRYPTION_KEY=preservar-tambem\n"
+    )
+
+
+def test_primeiro_cadastro_nao_sobrescreve_hash_ja_gravado(tmp_path):
+    from api.modules.admin.cli import write_credentials
+
+    env = tmp_path / ".env"
+    write_credentials("primeiro", HASH_ADMIN, env, first_setup=True)
+    saved = env.read_text(encoding="utf-8")
+    with pytest.raises(FileExistsError):
+        write_credentials("segundo", HASH_ADMIN, env, first_setup=True)
+    assert env.read_text(encoding="utf-8") == saved
+
+
+def test_ip_local_mapeado_em_ipv6_permite_primeiro_cadastro(monkeypatch):
+    from starlette.requests import Request
+
+    monkeypatch.setattr(settings, "admin_username", None)
+    monkeypatch.setattr(settings, "admin_password_hash", None)
+    request = Request({"type": "http", "client": ("::ffff:127.0.0.1", 1234)})
+    assert auth.can_setup(request)
+    monkeypatch.setattr(settings, "environment", "production")
+    assert not auth.can_setup(request)

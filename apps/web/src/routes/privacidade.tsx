@@ -2,7 +2,6 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 
 import { FollowwLogo } from '#/components/FollowwLogo';
-import { EMAILS, mailto } from '#/lib/contact';
 
 export const Route = createFileRoute('/privacidade')({
     head: () => ({ meta: [{ title: 'Privacidade e termos | Followw' }] }),
@@ -26,7 +25,7 @@ function PrivacyPage() {
                         <h1 className="text-2xl font-bold tracking-tight">Privacidade e termos</h1>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                        Atualizado em <time dateTime="2026-10-18">18 de outubro de 2026</time>
+                        Atualizado em <time dateTime="2026-11-08">8 de novembro de 2026</time>
                     </p>
                     <nav
                         aria-label="Nesta página"
@@ -61,7 +60,7 @@ function PrivacyPage() {
                         <div>
                             <h3 className="font-semibold text-foreground">Seus dados do SIGAA</h3>
                             <p>
-                                Não guardamos no servidor nada que identifique você. Perfil, IRA,
+                                Não gravamos seus dados pessoais do SIGAA no servidor. Perfil, IRA,
                                 turmas, menções, frequência, colegas de turma e postagens são
                                 buscados no SIGAA a cada consulta e devolvidos ao seu aparelho, sem
                                 gravação no nosso banco. O seu perfil fica num cookie cifrado no seu
@@ -76,11 +75,16 @@ function PrivacyPage() {
                         <div>
                             <h3 className="font-semibold text-foreground">Comunidade</h3>
                             <p>
-                                Avaliações, grupos, materiais, dúvidas, guias e denúncias não
-                                guardam nome nem matrícula: limites e autoria usam uma chave anônima
-                                por escopo, que não liga um conteúdo a outro. O conteúdo fica
-                                cifrado no banco (AES-256-GCM) e os arquivos ficam cifrados e sem
-                                metadados.
+                                Avaliações, grupos, materiais, dúvidas, guias e denúncias não exigem
+                                login para publicar, editar ou apagar, mas a leitura é pública. Não
+                                associamos nome nem matrícula às publicações: limites e autoria usam
+                                chaves derivadas de um segredo aleatório do aparelho. O conteúdo
+                                fica cifrado no banco (AES-256-GCM) e os arquivos ficam cifrados e
+                                sem metadados removidos na preparação do arquivo. A API e a
+                                moderação conseguem decifrar esse conteúdo; não se trata de
+                                criptografia de ponta a ponta. Textos, imagens e arquivos podem
+                                identificar pessoas pelo próprio conteúdo: não publique dados
+                                pessoais ou convites privados.
                             </p>
                         </div>
                         <div>
@@ -99,35 +103,33 @@ function PrivacyPage() {
                                 Configurações, calendário, marcações de presença, grades e o cache
                                 dos dados do SIGAA ficam no armazenamento do seu navegador por até
                                 400 dias, para o app abrir rápido e funcionar offline. Você pode
-                                exportar, importar ou apagar esses dados em Perfil, Uso de dados.
+                                exportar, importar ou apagar esses dados em Perfil, Uso de dados. Os
+                                cookies de sessão e perfil são cifrados; o cache e as preferências
+                                locais não têm uma camada própria de criptografia. Proteja o acesso
+                                ao aparelho e aos arquivos de backup.
                             </p>
                         </div>
                         <div>
                             <h3 className="font-semibold text-foreground">Análise de uso</h3>
                             <p>
-                                Quando ativado, o PostHog recebe métricas anônimas de navegação
-                                (páginas e interações), sem gravação de sessão e sem os textos da
-                                tela. A API registra dados técnicos das requisições, como rota,
-                                status e duração, sem matrícula, para diagnóstico. A contagem de uso
-                                do painel usa uma chave anônima por dia, semana e mês.
+                                Quando configurado pelo responsável pela instância, o PostHog recebe
+                                métricas de navegação (páginas e interações), sem gravação de sessão
+                                e sem os textos da tela. A API registra dados técnicos das
+                                requisições, como rota, status e duração, sem matrícula, para
+                                diagnóstico. A contagem de uso do painel usa uma chave anônima por
+                                dia, semana e mês.
                             </p>
                         </div>
                         <div>
                             <h3 className="font-semibold text-foreground">Excluir seus dados</h3>
                             <p>
-                                Para solicitar a exclusão dos seus dados existentes no Followw,
-                                escreva para{' '}
-                                <a
-                                    className="text-primary underline underline-offset-4"
-                                    href={mailto(EMAILS.removal)}
-                                >
-                                    {EMAILS.removal}
-                                </a>
-                                . Não envie sua senha. Como o servidor não guarda seus dados do
-                                SIGAA, não há o que apagar deles por lá; o que você publicou na
-                                comunidade pode ser apagado no próprio item. Para limpar o
-                                dispositivo, use Perfil, Uso de dados, ou remova os dados do site no
-                                navegador.
+                                Não envie sua senha a ninguém. Como o servidor não guarda seus dados
+                                do SIGAA, não há o que apagar deles por lá; o que você publicou na
+                                comunidade pode ser apagado no próprio item, com login e a chave de
+                                autoria preservada neste aparelho. Qualquer pessoa pode solicitar
+                                revisão ou remoção pelo botão de denúncia, inclusive sem login. Para
+                                limpar o dispositivo, use Perfil, Uso de dados, ou remova os dados
+                                do site no navegador.
                             </p>
                         </div>
                     </section>
@@ -148,15 +150,11 @@ function PrivacyPage() {
                             sistemas da UnB.
                         </p>
                         <p>
-                            Caso tenha dúvidas ou precise integrar nossa API, entre em contato
-                            conosco através do e-mail{' '}
-                            <a
-                                className="text-primary underline underline-offset-4"
-                                href={mailto(EMAILS.contact)}
-                            >
-                                {EMAILS.contact}
-                            </a>
-                            , será um prazer ajudar.
+                            Grupos, avaliações, materiais, conversas e guias aprovados podem ser
+                            consultados sem login. Contribuir e alterar conteúdo exige autenticação
+                            no SIGAA e, quando aplicável, o segredo de autoria do aparelho. Publique
+                            apenas conteúdo que você tenha direito de compartilhar. Denúncias
+                            permanecem disponíveis a todos para proteger a comunidade.
                         </p>
                         <p>
                             É proibido sobrecarregar o serviço, burlar restrições, acessar contas ou
@@ -166,7 +164,6 @@ function PrivacyPage() {
                             suspender o acesso em caso de suspeita de violação destes termos a
                             qualquer momento.
                         </p>
-                        <p></p>
                         <p>
                             O Followw depende dos sistemas da UnB e pode apresentar
                             indisponibilidade ou dados desatualizados. Confira informações e

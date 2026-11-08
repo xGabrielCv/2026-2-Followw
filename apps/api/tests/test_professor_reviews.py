@@ -130,11 +130,22 @@ def test_avaliacao_anonima_aparece_no_perfil_com_media_e_chamada(logado, docente
     }
 
 
-def test_so_quem_tem_o_segredo_edita_ou_apaga(client, logado, docentes):
+def test_so_quem_tem_login_e_o_segredo_edita_ou_apaga(
+    client, logado, docentes, cookies
+):
     criada = _avaliar(logado, 111, 40)
     review_id, token = criada["review"]["id"], criada["token"]
 
     logado.cookies.clear()
+    headers = {"X-Review-Token": token}
+    assert (
+        client.put(
+            f"/reviews/{review_id}", json={"rating": 85}, headers=headers
+        ).status_code
+        == 401
+    )
+    assert client.delete(f"/reviews/{review_id}", headers=headers).status_code == 401
+    client.cookies.update(cookies(refresh=CREDENCIAIS))
     errado = {"X-Review-Token": "x" * 43}
     corpo = {"rating": 85, "attendance": "nao_cobra"}
     assert (

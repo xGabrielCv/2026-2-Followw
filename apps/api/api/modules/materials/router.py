@@ -31,7 +31,7 @@ _NOT_FOUND = {
 _CHUNK = 1024 * 1024
 
 
-# Tudo exige login (só alunos da UnB), mas quem enviou nunca é gravado.
+# Consulta e download públicos; envio e exclusão exigem login.
 @router.get(
     "",
     response_model=list[SubjectWithMaterials],
@@ -40,7 +40,6 @@ _CHUNK = 1024 * 1024
     dependencies=[NoStore],
 )
 async def list_subjects(
-    _: SigaaConnectionDep,
     service: MaterialServiceDep,
     q: Annotated[SearchText | None, Query(description="Código ou nome.")] = None,
 ) -> list[SubjectWithMaterials]:
@@ -56,7 +55,6 @@ async def list_subjects(
 )
 async def list_materials(
     author: OptionalAuthorDep,
-    connection: SigaaConnectionDep,
     service: MaterialServiceDep,
     code: Code,
 ) -> SubjectMaterials:
@@ -125,7 +123,7 @@ async def upload_material(
     },
 )
 async def download_material(
-    _: SigaaConnectionDep, service: MaterialServiceDep, code: Code, material_id: UUID
+    service: MaterialServiceDep, code: Code, material_id: UUID
 ) -> Response:
     material, data = await service.download(code.upper(), material_id)
     return Response(

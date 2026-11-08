@@ -51,7 +51,11 @@ async def create_review(
     dependencies=[require_enabled("reviews")],
 )
 async def update_review(
-    service: ReviewServiceDep, review_id: UUID, token: Token, body: ReviewInput
+    _: SigaaConnectionDep,
+    service: ReviewServiceDep,
+    review_id: UUID,
+    token: Token,
+    body: ReviewInput,
 ) -> Review:
     return await service.update(review_id, token, body)
 
@@ -63,6 +67,6 @@ async def update_review(
     responses=_NOT_FOUND,
 )
 async def delete_review(
-    service: ReviewServiceDep, review_id: UUID, token: Token
+    _: SigaaConnectionDep, service: ReviewServiceDep, review_id: UUID, token: Token
 ) -> None:
     await service.delete(review_id, token)

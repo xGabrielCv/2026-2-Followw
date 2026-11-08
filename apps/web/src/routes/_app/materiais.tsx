@@ -6,7 +6,6 @@ import { createStandardSchemaV1, parseAsString, parseAsStringLiteral } from 'nuq
 
 import { ErrorCard, ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
-import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
 import { Input } from '#/components/ui/input';
@@ -39,8 +38,7 @@ export const Route = createFileRoute('/_app/materiais')({
 });
 
 function MateriaisPage() {
-    const { data: user } = useSuspenseQuery(meQueryOptions);
-    return user ? <Materials /> : <LoginPromptCard />;
+    return <Materials />;
 }
 
 function Materials() {
@@ -49,7 +47,8 @@ function Materials() {
         scroll: false
     });
     const text = useDebounced(q.trim());
-    const classrooms = useQuery(allClassroomsQueryOptions);
+    const { data: user } = useSuspenseQuery(meQueryOptions);
+    const classrooms = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
     const mine = [
         ...new Map(
             (classrooms.data ?? [])
@@ -65,7 +64,7 @@ function Materials() {
                 Provas, listas e resumos que os alunos compartilham por matéria, anonimamente. Dá
                 para ver o de qualquer disciplina, mesmo as que você não cursa.
             </p>
-            {mine.length > 0 && (
+            {user && mine.length > 0 && (
                 <section className="flex flex-col gap-2">
                     <h2 className="px-1 text-sm font-semibold text-muted-foreground">
                         Suas matérias deste semestre
@@ -131,7 +130,7 @@ function WithMaterial({ text }: { text: string }) {
             <p className="py-6 text-center text-sm text-muted-foreground">
                 {text
                     ? 'Nenhuma matéria com material encontrada. Tente em "Outras disciplinas".'
-                    : 'Ninguém compartilhou material ainda. Abra uma das suas matérias e envie o primeiro!'}
+                    : 'Ninguém compartilhou material ainda. Busque uma disciplina em "Outras disciplinas".'}
             </p>
         );
     return (

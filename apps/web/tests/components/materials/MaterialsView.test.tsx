@@ -83,12 +83,25 @@ describe('material da matéria', () => {
         );
     });
 
-    test('sem material convida a enviar; no limite, o envio fica desligado', () => {
-        expect(render(data([])).getByText(/Seja o primeiro/)).toBeDefined();
+    test('sem material mostra estado vazio; no limite, o envio fica desligado', () => {
+        expect(render(data([])).getByText(/Ninguém compartilhou material/)).toBeDefined();
         dom.testing.cleanup();
         const full = render(data([item({})], { mine: 10 }));
         expect(full.getByRole('button', { name: 'Enviar' }).hasAttribute('disabled')).toBe(true);
         expect(full.getByText(/Apague um para enviar outro/)).toBeDefined();
+    });
+
+    test('visitante abre e baixa material sem envio nem exclusão mesmo com autoria no cache', () => {
+        const page = dom.testing.render(
+            <QueryClientProvider client={new QueryClient()}>
+                <MaterialsView data={data([item({ mine: true })])} code="FGA0030" />
+            </QueryClientProvider>
+        );
+        expect(page.getByRole('button', { name: 'Abrir' })).toBeDefined();
+        expect(page.getByRole('button', { name: /Baixar/ })).toBeDefined();
+        expect(page.queryByRole('button', { name: 'Enviar' })).toBeNull();
+        expect(page.queryByRole('button', { name: /Apagar/ })).toBeNull();
+        expect(page.queryByText('Seus envios')).toBeNull();
     });
 
     test('origem do material pelo docente, ignorando acento', () => {

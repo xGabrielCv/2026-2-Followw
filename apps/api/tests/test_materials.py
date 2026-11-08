@@ -64,8 +64,8 @@ def _enviar(client, data, name="prova.png", **form):
     return client.post(URL, files={"file": (name, data)}, data=fields)
 
 
-def test_materiais_exigem_login(client, materia):
-    assert client.get(URL).status_code == 401
+def test_materiais_permite_leitura_e_exige_login_no_envio(client, materia):
+    assert client.get(URL).status_code == 200
     assert _enviar(client, _png()).status_code == 401
 
 
@@ -210,3 +210,12 @@ def test_lista_materias_com_material(logado, materia):
         {"code": "FGA0030", "name": "ESTRUTURAS DE DADOS 2", "files": 1}
     ]
     assert logado.get("/materials", params={"q": "calculo"}).json() == []
+
+
+def test_visitante_baixa_material_mas_nao_pode_apagar(logado, materia):
+    uploaded = _enviar(logado, _png()).json()
+    logado.cookies.clear()
+    assert logado.get("/materials").status_code == 200
+    assert logado.get(URL).json()["items"][0]["id"] == uploaded["id"]
+    assert logado.get(f"{URL}/{uploaded['id']}").content.startswith(b"\x89PNG")
+    assert logado.delete(f"{URL}/{uploaded['id']}").status_code == 401

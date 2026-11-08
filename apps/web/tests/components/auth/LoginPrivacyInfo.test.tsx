@@ -19,7 +19,8 @@ describe('LoginPrivacyInfo', () => {
         const markup = renderToStaticMarkup(<RouterProvider router={router} />);
 
         expect(markup).toContain('Seus dados pessoais não ficam no servidor do Followw');
-        expect(markup).toContain('Suas credenciais não são armazenadas');
+        expect(markup).toContain('cookies cifrados no navegador');
+        expect(markup).toContain('não são gravadas no banco ou nos logs');
         expect(markup).toContain('href="/perfil/dados"');
     });
 });

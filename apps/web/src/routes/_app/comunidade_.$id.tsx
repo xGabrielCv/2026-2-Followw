@@ -9,7 +9,6 @@ import { POST_KIND_LABELS } from '#/components/community/NewPostDialog';
 import { ReportButton } from '#/components/community/ReportButton';
 import { ErrorCard, ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
-import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
 import { Button } from '#/components/ui/button';
 import { Textarea } from '#/components/ui/textarea';
@@ -38,8 +37,7 @@ export const Route = createFileRoute('/_app/comunidade_/$id')({
 function PostPage() {
     const { id } = Route.useParams();
     const { data: user } = useSuspenseQuery(meQueryOptions);
-    const post = useQuery({ ...forumPostQueryOptions(id), enabled: Boolean(user) });
-    if (!user) return <LoginPromptCard />;
+    const post = useQuery(forumPostQueryOptions(id));
     if (post.isPending) return <LoadingText>Carregando conversa...</LoadingText>;
     if (post.isError)
         return (
@@ -48,10 +46,10 @@ function PostPage() {
                 onRetry={() => post.refetch()}
             />
         );
-    return <Conversation post={post.data} />;
+    return <Conversation post={post.data} canEdit={Boolean(user)} />;
 }
 
-export function Conversation({ post }: { post: PostDetails }) {
+export function Conversation({ post, canEdit = false }: { post: PostDetails; canEdit?: boolean }) {
     const navigate = useNavigate();
     const remove = useDeletePost();
     return (
@@ -90,7 +88,7 @@ export function Conversation({ post }: { post: PostDetails }) {
                 <h1 className="text-lg leading-snug font-semibold">{post.title}</h1>
                 <p className="text-sm wrap-anywhere whitespace-pre-line">{post.body}</p>
                 <div className="flex items-center justify-end gap-1">
-                    {post.mine ? (
+                    {canEdit && post.mine ? (
                         <Button
                             size="sm"
                             variant="ghost"
@@ -120,16 +118,24 @@ export function Conversation({ post }: { post: PostDetails }) {
                 </h2>
                 <ul className="flex flex-col gap-2">
                     {post.replies.map((reply) => (
-                        <ReplyRow key={reply.id} postId={post.id} reply={reply} />
+                        <ReplyRow key={reply.id} postId={post.id} reply={reply} canEdit={canEdit} />
                     ))}
                 </ul>
-                <ReplyForm postId={post.id} />
+                {canEdit && <ReplyForm postId={post.id} />}
             </section>
         </div>
     );
 }
 
-function ReplyRow({ postId, reply }: { postId: string; reply: ReplyItem }) {
+function ReplyRow({
+    postId,
+    reply,
+    canEdit
+}: {
+    postId: string;
+    reply: ReplyItem;
+    canEdit: boolean;
+}) {
     const remove = useDeleteReply(postId);
     return (
         <li
@@ -148,7 +154,7 @@ function ReplyRow({ postId, reply }: { postId: string; reply: ReplyItem }) {
                     <span className="rounded-full bg-muted px-2 py-0.5">Sua resposta</span>
                 )}
                 <span className="ml-auto">{relativeTime(reply.created_at)}</span>
-                {reply.mine ? (
+                {canEdit && reply.mine ? (
                     <button
                         type="button"
                         className="rounded-md p-1 hover:bg-muted hover:text-destructive"

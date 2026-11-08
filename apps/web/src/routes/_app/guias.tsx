@@ -14,6 +14,7 @@ import { useDebounced } from '#/lib/debounce';
 import { cn } from '#/lib/shadcn';
 import { TUTORIAL_CATEGORIES, TUTORIAL_CATEGORY_LABELS } from '#/lib/tutorials';
 import { tutorialsQueryOptions } from '#/queries/community';
+import { meQueryOptions } from '#/queries/me';
 
 const ALL = 'all';
 const guiasParsers = {
@@ -32,6 +33,7 @@ export const Route = createFileRoute('/_app/guias')({
 });
 
 function GuiasPage() {
+    const { data: user } = useQuery(meQueryOptions);
     const [search, setSearch] = useQueryStates(guiasParsers, { history: 'replace', scroll: false });
     const text = useDebounced(search.q.trim());
     const tutorials = useQuery(
@@ -49,11 +51,11 @@ function GuiasPage() {
                     documentos, auxílios. Todo guia passa pela moderação antes de aparecer.
                 </p>
                 <Link
-                    to="/guias/novo"
+                    to={user ? '/guias/novo' : '/login'}
                     className={cn(buttonVariants({ variant: 'outline' }), 'self-start')}
                 >
                     <PenLine aria-hidden="true" />
-                    Escrever um guia
+                    {user ? 'Escrever um guia' : 'Entre para escrever um guia'}
                 </Link>
             </div>
             <div className="relative">

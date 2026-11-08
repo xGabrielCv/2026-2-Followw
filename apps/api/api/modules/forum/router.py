@@ -27,7 +27,7 @@ router = APIRouter()
 _NOT_FOUND = {**SIGAA_ERRORS, 404: {"description": "Não encontrado."}}
 
 
-# Só alunos logados leem e escrevem; nenhum nome ou matrícula é gravado.
+# Leitura pública; publicações, respostas e exclusões exigem login.
 @router.get(
     "",
     response_model=PostPage,
@@ -37,7 +37,6 @@ _NOT_FOUND = {**SIGAA_ERRORS, 404: {"description": "Não encontrado."}}
 )
 async def list_posts(
     author: OptionalAuthorDep,
-    connection: SigaaConnectionDep,
     service: ForumServiceDep,
     kind: Annotated[PostKind | None, Query()] = None,
     campus: Annotated[Campus | None, Query()] = None,
@@ -94,7 +93,6 @@ async def create_post(
 )
 async def get_post(
     author: OptionalAuthorDep,
-    connection: SigaaConnectionDep,
     service: ForumServiceDep,
     post_id: UUID,
 ) -> PostDetails:

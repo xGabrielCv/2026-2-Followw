@@ -41,8 +41,8 @@ const created = {
 
 test('avisa do anonimato e de que o texto pode identificar', () => {
     const page = render();
-    expect(page.getByText('Avaliação totalmente anônima.')).toBeDefined();
-    expect(page.container.textContent).toContain('Nenhum dado seu (nome, matrícula ou login)');
+    expect(page.getByText('Avaliação sem identificação de autoria.')).toBeDefined();
+    expect(page.container.textContent).toContain('nome e matrícula não são associados');
     expect(page.container.textContent).toContain('o que você escreve pode te identificar');
     expect(page.getByLabelText(/Nota de Tiago Alves Fonseca/)).toBeDefined();
 });

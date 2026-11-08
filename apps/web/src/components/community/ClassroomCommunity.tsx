@@ -10,6 +10,7 @@ import { RatingBadge, useProfessorRatings } from '#/components/community/RatingB
 import { type ReviewedProfessor, ReviewDialog } from '#/components/community/ReviewDialog';
 import { cn } from '#/lib/shadcn';
 import { classroomGroupsQueryOptions } from '#/queries/groups';
+import { meQueryOptions } from '#/queries/me';
 
 interface ClassroomCommunityProps extends ClassroomKey {
     name: string;
@@ -30,6 +31,7 @@ export function ClassroomCommunity({
 }: ClassroomCommunityProps) {
     const [dialog, setDialog] = useState<'groups' | 'review' | null>(null);
     const groups = useQuery(classroomGroupsQueryOptions(classroom));
+    const { data: user } = useQuery(meQueryOptions);
     const reviewed = professors.filter(
         (professor): professor is ReviewedProfessor => professor.siape != null
     );
@@ -50,12 +52,12 @@ export function ClassroomCommunity({
                     count == null
                         ? 'Ver grupos'
                         : count === 0
-                          ? 'Cadastrar'
+                          ? 'Sem grupo'
                           : `${count} cadastrado${count > 1 ? 's' : ''}`
                 }
                 onClick={() => setDialog('groups')}
             />
-            {reviewed.length > 0 && (
+            {user && reviewed.length > 0 && (
                 <ShortcutCard
                     icon={<Star className="size-4" aria-hidden="true" />}
                     tone="bg-warning/10 text-warning"
@@ -70,7 +72,7 @@ export function ClassroomCommunity({
                 open={dialog === 'groups'}
                 onOpenChange={(open) => setDialog(open ? 'groups' : null)}
             />
-            {reviewed.length > 0 && (
+            {user && reviewed.length > 0 && (
                 <ReviewDialog
                     professors={reviewed}
                     subject={classroom.code}

@@ -16,7 +16,6 @@ import type { Campus } from '#/queries/groups';
 import { NewPostDialog, POST_KIND_LABELS } from '#/components/community/NewPostDialog';
 import { ErrorCard, ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
-import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
 import { Button } from '#/components/ui/button';
@@ -55,8 +54,7 @@ export const Route = createFileRoute('/_app/comunidade')({
 
 function ComunidadePage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
-    if (!user) return <LoginPromptCard />;
-    return <Community campus={campusOfUnit(user.unit?.id)} courseId={user.course?.id} />;
+    return <Community campus={campusOfUnit(user?.unit?.id)} courseId={user?.course?.id} />;
 }
 
 function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?: number }) {
@@ -65,10 +63,11 @@ function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?:
         scroll: false
     });
     const [writing, setWriting] = useState(false);
+    const { data: user } = useSuspenseQuery(meQueryOptions);
     const campus = search.region ?? myCampus ?? ALL;
     const text = useDebounced(search.q.trim());
     // "das minhas matérias": os códigos vêm das turmas salvas no navegador, não do servidor
-    const { data: current } = useQuery(classroomsQueryOptions);
+    const { data: current } = useQuery({ ...classroomsQueryOptions, enabled: Boolean(user) });
     const mySubjects = [...new Set((current ?? []).map((c) => c.subject.code))].toSorted();
 
     return (
@@ -89,10 +88,12 @@ function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?:
                         className="h-11 bg-card pl-10 text-sm"
                     />
                 </div>
-                <Button className="h-11" onClick={() => setWriting(true)}>
-                    <Plus aria-hidden="true" />
-                    Publicar
-                </Button>
+                {user && (
+                    <Button className="h-11" onClick={() => setWriting(true)}>
+                        <Plus aria-hidden="true" />
+                        Publicar
+                    </Button>
+                )}
             </div>
             <div className="-my-2 flex flex-col">
                 <TabFilter
@@ -122,13 +123,15 @@ function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?:
                     labels={{ all: 'Todos os campi', ...CAMPUS_LABELS }}
                     onChange={(region) => void setSearch({ region })}
                 />
-                <TabFilter
-                    label="Matérias"
-                    value={search.minhas ? 'mine' : 'all'}
-                    options={['all', 'mine'] as const}
-                    labels={{ all: 'Todas as matérias', mine: 'Das minhas matérias' }}
-                    onChange={(value) => void setSearch({ minhas: value === 'mine' || null })}
-                />
+                {user && (
+                    <TabFilter
+                        label="Matérias"
+                        value={search.minhas ? 'mine' : 'all'}
+                        options={['all', 'mine'] as const}
+                        labels={{ all: 'Todas as matérias', mine: 'Das minhas matérias' }}
+                        onChange={(value) => void setSearch({ minhas: value === 'mine' || null })}
+                    />
+                )}
                 {courseId != null && (
                     <TabFilter
                         label="Curso"
@@ -139,7 +142,7 @@ function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?:
                     />
                 )}
             </div>
-            {search.minhas && mySubjects.length === 0 ? (
+            {user && search.minhas && mySubjects.length === 0 ? (
                 <p className="rounded-2xl bg-card p-4 text-center text-sm text-muted-foreground">
                     {current
                         ? 'Você não tem turmas neste semestre para filtrar.'
@@ -147,21 +150,23 @@ function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?:
                 </p>
             ) : (
                 <PostList
-                    subjects={search.minhas ? mySubjects : undefined}
+                    subjects={user && search.minhas ? mySubjects : undefined}
                     kind={search.kind === ALL ? undefined : search.kind}
                     order={search.order}
                     campus={campus === ALL ? undefined : campus}
                     course={search.course ? courseId : undefined}
                     q={text.length >= 3 ? text : undefined}
-                    onWrite={() => setWriting(true)}
+                    onWrite={user ? () => setWriting(true) : undefined}
                 />
             )}
-            <NewPostDialog
-                open={writing}
-                onOpenChange={setWriting}
-                campus={myCampus}
-                hasCourse={courseId != null}
-            />
+            {user && (
+                <NewPostDialog
+                    open={writing}
+                    onOpenChange={setWriting}
+                    campus={myCampus}
+                    hasCourse={courseId != null}
+                />
+            )}
         </div>
     );
 }
@@ -176,7 +181,7 @@ function PostList({
     course?: number;
     q?: string;
     subjects?: string[];
-    onWrite: () => void;
+    onWrite?: () => void;
 }) {
     const pages = api.useInfiniteQuery(
         'get',
@@ -202,9 +207,11 @@ function PostList({
         return (
             <div className="flex flex-col items-center gap-3 rounded-2xl bg-card p-6 text-center">
                 <p className="text-sm text-muted-foreground">Nenhuma conversa por aqui ainda.</p>
-                <Button variant="outline" onClick={onWrite}>
-                    Começar uma conversa
-                </Button>
+                {onWrite && (
+                    <Button variant="outline" onClick={onWrite}>
+                        Começar uma conversa
+                    </Button>
+                )}
             </div>
         );
     return (

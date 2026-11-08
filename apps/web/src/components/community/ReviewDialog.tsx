@@ -83,9 +83,11 @@ export function ReviewPanel({
             <div className="flex gap-2 rounded-xl bg-primary/10 p-3 text-xs text-foreground">
                 <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden="true" />
                 <p>
-                    <strong className="font-semibold">Avaliação totalmente anônima.</strong> Nenhum
-                    dado seu (nome, matrícula ou login) é enviado ou guardado: só a nota, a chamada
-                    e o comentário vão para o servidor.
+                    <strong className="font-semibold">
+                        Avaliação sem identificação de autoria.
+                    </strong>{' '}
+                    O login do SIGAA autoriza a publicação; nome e matrícula não são associados à
+                    avaliação. Nota, chamada e comentário são públicos. Não escreva dados pessoais.
                 </p>
             </div>
             {professors.length > 1 && (

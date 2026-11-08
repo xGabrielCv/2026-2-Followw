@@ -1,5 +1,6 @@
 # Segredos e configuração local: nunca sobem
 .env*
+!/.env.example
 *.local
 .vercel
 .playwright-mcp
@@ -16,8 +17,20 @@ node_modules/
 !/README.md
 docs/
 scripts/
+!/scripts/
+/scripts/*
+!/scripts/bootstrap_data.py
+!/scripts/update_data.py
 *.ps1
 *.cmd
+!/run.ps1
+!/run.cmd
+!/stop.ps1
+!/stop.cmd
+!/restart.ps1
+!/restart.cmd
+!/admin-password.ps1
+!/admin-password.cmd
 compose.yml
 vercel.json
 skills-lock.json
@@ -25,4 +38,14 @@ skills-lock.json
 .claude/
 .github/
 .vscode/
-packages/sigaa-client/tests/test_update_data.py
+# Dados coletados e conteúdo das instâncias ficam apenas no computador de quem executa.
+packages/sigaa-client/data/
+*.log
+*.dump
+*.backup
+*.setup.lock
+.venv/
+apps/web/.output/
+apps/web/.nitro/
+apps/web/.tanstack/
+apps/web/dist/
