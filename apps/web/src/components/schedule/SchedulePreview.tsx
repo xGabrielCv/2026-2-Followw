@@ -1,11 +1,12 @@
-import { CalendarDays, Download, X } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { CalendarDays, Columns3, Download, X } from 'lucide-react';
 import { useState } from 'react';
 
-import { ClassCard } from '#/components/home/ClassCard';
+import { PlannedClassList } from '#/components/schedule/PlannedClassList';
 import { usePlannedSchedule } from '#/components/schedule/usePlannedSchedule';
 import { WeeklyTable } from '#/components/schedule/WeeklyTable';
 import { SelectionBar } from '#/components/SelectionBar';
-import { Button } from '#/components/ui/button';
+import { Button, buttonVariants } from '#/components/ui/button';
 import {
     Dialog,
     DialogClose,
@@ -15,9 +16,9 @@ import {
     DialogTrigger
 } from '#/components/ui/dialog';
 import { saveFile } from '#/lib/download';
-import { classKey, weeklyGrid } from '#/lib/planned-schedule';
-import { describeSchedule } from '#/lib/schedule';
+import { weeklyGrid } from '#/lib/planned-schedule';
 import { createSchedulePng } from '#/lib/schedule-image';
+import { cn } from '#/lib/shadcn';
 
 export function SchedulePreview() {
     const { items, maxHours, toggle, clear } = usePlannedSchedule();
@@ -54,6 +55,16 @@ export function SchedulePreview() {
                         <CalendarDays aria-hidden="true" />
                         Ver grade
                     </Button>
+                    <Link
+                        to="/simulador"
+                        className={cn(
+                            buttonVariants({ variant: 'ghost', size: 'sm' }),
+                            'rounded-full'
+                        )}
+                        aria-label="Comparar grades no simulador"
+                    >
+                        <Columns3 aria-hidden="true" />
+                    </Link>
                 </SelectionBar>
             )}
             <DialogContent
@@ -77,32 +88,7 @@ export function SchedulePreview() {
                         Adicione turmas nos resultados da busca para montar sua grade.
                     </p>
                 ) : (
-                    <ul className="flex flex-col gap-2">
-                        {items.map((item) => (
-                            <li key={classKey(item)}>
-                                <ClassCard
-                                    compact
-                                    title={item.name}
-                                    code={item.code}
-                                    classNumber={item.number}
-                                    time={describeSchedule(item.schedule) ?? 'Horário a definir'}
-                                    location={item.room ?? undefined}
-                                    professors={item.professors.map(({ name }) => name)}
-                                    action={
-                                        <Button
-                                            variant="ghost"
-                                            size="icon-sm"
-                                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                            aria-label={`Remover da grade: ${item.code}, turma ${item.number}`}
-                                            onClick={() => toggle(item)}
-                                        >
-                                            <X aria-hidden="true" />
-                                        </Button>
-                                    }
-                                />
-                            </li>
-                        ))}
-                    </ul>
+                    <PlannedClassList items={items} onRemove={toggle} />
                 )}
                 <Button
                     variant="outline"

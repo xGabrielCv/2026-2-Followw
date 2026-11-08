@@ -14,14 +14,30 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacidadeRouteImport } from './routes/privacidade'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppAvaliacoesRouteImport } from './routes/_app/avaliacoes'
 import { Route as AppBuscarRouteImport } from './routes/_app/buscar'
+import { Route as AppCalendarioRouteImport } from './routes/_app/calendario'
+import { Route as AppComunidadeRouteImport } from './routes/_app/comunidade'
+import { Route as AppEstagiosRouteImport } from './routes/_app/estagios'
+import { Route as AppEstatisticasRouteImport } from './routes/_app/estatisticas'
+import { Route as AppGruposRouteImport } from './routes/_app/grupos'
+import { Route as AppGuiasRouteImport } from './routes/_app/guias'
+import { Route as AppMaisRouteImport } from './routes/_app/mais'
+import { Route as AppMateriaisRouteImport } from './routes/_app/materiais'
 import { Route as AppPerfilRouteImport } from './routes/_app/perfil'
 import { Route as AppRuRouteImport } from './routes/_app/ru'
+import { Route as AppSimuladorRouteImport } from './routes/_app/simulador'
 import { Route as AppTurmasRouteImport } from './routes/_app/turmas'
 import { Route as ShareRuDotpngRouteImport } from './routes/share.ru[.]png'
+import { Route as AppComunidadeIdRouteImport } from './routes/_app/comunidade_.$id'
 import { Route as AppCursosIdRouteImport } from './routes/_app/cursos.$id'
+import { Route as AppGuiasIdRouteImport } from './routes/_app/guias_.$id'
+import { Route as AppGuiasNovoRouteImport } from './routes/_app/guias_.novo'
+import { Route as AppMateriaisCodeRouteImport } from './routes/_app/materiais_.$code'
+import { Route as AppPerfilDadosRouteImport } from './routes/_app/perfil_.dados'
 import { Route as AppProfessoresSiapeRouteImport } from './routes/_app/professores_.$siape'
 import { Route as AppTurmasIdRouteImport } from './routes/_app/turmas_.$id'
+import { Route as AppCursosIdEstatisticasRouteImport } from './routes/_app/cursos.$id_.estatisticas'
 
 const SplatRoute = SplatRouteImport.update({
   id: '/$',
@@ -47,9 +63,54 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAvaliacoesRoute = AppAvaliacoesRouteImport.update({
+  id: '/avaliacoes',
+  path: '/avaliacoes',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppBuscarRoute = AppBuscarRouteImport.update({
   id: '/buscar',
   path: '/buscar',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCalendarioRoute = AppCalendarioRouteImport.update({
+  id: '/calendario',
+  path: '/calendario',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppComunidadeRoute = AppComunidadeRouteImport.update({
+  id: '/comunidade',
+  path: '/comunidade',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEstagiosRoute = AppEstagiosRouteImport.update({
+  id: '/estagios',
+  path: '/estagios',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppEstatisticasRoute = AppEstatisticasRouteImport.update({
+  id: '/estatisticas',
+  path: '/estatisticas',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGruposRoute = AppGruposRouteImport.update({
+  id: '/grupos',
+  path: '/grupos',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGuiasRoute = AppGuiasRouteImport.update({
+  id: '/guias',
+  path: '/guias',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMaisRoute = AppMaisRouteImport.update({
+  id: '/mais',
+  path: '/mais',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMateriaisRoute = AppMateriaisRouteImport.update({
+  id: '/materiais',
+  path: '/materiais',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPerfilRoute = AppPerfilRouteImport.update({
@@ -62,6 +123,11 @@ const AppRuRoute = AppRuRouteImport.update({
   path: '/ru',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSimuladorRoute = AppSimuladorRouteImport.update({
+  id: '/simulador',
+  path: '/simulador',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTurmasRoute = AppTurmasRouteImport.update({
   id: '/turmas',
   path: '/turmas',
@@ -72,9 +138,34 @@ const ShareRuDotpngRoute = ShareRuDotpngRouteImport.update({
   path: '/share/ru.png',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppComunidadeIdRoute = AppComunidadeIdRouteImport.update({
+  id: '/comunidade_/$id',
+  path: '/comunidade/$id',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppCursosIdRoute = AppCursosIdRouteImport.update({
   id: '/cursos/$id',
   path: '/cursos/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGuiasIdRoute = AppGuiasIdRouteImport.update({
+  id: '/guias_/$id',
+  path: '/guias/$id',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppGuiasNovoRoute = AppGuiasNovoRouteImport.update({
+  id: '/guias_/novo',
+  path: '/guias/novo',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppMateriaisCodeRoute = AppMateriaisCodeRouteImport.update({
+  id: '/materiais_/$code',
+  path: '/materiais/$code',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPerfilDadosRoute = AppPerfilDadosRouteImport.update({
+  id: '/perfil_/dados',
+  path: '/perfil/dados',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProfessoresSiapeRoute = AppProfessoresSiapeRouteImport.update({
@@ -87,34 +178,71 @@ const AppTurmasIdRoute = AppTurmasIdRouteImport.update({
   path: '/turmas/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCursosIdEstatisticasRoute = AppCursosIdEstatisticasRouteImport.update({
+  id: '/cursos/$id_/estatisticas',
+  path: '/cursos/$id/estatisticas',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/$': typeof SplatRoute
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/privacidade': typeof PrivacidadeRoute
+  '/avaliacoes': typeof AppAvaliacoesRoute
   '/buscar': typeof AppBuscarRoute
+  '/calendario': typeof AppCalendarioRoute
+  '/comunidade': typeof AppComunidadeRoute
+  '/estagios': typeof AppEstagiosRoute
+  '/estatisticas': typeof AppEstatisticasRoute
+  '/grupos': typeof AppGruposRoute
+  '/guias': typeof AppGuiasRoute
+  '/mais': typeof AppMaisRoute
+  '/materiais': typeof AppMateriaisRoute
   '/perfil': typeof AppPerfilRoute
   '/ru': typeof AppRuRoute
+  '/simulador': typeof AppSimuladorRoute
   '/turmas': typeof AppTurmasRoute
   '/share/ru.png': typeof ShareRuDotpngRoute
+  '/comunidade/$id': typeof AppComunidadeIdRoute
   '/cursos/$id': typeof AppCursosIdRoute
+  '/guias/$id': typeof AppGuiasIdRoute
+  '/guias/novo': typeof AppGuiasNovoRoute
+  '/materiais/$code': typeof AppMateriaisCodeRoute
+  '/perfil/dados': typeof AppPerfilDadosRoute
   '/professores/$siape': typeof AppProfessoresSiapeRoute
   '/turmas/$id': typeof AppTurmasIdRoute
+  '/cursos/$id/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
 export interface FileRoutesByTo {
   '/$': typeof SplatRoute
   '/login': typeof LoginRoute
   '/privacidade': typeof PrivacidadeRoute
+  '/avaliacoes': typeof AppAvaliacoesRoute
   '/buscar': typeof AppBuscarRoute
+  '/calendario': typeof AppCalendarioRoute
+  '/comunidade': typeof AppComunidadeRoute
+  '/estagios': typeof AppEstagiosRoute
+  '/estatisticas': typeof AppEstatisticasRoute
+  '/grupos': typeof AppGruposRoute
+  '/guias': typeof AppGuiasRoute
+  '/mais': typeof AppMaisRoute
+  '/materiais': typeof AppMateriaisRoute
   '/perfil': typeof AppPerfilRoute
   '/ru': typeof AppRuRoute
+  '/simulador': typeof AppSimuladorRoute
   '/turmas': typeof AppTurmasRoute
   '/share/ru.png': typeof ShareRuDotpngRoute
   '/': typeof AppIndexRoute
+  '/comunidade/$id': typeof AppComunidadeIdRoute
   '/cursos/$id': typeof AppCursosIdRoute
+  '/guias/$id': typeof AppGuiasIdRoute
+  '/guias/novo': typeof AppGuiasNovoRoute
+  '/materiais/$code': typeof AppMateriaisCodeRoute
+  '/perfil/dados': typeof AppPerfilDadosRoute
   '/professores/$siape': typeof AppProfessoresSiapeRoute
   '/turmas/$id': typeof AppTurmasIdRoute
+  '/cursos/$id/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -122,15 +250,31 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/privacidade': typeof PrivacidadeRoute
+  '/_app/avaliacoes': typeof AppAvaliacoesRoute
   '/_app/buscar': typeof AppBuscarRoute
+  '/_app/calendario': typeof AppCalendarioRoute
+  '/_app/comunidade': typeof AppComunidadeRoute
+  '/_app/estagios': typeof AppEstagiosRoute
+  '/_app/estatisticas': typeof AppEstatisticasRoute
+  '/_app/grupos': typeof AppGruposRoute
+  '/_app/guias': typeof AppGuiasRoute
+  '/_app/mais': typeof AppMaisRoute
+  '/_app/materiais': typeof AppMateriaisRoute
   '/_app/perfil': typeof AppPerfilRoute
   '/_app/ru': typeof AppRuRoute
+  '/_app/simulador': typeof AppSimuladorRoute
   '/_app/turmas': typeof AppTurmasRoute
   '/share/ru.png': typeof ShareRuDotpngRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/comunidade_/$id': typeof AppComunidadeIdRoute
   '/_app/cursos/$id': typeof AppCursosIdRoute
+  '/_app/guias_/$id': typeof AppGuiasIdRoute
+  '/_app/guias_/novo': typeof AppGuiasNovoRoute
+  '/_app/materiais_/$code': typeof AppMateriaisCodeRoute
+  '/_app/perfil_/dados': typeof AppPerfilDadosRoute
   '/_app/professores_/$siape': typeof AppProfessoresSiapeRoute
   '/_app/turmas_/$id': typeof AppTurmasIdRoute
+  '/_app/cursos/$id_/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -139,43 +283,91 @@ export interface FileRouteTypes {
     | '/'
     | '/login'
     | '/privacidade'
+    | '/avaliacoes'
     | '/buscar'
+    | '/calendario'
+    | '/comunidade'
+    | '/estagios'
+    | '/estatisticas'
+    | '/grupos'
+    | '/guias'
+    | '/mais'
+    | '/materiais'
     | '/perfil'
     | '/ru'
+    | '/simulador'
     | '/turmas'
     | '/share/ru.png'
+    | '/comunidade/$id'
     | '/cursos/$id'
+    | '/guias/$id'
+    | '/guias/novo'
+    | '/materiais/$code'
+    | '/perfil/dados'
     | '/professores/$siape'
     | '/turmas/$id'
+    | '/cursos/$id/estatisticas'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/$'
     | '/login'
     | '/privacidade'
+    | '/avaliacoes'
     | '/buscar'
+    | '/calendario'
+    | '/comunidade'
+    | '/estagios'
+    | '/estatisticas'
+    | '/grupos'
+    | '/guias'
+    | '/mais'
+    | '/materiais'
     | '/perfil'
     | '/ru'
+    | '/simulador'
     | '/turmas'
     | '/share/ru.png'
     | '/'
+    | '/comunidade/$id'
     | '/cursos/$id'
+    | '/guias/$id'
+    | '/guias/novo'
+    | '/materiais/$code'
+    | '/perfil/dados'
     | '/professores/$siape'
     | '/turmas/$id'
+    | '/cursos/$id/estatisticas'
   id:
     | '__root__'
     | '/$'
     | '/_app'
     | '/login'
     | '/privacidade'
+    | '/_app/avaliacoes'
     | '/_app/buscar'
+    | '/_app/calendario'
+    | '/_app/comunidade'
+    | '/_app/estagios'
+    | '/_app/estatisticas'
+    | '/_app/grupos'
+    | '/_app/guias'
+    | '/_app/mais'
+    | '/_app/materiais'
     | '/_app/perfil'
     | '/_app/ru'
+    | '/_app/simulador'
     | '/_app/turmas'
     | '/share/ru.png'
     | '/_app/'
+    | '/_app/comunidade_/$id'
     | '/_app/cursos/$id'
+    | '/_app/guias_/$id'
+    | '/_app/guias_/novo'
+    | '/_app/materiais_/$code'
+    | '/_app/perfil_/dados'
     | '/_app/professores_/$siape'
     | '/_app/turmas_/$id'
+    | '/_app/cursos/$id_/estatisticas'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -223,11 +415,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/avaliacoes': {
+      id: '/_app/avaliacoes'
+      path: '/avaliacoes'
+      fullPath: '/avaliacoes'
+      preLoaderRoute: typeof AppAvaliacoesRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/buscar': {
       id: '/_app/buscar'
       path: '/buscar'
       fullPath: '/buscar'
       preLoaderRoute: typeof AppBuscarRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/calendario': {
+      id: '/_app/calendario'
+      path: '/calendario'
+      fullPath: '/calendario'
+      preLoaderRoute: typeof AppCalendarioRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/comunidade': {
+      id: '/_app/comunidade'
+      path: '/comunidade'
+      fullPath: '/comunidade'
+      preLoaderRoute: typeof AppComunidadeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/estagios': {
+      id: '/_app/estagios'
+      path: '/estagios'
+      fullPath: '/estagios'
+      preLoaderRoute: typeof AppEstagiosRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/estatisticas': {
+      id: '/_app/estatisticas'
+      path: '/estatisticas'
+      fullPath: '/estatisticas'
+      preLoaderRoute: typeof AppEstatisticasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/grupos': {
+      id: '/_app/grupos'
+      path: '/grupos'
+      fullPath: '/grupos'
+      preLoaderRoute: typeof AppGruposRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/guias': {
+      id: '/_app/guias'
+      path: '/guias'
+      fullPath: '/guias'
+      preLoaderRoute: typeof AppGuiasRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/mais': {
+      id: '/_app/mais'
+      path: '/mais'
+      fullPath: '/mais'
+      preLoaderRoute: typeof AppMaisRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/materiais': {
+      id: '/_app/materiais'
+      path: '/materiais'
+      fullPath: '/materiais'
+      preLoaderRoute: typeof AppMateriaisRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/perfil': {
@@ -244,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRuRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/simulador': {
+      id: '/_app/simulador'
+      path: '/simulador'
+      fullPath: '/simulador'
+      preLoaderRoute: typeof AppSimuladorRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/turmas': {
       id: '/_app/turmas'
       path: '/turmas'
@@ -258,11 +520,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShareRuDotpngRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/comunidade_/$id': {
+      id: '/_app/comunidade_/$id'
+      path: '/comunidade/$id'
+      fullPath: '/comunidade/$id'
+      preLoaderRoute: typeof AppComunidadeIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/cursos/$id': {
       id: '/_app/cursos/$id'
       path: '/cursos/$id'
       fullPath: '/cursos/$id'
       preLoaderRoute: typeof AppCursosIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/guias_/$id': {
+      id: '/_app/guias_/$id'
+      path: '/guias/$id'
+      fullPath: '/guias/$id'
+      preLoaderRoute: typeof AppGuiasIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/guias_/novo': {
+      id: '/_app/guias_/novo'
+      path: '/guias/novo'
+      fullPath: '/guias/novo'
+      preLoaderRoute: typeof AppGuiasNovoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/materiais_/$code': {
+      id: '/_app/materiais_/$code'
+      path: '/materiais/$code'
+      fullPath: '/materiais/$code'
+      preLoaderRoute: typeof AppMateriaisCodeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/perfil_/dados': {
+      id: '/_app/perfil_/dados'
+      path: '/perfil/dados'
+      fullPath: '/perfil/dados'
+      preLoaderRoute: typeof AppPerfilDadosRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/professores_/$siape': {
@@ -279,29 +576,68 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTurmasIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/cursos/$id_/estatisticas': {
+      id: '/_app/cursos/$id_/estatisticas'
+      path: '/cursos/$id/estatisticas'
+      fullPath: '/cursos/$id/estatisticas'
+      preLoaderRoute: typeof AppCursosIdEstatisticasRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppAvaliacoesRoute: typeof AppAvaliacoesRoute
   AppBuscarRoute: typeof AppBuscarRoute
+  AppCalendarioRoute: typeof AppCalendarioRoute
+  AppComunidadeRoute: typeof AppComunidadeRoute
+  AppEstagiosRoute: typeof AppEstagiosRoute
+  AppEstatisticasRoute: typeof AppEstatisticasRoute
+  AppGruposRoute: typeof AppGruposRoute
+  AppGuiasRoute: typeof AppGuiasRoute
+  AppMaisRoute: typeof AppMaisRoute
+  AppMateriaisRoute: typeof AppMateriaisRoute
   AppPerfilRoute: typeof AppPerfilRoute
   AppRuRoute: typeof AppRuRoute
+  AppSimuladorRoute: typeof AppSimuladorRoute
   AppTurmasRoute: typeof AppTurmasRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppComunidadeIdRoute: typeof AppComunidadeIdRoute
   AppCursosIdRoute: typeof AppCursosIdRoute
+  AppGuiasIdRoute: typeof AppGuiasIdRoute
+  AppGuiasNovoRoute: typeof AppGuiasNovoRoute
+  AppMateriaisCodeRoute: typeof AppMateriaisCodeRoute
+  AppPerfilDadosRoute: typeof AppPerfilDadosRoute
   AppProfessoresSiapeRoute: typeof AppProfessoresSiapeRoute
   AppTurmasIdRoute: typeof AppTurmasIdRoute
+  AppCursosIdEstatisticasRoute: typeof AppCursosIdEstatisticasRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAvaliacoesRoute: AppAvaliacoesRoute,
   AppBuscarRoute: AppBuscarRoute,
+  AppCalendarioRoute: AppCalendarioRoute,
+  AppComunidadeRoute: AppComunidadeRoute,
+  AppEstagiosRoute: AppEstagiosRoute,
+  AppEstatisticasRoute: AppEstatisticasRoute,
+  AppGruposRoute: AppGruposRoute,
+  AppGuiasRoute: AppGuiasRoute,
+  AppMaisRoute: AppMaisRoute,
+  AppMateriaisRoute: AppMateriaisRoute,
   AppPerfilRoute: AppPerfilRoute,
   AppRuRoute: AppRuRoute,
+  AppSimuladorRoute: AppSimuladorRoute,
   AppTurmasRoute: AppTurmasRoute,
   AppIndexRoute: AppIndexRoute,
+  AppComunidadeIdRoute: AppComunidadeIdRoute,
   AppCursosIdRoute: AppCursosIdRoute,
+  AppGuiasIdRoute: AppGuiasIdRoute,
+  AppGuiasNovoRoute: AppGuiasNovoRoute,
+  AppMateriaisCodeRoute: AppMateriaisCodeRoute,
+  AppPerfilDadosRoute: AppPerfilDadosRoute,
   AppProfessoresSiapeRoute: AppProfessoresSiapeRoute,
   AppTurmasIdRoute: AppTurmasIdRoute,
+  AppCursosIdEstatisticasRoute: AppCursosIdEstatisticasRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

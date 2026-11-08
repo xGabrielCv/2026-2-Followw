@@ -9,12 +9,16 @@ from joserfc.errors import JoseError
 from joserfc.jwe import JWERegistry
 from joserfc.jwk import OctKey
 from pydantic import ValidationError
-from sigaa_client import Credentials
+from sigaa_client import Credentials, UserProfile
 
 from api.core.config import settings
 
 ACCESS_COOKIE_NAME = "access_token"
 REFRESH_COOKIE_NAME = "refresh_token"
+# O perfil do SIGAA fica no navegador, cifrado: o servidor não o guarda.
+PROFILE_COOKIE_NAME = "profile"
+# Navegadores descartam cookies acima de ~4 KB.
+_COOKIE_LIMIT = 3800
 
 # JWE com chave simétrica direta: AES-GCM cifra e autentica o payload.
 _JWE_HEADER = {"alg": "dir", "enc": "A256GCM"}
@@ -62,8 +66,40 @@ def read_refresh_cookie(request: Request) -> Credentials | None:
         return None
 
 
+def set_profile_cookie(
+    response: Response, profile: UserProfile, login: str, synced_at: datetime
+) -> None:
+    """`login` é a matrícula do refresh_token, que pode ser a antiga do perfil."""
+    payload = {
+        "login": login,
+        "synced_at": int(synced_at.timestamp()),
+        "profile": profile.model_dump(mode="json"),
+    }
+    # Bio longa não cabe no cookie: o resto do perfil vale mais.
+    if len(encrypt_cookie(PROFILE_COOKIE_NAME, {**payload, "exp": 0})) > _COOKIE_LIMIT:
+        payload["profile"]["bio"] = None
+    _set_cookie(
+        response, PROFILE_COOKIE_NAME, payload, settings.refresh_token_expire_minutes
+    )
+
+
+def read_profile_cookie(
+    request: Request, login: str
+) -> tuple[UserProfile, datetime] | None:
+    """O perfil salvo no navegador e quando veio do SIGAA, só se for do mesmo login."""
+    payload = _read_cookie(request, PROFILE_COOKIE_NAME)
+    if not payload or payload.get("login") != login:
+        return None
+    try:
+        profile = UserProfile.model_validate(payload["profile"])
+        synced_at = datetime.fromtimestamp(int(payload["synced_at"]), UTC)
+    except KeyError, TypeError, ValueError, ValidationError:
+        return None
+    return profile, synced_at
+
+
 def clear_cookies(response: Response) -> None:
-    for name in (ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME):
+    for name in (ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, PROFILE_COOKIE_NAME):
         response.delete_cookie(name)
 
 

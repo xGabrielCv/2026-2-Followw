@@ -3,10 +3,18 @@ import { ChevronRight } from 'lucide-react';
 
 import type { ProfessorItem } from '#/queries/professors';
 
+import { RatingBadge } from '#/components/community/RatingBadge';
 import { PersonPhoto } from '#/components/ui/person-photo';
 import { titleCase, unitLabel } from '#/lib/profile';
 
-export function ProfessorCard({ professor }: { professor: ProfessorItem }) {
+export function ProfessorCard({
+    professor,
+    rank
+}: {
+    professor: ProfessorItem;
+    // posição no ranking de avaliações
+    rank?: number;
+}) {
     const label = unitLabel(professor.unit);
 
     return (
@@ -17,6 +25,11 @@ export function ProfessorCard({ professor }: { professor: ProfessorItem }) {
             aria-label={`Ver perfil de ${titleCase(professor.name)}`}
         >
             <div className="flex min-w-0 items-center gap-3">
+                {rank != null && (
+                    <span className="w-6 shrink-0 text-center text-sm font-bold text-muted-foreground tabular-nums">
+                        {rank}º
+                    </span>
+                )}
                 <PersonPhoto src={professor.photo} size="sm" />
                 <div className="flex min-w-0 flex-col gap-0.5">
                     <span className="truncate font-heading text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
@@ -25,6 +38,13 @@ export function ProfessorCard({ professor }: { professor: ProfessorItem }) {
                     <span className="truncate text-xs text-muted-foreground">{label}</span>
                 </div>
             </div>
+            {professor.rating ? (
+                <RatingBadge rating={professor.rating} className="ml-auto" />
+            ) : (
+                rank != null && (
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">Sem nota</span>
+                )
+            )}
             <ChevronRight
                 className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary"
                 aria-hidden="true"

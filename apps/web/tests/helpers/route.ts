@@ -1,10 +1,17 @@
 import type { QueryClient, QueryKey } from '@tanstack/react-query';
 import type { AnyRoute } from '@tanstack/react-router';
 
+import { environmentManager } from '@tanstack/react-query';
+import { afterAll, beforeAll } from 'bun:test';
+
 // QueryClient sem cache que responde cada query pela chave
-export function fakeQueryClient(respond: (queryKey: QueryKey) => unknown) {
+export function fakeQueryClient(
+    respond: (queryKey: QueryKey) => unknown,
+    // o que já está salvo no navegador (o dado pessoal só abre a página com o que já tem)
+    cached: (queryKey: QueryKey) => unknown = () => undefined
+) {
     const client = {
-        getQueryData: () => undefined,
+        getQueryData: (queryKey: QueryKey) => cached(queryKey),
         query: async ({ queryKey }: { queryKey: QueryKey }) => respond(queryKey)
     };
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- fake parcial
@@ -25,4 +32,10 @@ export function runLoader<R extends AnyRoute>(
     context: object
 ): Promise<R['types']['loaderData']> {
     return callRoute(route.options.loader, context);
+}
+
+/** Roda os testes como no navegador: lá o loader busca o dado pessoal; no SSR, não. */
+export function useBrowserEnvironment() {
+    beforeAll(() => environmentManager.setIsServer(() => false));
+    afterAll(() => environmentManager.setIsServer(() => typeof window === 'undefined'));
 }

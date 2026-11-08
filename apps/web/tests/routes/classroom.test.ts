@@ -1,6 +1,6 @@
 import type { Middleware } from 'openapi-fetch';
 
-import { QueryClient } from '@tanstack/react-query';
+import { QueryClient, environmentManager } from '@tanstack/react-query';
 import { describe, expect, test } from 'bun:test';
 
 import type { Classroom } from '#/queries/classrooms';
@@ -11,7 +11,9 @@ import { apiClient } from '#/queries/client';
 import { meQueryOptions } from '#/queries/me';
 import { Route } from '#/routes/_app/turmas_.$id';
 
-import { callRoute, fakeQueryClient, runLoader } from '../helpers/route';
+import { callRoute, fakeQueryClient, runLoader, useBrowserEnvironment } from '../helpers/route';
+
+useBrowserEnvironment();
 
 const classroom: Classroom = {
     id: 'AAA',
@@ -37,12 +39,16 @@ describe('cache da página da turma', () => {
         ['?tab=members', '/classrooms/{classroom_id}/members']
     ])('pré-carrega só a aba aberta em %p', async (searchStr, tabPath) => {
         const paths: unknown[] = [];
-        const client = fakeQueryClient((key) => {
-            paths.push(key[1]);
-            if (key[1] === '/me') return { registration: '123' };
-            if (key[1] === '/classrooms') return [classroom];
-            return [];
-        });
+        const client = fakeQueryClient(
+            (key) => {
+                paths.push(key[1]);
+                if (key[1] === '/me') return { registration: '123' };
+                if (key[1] === '/classrooms') return [classroom];
+                return [];
+            },
+            // a lista de turmas já salva no navegador
+            (key) => (key[1] === '/classrooms' ? [classroom] : undefined)
+        );
         const loaded = await load(client, searchStr);
         expect(loaded.subjectName).toBe('Cálculo');
         expect(paths).toEqual(['/me', '/classrooms', tabPath]);
@@ -67,11 +73,14 @@ describe('cache da página da turma', () => {
     );
 
     test('falha na aba aberta não impede identificar a turma', async () => {
-        const client = fakeQueryClient((key) => {
-            if (key[1] === '/me') return { registration: '123' };
-            if (key[1] === '/classrooms') return [classroom];
-            throw new Error('SIGAA indisponível');
-        });
+        const client = fakeQueryClient(
+            (key) => {
+                if (key[1] === '/me') return { registration: '123' };
+                if (key[1] === '/classrooms') return [classroom];
+                throw new Error('SIGAA indisponível');
+            },
+            (key) => (key[1] === '/classrooms' ? [classroom] : undefined)
+        );
         expect(await load(client, '?tab=posts')).toEqual({ subjectName: 'Cálculo' });
     });
 
@@ -140,12 +149,43 @@ test.each([
     ['?tab=members', ['/classrooms/{classroom_id}/members']]
 ])('turma antiga pré-carrega a aba correta em %p', async (searchStr, tabPaths) => {
     const paths: unknown[] = [];
-    const client = fakeQueryClient((key) => {
-        paths.push(key[1]);
-        if (key[1] === '/me') return { registration: '123' };
-        if (key[1] === '/classrooms') return [{ ...classroom, current: false }];
-        return [];
-    });
+    const client = fakeQueryClient(
+        (key) => {
+            paths.push(key[1]);
+            if (key[1] === '/me') return { registration: '123' };
+            if (key[1] === '/classrooms') return [{ ...classroom, current: false }];
+            return [];
+        },
+        (key) => (key[1] === '/classrooms' ? [{ ...classroom, current: false }] : undefined)
+    );
     await load(client, searchStr);
     expect(paths).toEqual(['/me', '/classrooms', ...tabPaths]);
+});
+
+test('sem nada salvo, abre a página sem esperar o SIGAA e busca a lista em segundo plano', async () => {
+    const paths: unknown[] = [];
+    const client = fakeQueryClient((key) => {
+        paths.push(key[1]);
+        return key[1] === '/me' ? { registration: '123' } : new Promise(() => {});
+    });
+    expect(await load(client)).toEqual({ subjectName: undefined });
+    expect(paths).toEqual(['/me', '/classrooms']);
+});
+
+test('no SSR o dado pessoal nunca é buscado (a API iria ao SIGAA)', async () => {
+    environmentManager.setIsServer(() => true);
+    try {
+        const paths: unknown[] = [];
+        const client = fakeQueryClient(
+            (key) => {
+                paths.push(key[1]);
+                return key[1] === '/me' ? { registration: '123' } : [classroom];
+            },
+            () => [classroom]
+        );
+        await load(client);
+        expect(paths).toEqual(['/me']);
+    } finally {
+        environmentManager.setIsServer(() => false);
+    }
 });

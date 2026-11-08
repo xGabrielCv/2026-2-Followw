@@ -4,7 +4,9 @@ import { getCurrentSemester } from '#/calendar';
 import { validateFlowSearch } from '#/lib/curriculum/navigation';
 import { Route } from '#/routes/_app/cursos.$id';
 
-import { callRoute, fakeQueryClient, runLoader } from '../helpers/route';
+import { callRoute, fakeQueryClient, runLoader, useBrowserEnvironment } from '../helpers/route';
+
+useBrowserEnvironment();
 
 describe('rota de curso (/cursos/$id)', () => {
     test('valida a busca aceitando só a matéria selecionada', () => {

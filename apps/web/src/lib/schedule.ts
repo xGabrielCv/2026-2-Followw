@@ -193,3 +193,58 @@ export function classesOn<T extends { schedule?: string | null }>(
     }
     return classes;
 }
+
+/** `70` -> `1h10`; `50` -> `50 min`. */
+export function formatDuration(minutes: number) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    if (!hours) return `${rest} min`;
+    return rest ? `${hours}h${String(rest).padStart(2, '0')}` : `${hours}h`;
+}
+
+// intervalos curtos, como a troca de sala entre horários, não aparecem
+const MIN_GAP_MINUTES = 15;
+
+export interface DayOverview {
+    count: number;
+    minutes: number;
+    start?: string;
+    end?: string;
+    /** Intervalo antes de cada aula (pelo índice), quando passa de 15 minutos. */
+    gaps: (number | undefined)[];
+    /** Minutos até a próxima aula, só quando `time` é informado. */
+    nextIn?: number;
+    finished: boolean;
+}
+
+/** Totais do dia: aulas, tempo em sala, primeiro e último horário e intervalos. */
+export function dayOverview<T>(classes: ScheduledClass<T>[], time?: string): DayOverview {
+    const gaps = classes.map((item, index) => {
+        const previous = classes[index - 1];
+        const gap = previous && getMinutes(item.start) - getMinutes(previous.end);
+        return gap && gap >= MIN_GAP_MINUTES ? gap : undefined;
+    });
+    const next = time ? classes.find((item) => item.start > time) : undefined;
+    return {
+        count: classes.length,
+        minutes: classes.reduce(
+            (total, item) => total + getMinutes(item.end) - getMinutes(item.start),
+            0
+        ),
+        start: classes[0]?.start,
+        end: classes.reduce<string | undefined>(
+            (last, item) => (!last || item.end > last ? item.end : last),
+            undefined
+        ),
+        gaps,
+        nextIn: next && time ? getMinutes(next.start) - getMinutes(time) : undefined,
+        finished: Boolean(time && classes.length && classes.every((item) => item.end <= time))
+    };
+}
+
+/** Minutos de aula por semana, somando os horários de todas as turmas. */
+export function weeklyMinutes(items: { schedule?: string | null }[]) {
+    return items
+        .flatMap((item) => parseSchedule(item.schedule))
+        .reduce((total, { start, end }) => total + getMinutes(end) - getMinutes(start), 0);
+}

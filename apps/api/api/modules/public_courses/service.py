@@ -177,16 +177,20 @@ async def _load(
     selected = _select(options, curriculum_sigaa_id)
     components = await repository.list_components(selected.id)
     catalog = SubjectCatalogRepository(session)
+    matrix = {normalize(component.subject_code) for component, _ in components}
+    reverse = await catalog.reverse_equivalences(matrix)
     codes = requirement_codes(subject for _, subject in components if subject)
+    codes |= {code for items in reverse.values() for code in items}
     names = await catalog.subject_names(codes)
     offered = {
         normalize(code) for code in await catalog.offered_subject_codes(codes, None)
     }
-    matrix = {normalize(component.subject_code) for component, _ in components}
     periods: dict[int, list[CurriculumSubject]] = {0: []}
     complementary = []
     for component, subject in components:
         item = _subject(component.subject_code, subject, names, matrix, offered)
+        if extra := reverse.get(normalize(component.subject_code)):
+            item = _with_reverse(item, extra, names)
         if component.kind == "complementary":
             complementary.append(item)
         else:
@@ -261,6 +265,18 @@ def _subject(
         equivalences=named_requirements(subject.equivalences, names),
         **displayed_requirements(subject, names, matrix, offered),
     )
+
+
+def _with_reverse(
+    item: CurriculumSubject, codes: list[str], names: dict[str, str]
+) -> CurriculumSubject:
+    """Códigos renovados (ex.: FGA0161 cita FGA0302) valem nos dois sentidos."""
+    groups = item.equivalences or []
+    known = {group[0].code for group in groups if len(group) == 1}
+    extra = named_requirements([[code] for code in codes if code not in known], names)
+    if not extra:
+        return item
+    return item.model_copy(update={"equivalences": [*groups, *extra]})
 
 
 PublicCourseServiceDep = Annotated[PublicCourseService, Depends()]

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { getNoClassEvents, getNoClassReason } from '#/calendar';
+import { getNoClassEvents, getNoClassReason, semesterProgress, upcomingEvents } from '#/calendar';
 
 describe('getNoClassEvents', () => {
     test('inclui todos os dias da Semana Universitária', () => {
@@ -44,4 +44,36 @@ describe('getNoClassReason', () => {
     test('mantém a grade quando a data não consta em um semestre', () => {
         expect(getNoClassReason('2028-02-23')).toBeUndefined();
     });
+});
+
+describe('semesterProgress', () => {
+    test('mede o período de aulas do semestre corrente', () => {
+        expect(semesterProgress('2026-11-07')).toEqual({
+            semester: '2026.2',
+            start: '2026-08-10',
+            end: '2026-12-14',
+            percent: 71,
+            week: 13,
+            weeks: 19,
+            daysLeft: 37
+        });
+    });
+
+    test('antes das aulas fica zerado e fora do calendário não existe', () => {
+        expect(semesterProgress('2026-07-30')).toMatchObject({ percent: 0, week: 0 });
+        expect(semesterProgress('2030-01-01')).toBeUndefined();
+    });
+});
+
+test('upcomingEvents ordena pelo início ou, se já começou, pelo prazo', () => {
+    expect(upcomingEvents('2026-11-13', 3).map((event) => event.id)).toEqual([
+        'republic_day',
+        'black_consciousness_day',
+        'classes_end'
+    ]);
+    // o trancamento já começou e vence em 12/11, antes do feriado
+    expect(upcomingEvents('2026-11-07', 2).map((event) => event.id)).toEqual([
+        'registration_general_suspend',
+        'three_quarters_semester'
+    ]);
 });

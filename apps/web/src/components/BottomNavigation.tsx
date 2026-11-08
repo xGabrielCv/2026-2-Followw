@@ -1,11 +1,20 @@
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { House, Search, User, type LucideIcon, Utensils, UserRoundGroup } from 'lucide-react';
+import {
+    CalendarDays,
+    House,
+    Plus,
+    Search,
+    User,
+    type LucideIcon,
+    Utensils,
+    UserRoundGroup
+} from 'lucide-react';
 import { useRef } from 'react';
 
 import { cn } from '#/lib/shadcn';
 
 interface NavItem {
-    to: '/' | '/turmas' | '/ru' | '/buscar' | '/perfil';
+    to: '/' | '/turmas' | '/ru' | '/buscar' | '/calendario' | '/mais' | '/perfil';
     label: string;
     icon: LucideIcon;
 }
@@ -15,7 +24,21 @@ const navItems: NavItem[] = [
     { to: '/turmas', label: 'Turmas', icon: UserRoundGroup },
     { to: '/ru', label: 'RU', icon: Utensils },
     { to: '/buscar', label: 'Buscar', icon: Search },
+    { to: '/calendario', label: 'Calendário', icon: CalendarDays },
+    { to: '/mais', label: 'Mais opções', icon: Plus },
     { to: '/perfil', label: 'Perfil', icon: User }
+];
+
+// páginas abertas pelo menu "Mais"
+const MORE_PAGES = [
+    '/grupos',
+    '/avaliacoes',
+    '/simulador',
+    '/materiais',
+    '/comunidade',
+    '/guias',
+    '/estagios',
+    '/estatisticas'
 ];
 
 const DOUBLE_TAP_MS = 400;
@@ -28,7 +51,11 @@ export const BottomNavigation: React.FC = () => {
     const location = useLocation();
     const pathname = location.pathname.replace(/(.)\/$/, '$1');
     const activeIndex = navItems.findIndex(
-        (item) => item.to === pathname || (item.to === '/turmas' && pathname.startsWith('/turmas/'))
+        (item) =>
+            item.to === pathname ||
+            (item.to === '/turmas' && pathname.startsWith('/turmas/')) ||
+            (item.to === '/mais' &&
+                MORE_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`)))
     );
     const navigate = useNavigate();
     const lastRestaurantTap = useRef<number | null>(null);
@@ -51,13 +78,13 @@ export const BottomNavigation: React.FC = () => {
 
     return (
         <nav
-            className="fixed bottom-5 left-1/2 z-50 w-80 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border bg-card/80 px-1 py-1.5 text-card-foreground shadow-lg backdrop-blur-xl"
+            className="fixed bottom-5 left-1/2 z-50 w-96 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border bg-card/80 px-1 py-1.5 text-card-foreground shadow-lg backdrop-blur-xl"
             aria-label="Navegação principal do aplicativo"
         >
-            <div className="relative grid h-11 grid-cols-5">
+            <div className="relative grid h-11 grid-cols-7">
                 <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 left-0 w-1/5 px-1 transition-all duration-400 motion-reduce:transition-none"
+                    className="pointer-events-none absolute inset-y-0 left-0 w-1/7 px-1 transition-all duration-400 motion-reduce:transition-none"
                     style={{
                         transform: `translateX(${Math.max(activeIndex, 0) * 100}%)`,
                         opacity: activeIndex === -1 ? 0 : 1,

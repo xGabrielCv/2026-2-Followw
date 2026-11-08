@@ -1,189 +1,127 @@
-# Followw UnB
+# 📚 Followw UnB
 
-O Followw reúne o SIGAA e outros serviços da UnB em um aplicativo web para a rotina de estudantes. O
-cardápio do RU, a busca e os fluxos de cursos são públicos. Para acompanhar seus dados acadêmicos,
-você entra com a mesma matrícula e senha do SIGAA. Suas credenciais são criptografadas e ficam
-salvas apenas no seu navegador. [Saiba mais](docs/segurança.md)
+<p align="center">
 
-> O Followw é independente e não possui vínculo oficial com a UnB ou com o SIGAA.
+**O SIGAA e a vida na UnB num só app — rápido, offline e sem guardar seus dados pessoais.**
 
-[Acessar o Followw](https://followw.app/) · [Documentação](https://docs.followw.app/) ·
-[Requisitos no Figma](https://www.figma.com/board/JqtNZhLBFlsVIbthMYOdzB/Requisitos-Followw)
+Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomendações • Comunidade anônima • Estágios
 
-## Funcionalidades
+<br>
 
-### Sem entrar na conta
+[![Python](https://img.shields.io/badge/Python-3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-TanStack%20Start-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://tanstack.com/start)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-banco-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![PWA](https://img.shields.io/badge/PWA-offline-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)](#-recursos)
+[![Privacidade](https://img.shields.io/badge/Dados%20pessoais-só%20no%20aparelho-2EA44F?style=for-the-badge&logo=letsencrypt&logoColor=white)](#-privacidade-em-primeiro-lugar)
+[![Licença MIT](https://img.shields.io/badge/Licença-MIT-blue?style=for-the-badge)](LICENSE)
 
-- Consultar e compartilhar o cardápio do RU por campus e refeição, com opções vegetarianas.
-- Buscar matérias, cursos e docentes; conferir horários, vagas, requisitos e perfis de docentes.
-- Explorar o fluxo de um curso por semestre, carga horária, pré-requisitos e correquisitos.
+</p>
 
-### Depois de entrar com o SIGAA
+> [!NOTE]
+>
+> ## 🍴 Um fork com vida própria
+>
+> Este repositório é um **fork** do [**Followw UnB**](https://github.com/unb-mds/2026-2-Followw), projeto
+> desenvolvido por estudantes na disciplina de Métodos de Desenvolvimento de Software da UnB. Enquanto
+> a disciplina acontece, o projeto original **não pode receber contribuições externas** — por isso este
+> fork existe.
+>
+> Ele parte do **esqueleto e da espinha dorsal** do projeto original (cliente do SIGAA, API, app web e
+> catálogo público), mas traz **muitas adições e uma mudança de arquitetura**: os dados pessoais do
+> aluno deixaram de ficar no servidor, a comunidade anônima ganhou cifra em repouso, e vieram
+> estatísticas comparadas, estágios, simulador de grades, painel de administração e mais.
+>
+> Todo o crédito pela base vai para a equipe original. 💚
 
-- Ver as aulas do dia, seus horários e locais, as turmas de outros semestres e as notícias recentes.
-- Consultar turmas, notas e postagens e simular a frequência sem alterar o SIGAA.
-- Ver gráficos de aprovação, reprovação e trancamento em turmas concluídas.
-- Ver recomendações pelo seu fluxo e montar uma grade semanal para baixar como imagem.
-- Consultar saldo e extrato do RU e abrir a carteirinha com QR code.
-- Ver índices e integralização no perfil e baixar histórico e carteirinha em PDF quando disponíveis.
-- Reabrir páginas e dados consultados sem internet e instalar o Followw pelo navegador.
+> [!IMPORTANT]
+> O Followw é **independente** e não tem vínculo oficial com a UnB, o STI ou o SIGAA.
 
-## Telas
+---
 
-<table>
-  <thead>
-    <tr><th align="center">Início</th><th align="center">Frequência</th><th align="center">Perfil</th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><img src="docs/assets/screenshots/inicio-logado.png" alt="Início após login, com aulas do dia" width="260"></td>
-      <td align="center"><img src="docs/assets/screenshots/frequencia.png" alt="Frequência de uma turma com dados ilustrativos" width="260"></td>
-      <td align="center"><img src="docs/assets/screenshots/perfil.png" alt="Perfil com dados ilustrativos" width="260"></td>
-    </tr>
-  </tbody>
-  <tbody>
-    <tr><td align="center"><strong>Cardápio RU</strong></td><td align="center"><strong>Postagens</strong></td><td align="center"><strong>Aprovações</strong></td></tr>
-  </tbody>
-  <tbody>
-    <tr>
-      <td align="center"><img src="docs/assets/screenshots/ru.png" alt="Cardápio do RU com opções vegetarianas" width="260"></td>
-      <td align="center"><img src="docs/assets/screenshots/postagens.png" alt="Postagens de uma turma" width="260"></td>
-      <td align="center"><img src="docs/assets/screenshots/estatisticas.png" alt="Gráfico de aprovações, reprovações e trancamentos de uma turma concluída" width="260"></td>
-    </tr>
-  </tbody>
-</table>
+## ✨ Recursos
 
-## Estrutura do projeto
+### 🌐 Sem entrar na conta
+
+* 🍽️ Cardápio do RU por campus e refeição, com opções vegetarianas, para consultar e compartilhar;
+* 🔎 busca de matérias, cursos e docentes, com horários, vagas, requisitos e perfis;
+* 🧭 fluxo de cada curso por semestre, com carga horária, pré e correquisitos.
+
+### 🎓 Com a conta do SIGAA
+
+* 📅 **agenda do dia**, com a aula em andamento, a próxima e quanto falta para cada uma;
+* 🏫 turmas, notas e postagens, com **frequência** e aviso quando as faltas chegam perto dos 25%;
+* 🧪 **simulador de grades** para comparar várias grades do próximo semestre;
+* 🧠 **recomendações** de matérias pelo seu fluxo;
+* 📊 **estatísticas comparadas**: você, seu curso e a UnB, calculado no seu aparelho;
+* 💼 **estágios** do mural do SIGAA, com filtros por curso e bolsa;
+* 💳 saldo e extrato do RU, carteirinha com QR code e histórico em PDF;
+* 📴 tudo abre na hora e funciona **offline**: o app carrega o que você vai usar em segundo plano.
+
+### 🤝 Comunidade anônima
+
+* ⭐ avaliações de professores (nota, chamada e comentário);
+* 💬 grupos das turmas (WhatsApp, Telegram, Teams, Aprender 3);
+* 📁 material das matérias (provas, listas, resumos), sem metadados;
+* ❓ dúvidas e posts, filtrados por campus, curso ou pelas matérias que você cursa;
+* 📘 guias da UnB escritos pela comunidade e aprovados pela moderação;
+* 🚩 qualquer pessoa — inclusive um docente — pode pedir a exclusão de um conteúdo.
+
+### 🛠️ Ferramentas e administração
+
+* 🤖 atalhos para ferramentas da matrícula extraordinária, ligados pela administração no período certo;
+* 🖥️ painel do administrador: uso por dia, semana e mês, moderação, dados decifrados, funções que
+  ligam e desligam, cartões do menu e recursos da instância.
+
+---
+
+## 🔒 Privacidade em primeiro lugar
+
+| O quê | Onde fica |
+| --- | --- |
+| Sessão do SIGAA (matrícula e senha) | 🔐 cookie cifrado, **só no seu navegador** |
+| Perfil, IRA, turmas, menções, frequência, colegas | 📱 **só no seu aparelho**; o servidor busca no SIGAA e esquece |
+| Configurações, calendário, presenças marcadas, grades | 📱 só no seu aparelho, com backup em arquivo |
+| Avaliações, grupos, materiais, posts, guias | ☁️ na nuvem, **sem nome nem matrícula** e cifrados (AES-256-GCM) |
+| Índices de aprovação das turmas | ☁️ só se você liberar, e só a porcentagem da turma |
+
+A autoria anônima vem de um segredo aleatório do aparelho — nunca da matrícula — então nem a
+administração consegue saber o que você publicou. O app explica tudo isso em **Perfil › Uso de dados**.
+
+---
+
+## 🧱 Estrutura
 
 ```text
 apps/
-├── api/              API FastAPI, autenticação e cache
-└── web/              aplicação web em TanStack Start
+├── api/              API em FastAPI (Python)
+└── web/              app web em TanStack Start (React)
 packages/
 ├── sigaa-client/     cliente assíncrono do SIGAA
-└── unb-browser/      cliente dos serviços públicos da UnB
-docs/                 documentação e notas de sprint
+└── unb-browser/      serviços públicos da UnB (calendário, RU)
 ```
 
-## Executar localmente
+---
 
-Instale [Python 3.14+](https://www.python.org/), [uv](https://docs.astral.sh/uv/),
-[Bun](https://bun.sh/) e [Docker com Compose](https://docs.docker.com/compose/). Execute os comandos
-na raiz do repositório, salvo quando indicado.
+## 👥 Créditos
 
-1. Instale as dependências e crie a configuração:
+**Projeto original — [unb-mds/2026-2-Followw](https://github.com/unb-mds/2026-2-Followw):**
 
-    ```sh
-    uv sync
-    cp .env.example .env
-    ```
+[@SamukaToned](https://github.com/SamukaToned) ·
+[@eliabexp](https://github.com/eliabexp) ·
+[@diegolxxz](https://github.com/diegolxxz) ·
+[@ed9gaspar](https://github.com/ed9gaspar) ·
+[@Mendezalv](https://github.com/Mendezalv) ·
+[@ratatta-na-nite](https://github.com/ratatta-na-nite) ·
+[@gabrielcrzojo](https://github.com/gabrielcrzojo) ·
+[@RochaCarla](https://github.com/RochaCarla)
 
-    O comando abaixo gera uma chave aleatória. Execute-o duas vezes e preencha `JWT_SECRET_KEY` e
-    `RATE_LIMIT_SECRET_KEY` no `.env`, cada uma com um valor diferente:
+**Este fork:** [@xGabrielCv](https://github.com/xGabrielCv) — Jesus Gabriel Carvalho Ventura
 
-    ```sh
-    python -c "import secrets; print(secrets.token_urlsafe(32))"
-    ```
+Veja também o [**Automatrícula UnB (SIGAA Sniper)**](https://github.com/xGabrielCv/Auto-Matricula-SIGAA-UnB).
 
-2. Inicie os serviços, prepare o banco e execute a API:
+---
 
-    ```sh
-    docker compose up -d
-    uv run db-init
-    uv run api
-    ```
+## 📄 Licença
 
-    A API fica em <http://localhost:8000> e sua documentação em <http://localhost:8000/docs>. O
-    `db-init` cria as tabelas e carrega os dados públicos iniciais.
-
-3. Em outro terminal, inicie a aplicação web:
-
-    ```sh
-    cd apps/web
-    bun install
-    bun dev
-    ```
-
-    Abra <http://localhost:3000>. Para acessar seus dados acadêmicos, entre com sua conta do SIGAA.
-
-### Testes
-
-Na raiz do repositório, execute os testes e as verificações Python:
-
-```sh
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-```
-
-Para verificar a aplicação web:
-
-```sh
-cd apps/web
-bun check
-bun test
-bun run build
-```
-
-## Contribuir
-
-No momento, por conta das regras da matéria, não estamos aceitando PRs de contribuidores externos,
-mas sinta-se à vontade para relatar problemas ou sugestões
-[abrindo uma issue](https://github.com/unb-mds/2026-2-Followw/issues)
-
-## Criadores
-
-<table>
-  <tbody>
-  <tr>
-    <td align="center" width="25%">
-      <a href="https://github.com/eliabexp">
-        <img src="https://avatars.githubusercontent.com/u/74092305?v=4" width="100" alt="Foto de eliabexp no GitHub"/><br>
-        <sub><b>eliabe</b></sub>
-      </a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/SamukaToned">
-        <img src="https://avatars.githubusercontent.com/u/206484421?v=4" width="100" alt="Foto de SamukaToned no GitHub"/><br>
-        <sub><b>Samuka</b></sub>
-      </a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/diegolxxz">
-        <img src="https://avatars.githubusercontent.com/u/53051266?v=4" width="100" alt="Foto de diegolxxz no GitHub"/><br>
-        <sub><b>Diego</b></sub>
-      </a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/Mendezalv">
-        <img src="https://avatars.githubusercontent.com/u/198409500?v=4" width="100" alt="Foto de Mendezalv no GitHub"/><br>
-        <sub><b>Kauã</b></sub>
-      </a>
-    </td>
-  </tr>
-  </tbody>
-  <tbody>
-  <tr>
-    <td align="center" width="25%">
-      <a href="https://github.com/ed9gaspar">
-        <img src="https://avatars.githubusercontent.com/u/316572409?v=4" width="100" alt="Foto de ed9gaspar no GitHub"/><br>
-        <sub><b>Gaspar</b></sub>
-      </a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/gabrielcrzojo">
-        <img src="https://avatars.githubusercontent.com/u/178046568?v=4" width="100" alt="Foto de gabrielcrzojo no GitHub"/><br>
-        <sub><b>Gabriel</b></sub>
-      </a>
-    </td>
-    <td align="center" width="25%">
-      <a href="https://github.com/ratatta-na-nite">
-        <img src="https://avatars.githubusercontent.com/u/210179065?v=4" width="100" alt="Foto de ratatta-na-nite no GitHub"/><br>
-        <sub><b>Galvão</b></sub>
-      </a>
-    </td>
-  </tr>
-  </tbody>
-</table>
-
-> Squad 5 da matéria Métodos de Desenvolvimento de Software, com a professora Carla Rocha.
+Distribuído sob a licença MIT do projeto original. Veja [LICENSE](LICENSE).

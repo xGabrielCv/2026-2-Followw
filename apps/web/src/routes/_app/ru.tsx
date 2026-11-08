@@ -36,7 +36,7 @@ import {
     validateRestaurantSearch
 } from '#/lib/restaurant-share';
 import { addDays, nowInBrasilia, weekDays } from '#/lib/schedule';
-import { loadQuery } from '#/queries/load';
+import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 import { CAMPUS_LABELS, CAMPUS_OPTIONS, campusOf, menuQueryOptions } from '#/queries/restaurant';
 import { credentialsQueryOptions, statementQueryOptions } from '#/queries/restaurant-account';
@@ -91,10 +91,8 @@ export const Route = createFileRoute('/_app/ru')({
                     user
                 })
             ).catch(noop),
-            account &&
-                loadQuery(queryClient, statementQueryOptions(account.registration)).catch(noop),
-            account &&
-                loadQuery(queryClient, credentialsQueryOptions(account.registration)).catch(noop)
+            account && loadPersonal(queryClient, statementQueryOptions(account.registration)),
+            account && loadPersonal(queryClient, credentialsQueryOptions(account.registration))
         ]);
         // Só os padrões: a URL guarda apenas o que difere deles.
         return {
@@ -113,7 +111,7 @@ export const Route = createFileRoute('/_app/ru')({
             },
             Boolean(match?.search.date || match?.search.meal || match?.search.campus)
         ),
-    staticData: { header: RUHeader },
+    staticData: { header: RUHeader, wide: true },
     errorComponent: ErrorState,
     component: RUPage
 });
@@ -253,96 +251,101 @@ function RUPage() {
                 </div>
             )}
 
-            <Tabs
-                value={selectedMeal}
-                onValueChange={(value) => {
-                    const selected = MEALS.find((item) => item.key === value);
-                    if (selected) select({ meal: selected.key });
-                }}
-            >
-                <TabsList
-                    className="w-full group-data-horizontal/tabs:h-auto"
-                    aria-label="Escolher refeição"
+            <div className="desk:grid desk:grid-cols-[minmax(0,1fr)_24rem] desk:items-start desk:gap-8">
+                <Tabs
+                    value={selectedMeal}
+                    onValueChange={(value) => {
+                        const selected = MEALS.find((item) => item.key === value);
+                        if (selected) select({ meal: selected.key });
+                    }}
                 >
-                    {MEALS.map((item) => (
-                        <TabsTrigger
-                            key={item.key}
-                            value={item.key}
-                            className="h-auto flex-col gap-1 py-3 text-xs"
-                        >
-                            <item.icon className="size-5" aria-hidden="true" />
-                            {item.label}
-                        </TabsTrigger>
-                    ))}
-                </TabsList>
+                    <TabsList
+                        className="w-full group-data-horizontal/tabs:h-auto"
+                        aria-label="Escolher refeição"
+                    >
+                        {MEALS.map((item) => (
+                            <TabsTrigger
+                                key={item.key}
+                                value={item.key}
+                                className="h-auto flex-col gap-1 py-3 text-xs"
+                            >
+                                <item.icon className="size-5" aria-hidden="true" />
+                                {item.label}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
 
-                <TabsContent value={selectedMeal} className="mt-4">
-                    <div className="mb-4 flex items-center justify-between gap-2">
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={shiftDay(-1)}
-                            disabled={selectedDate <= firstDay}
-                            aria-label="Dia anterior"
-                        >
-                            <ChevronLeft />
-                        </Button>
-                        <p className="text-xs font-bold text-muted-foreground" aria-live="polite">
-                            {formatMenuDay(selectedDate, today)} · {meal.start}–{meal.end}
-                        </p>
-                        <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={shiftDay(1)}
-                            // só esta semana e a próxima
-                            disabled={selectedDate >= addDays(firstDay, 13)}
-                            aria-label="Próximo dia"
-                        >
-                            <ChevronRight />
-                        </Button>
-                    </div>
-                    {sections.length > 0 ? (
-                        <MealDetails sections={sections} />
-                    ) : (
-                        <p className="px-1 text-sm text-muted-foreground">
-                            {isPending && <LoadingText>Carregando cardápio...</LoadingText>}
-                            {isLoadingError && (
-                                <>
-                                    {failureMessage}{' '}
-                                    <Button
-                                        variant="link"
-                                        size="xs"
-                                        onClick={() => refetch()}
-                                        className="h-auto p-0"
-                                    >
-                                        Tentar novamente
-                                    </Button>
-                                </>
-                            )}
-                            {!isPending &&
-                                !isLoadingError &&
-                                'Cardápio não publicado para esta refeição neste dia.'}
-                        </p>
-                    )}
-                </TabsContent>
-            </Tabs>
+                    <TabsContent value={selectedMeal} className="mt-4">
+                        <div className="mb-4 flex items-center justify-between gap-2">
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={shiftDay(-1)}
+                                disabled={selectedDate <= firstDay}
+                                aria-label="Dia anterior"
+                            >
+                                <ChevronLeft />
+                            </Button>
+                            <p
+                                className="text-xs font-bold text-muted-foreground"
+                                aria-live="polite"
+                            >
+                                {formatMenuDay(selectedDate, today)} · {meal.start}–{meal.end}
+                            </p>
+                            <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={shiftDay(1)}
+                                // só esta semana e a próxima
+                                disabled={selectedDate >= addDays(firstDay, 13)}
+                                aria-label="Próximo dia"
+                            >
+                                <ChevronRight />
+                            </Button>
+                        </div>
+                        {sections.length > 0 ? (
+                            <MealDetails sections={sections} />
+                        ) : (
+                            <p className="px-1 text-sm text-muted-foreground">
+                                {isPending && <LoadingText>Carregando cardápio...</LoadingText>}
+                                {isLoadingError && (
+                                    <>
+                                        {failureMessage}{' '}
+                                        <Button
+                                            variant="link"
+                                            size="xs"
+                                            onClick={() => refetch()}
+                                            className="h-auto p-0"
+                                        >
+                                            Tentar novamente
+                                        </Button>
+                                    </>
+                                )}
+                                {!isPending &&
+                                    !isLoadingError &&
+                                    'Cardápio não publicado para esta refeição neste dia.'}
+                            </p>
+                        )}
+                    </TabsContent>
+                </Tabs>
 
-            {user ? (
-                <RestaurantAccount
-                    key={user.registration}
-                    registration={user.registration}
-                    openCard={cardRequested}
-                />
-            ) : (
-                <Card className="mt-4">
-                    <CardContent className="text-muted-foreground">
-                        <Link to="/login" className="font-bold text-primary hover:underline">
-                            Entre com o SIGAA
-                        </Link>{' '}
-                        para ver seu saldo, extrato e carteirinha do RU.
-                    </CardContent>
-                </Card>
-            )}
+                {user ? (
+                    <RestaurantAccount
+                        key={user.registration}
+                        registration={user.registration}
+                        openCard={cardRequested}
+                    />
+                ) : (
+                    <Card className="mt-4 desk:mt-0">
+                        <CardContent className="text-muted-foreground">
+                            <Link to="/login" className="font-bold text-primary hover:underline">
+                                Entre com o SIGAA
+                            </Link>{' '}
+                            para ver seu saldo, extrato e carteirinha do RU.
+                        </CardContent>
+                    </Card>
+                )}
+            </div>
         </>
     );
 }

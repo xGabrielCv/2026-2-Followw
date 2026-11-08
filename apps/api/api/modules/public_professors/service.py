@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.db.main import DatabaseDep
 from api.db.models import Professor
 from api.db.units import find_unit_id
-from api.modules.public_professors.repository import ProfessorRepository
+from api.modules.professor_reviews.service import Rating
+from api.modules.public_professors.repository import (
+    ProfessorOrder,
+    ProfessorRepository,
+)
 from api.modules.public_subjects.repository import SubjectCatalogRepository
 from api.schemas import UnitRef
 
@@ -24,6 +28,9 @@ class ProfessorItem(BaseModel):
     unit: UnitRef
     photo: str | None
     url: str
+    rating: Rating | None = Field(
+        default=None, description="Avaliações anônimas dos alunos; nulo sem nenhuma."
+    )
 
 
 class TaughtDiscipline(ProfessorDiscipline):
@@ -48,13 +55,14 @@ class ProfessorPage(BaseModel):
     page_size: int
 
 
-def _item(professor: Professor) -> ProfessorItem:
+def _item(professor: Professor, rating: Rating | None = None) -> ProfessorItem:
     return ProfessorItem(
         siape=professor.siape,
         name=professor.name,
         unit=UnitRef.model_validate(professor.unit),
         photo=professor.photo,
         url=f"{SIGAA_BASE_URL}{PUBLIC_PROFESSOR_PROFILE_PATH}?siape={professor.siape}",
+        rating=rating,
     )
 
 
@@ -84,16 +92,33 @@ class ProfessorService:
         semester: str | None,
         page: int,
         page_size: int,
+        *,
+        subject: str | None = None,
+        order: ProfessorOrder = "name",
+        rated: bool = False,
     ) -> ProfessorPage:
-        async def load(session: AsyncSession) -> tuple[list[Professor], int]:
+        async def load(session: AsyncSession):
             unit_id = await find_unit_id(session, unit)
             return await ProfessorRepository(session).list(
-                q, unit_id, semester, page, page_size
+                q,
+                unit_id,
+                semester,
+                page,
+                page_size,
+                subject=subject,
+                order=order,
+                rated=rated,
             )
 
-        professors, total = await self._db.read(load)
+        rows, total = await self._db.read(load)
         return ProfessorPage(
-            items=[_item(professor) for professor in professors],
+            items=[
+                _item(
+                    professor,
+                    Rating(count=count, average=float(average)) if count else None,
+                )
+                for professor, count, average in rows
+            ],
             total=total,
             page=page,
             page_size=page_size,

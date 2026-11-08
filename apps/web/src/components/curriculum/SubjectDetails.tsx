@@ -1,15 +1,20 @@
+import { noop, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { X } from 'lucide-react';
+import { CalendarPlus, CircleCheck, Undo2, X } from 'lucide-react';
 
 import type { AcademicState, FlowSubject } from '#/lib/curriculum/types';
 
+import { useManualCompletion } from '#/components/curriculum/ManualCompletion';
 import { Button, buttonVariants } from '#/components/ui/button';
 import { DialogClose, DialogDescription, DialogTitle } from '#/components/ui/dialog';
 import { requirementGroups } from '#/lib/curriculum/format';
 import { stateLabels } from '#/lib/curriculum/model';
+import { offerChoices } from '#/lib/offer';
+import { useOnline } from '#/lib/online';
 import { titleCase } from '#/lib/profile';
+import { nowInBrasilia } from '#/lib/schedule';
 import { cn } from '#/lib/shadcn';
-import { displayedRequirements } from '#/queries/subjects';
+import { displayedRequirements, offerSemestersQueryOptions } from '#/queries/subjects';
 
 function NameList({ names }: { names: string[] }) {
     return (
@@ -93,13 +98,75 @@ export function SubjectDetails({
                     ))}
                 </dl>
             )}
-            <Link
-                to="/buscar"
-                search={{ q: subject.code, category: 'classrooms' }}
-                className={cn(buttonVariants(), 'w-full')}
-            >
-                Visualizar turmas
-            </Link>
+            <ManualToggle code={subject.code} state={state} />
+            <div className="flex flex-col gap-2">
+                <NextSemesterLink code={subject.code} state={state} />
+                <Link
+                    to="/buscar"
+                    search={{ q: subject.code, category: 'classrooms' }}
+                    className={cn(buttonVariants({ variant: 'outline' }), 'w-full')}
+                >
+                    Turmas do semestre atual
+                </Link>
+            </div>
         </>
+    );
+}
+
+/** Para matérias que o histórico não reconhece, como equivalências não cadastradas. */
+function ManualToggle({ code, state }: { code: string; state?: AcademicState }) {
+    const manual = useManualCompletion();
+    const online = useOnline();
+    if (!manual || state === 'unknown') return null;
+    const marked = manual.codes.has(code);
+    // concluída pelo histórico não precisa de marcação
+    if (state === 'completed' && !marked) return null;
+    return (
+        <div className="flex flex-col gap-1">
+            <Button
+                variant="outline"
+                disabled={!online || manual.pending}
+                onClick={() => void manual.toggle(code).catch(noop)}
+            >
+                {marked ? <Undo2 aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
+                {marked ? 'Desmarcar conclusão manual' : 'Marcar como concluída'}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+                {marked
+                    ? 'Marcada por você como concluída; o SIGAA não foi alterado.'
+                    : 'Use se você cursou uma equivalente que o histórico não reconheceu.'}
+            </p>
+            {manual.failed && (
+                <p role="alert" className="text-xs text-destructive">
+                    Não foi possível salvar. Tente novamente.
+                </p>
+            )}
+        </div>
+    );
+}
+
+/** Leva às turmas do próximo semestre, já prontas para entrar na prévia da grade. */
+function NextSemesterLink({ code, state }: { code: string; state?: AcademicState }) {
+    const { data: available } = useQuery(offerSemestersQueryOptions);
+    const next = offerChoices(available ?? [], nowInBrasilia().date).choices.find(
+        (choice) => choice.kind === 'next'
+    );
+    if (!next || state === 'completed' || state === 'enrolled') return null;
+    if (!next.available)
+        return (
+            <p className="text-xs text-muted-foreground">
+                A oferta de {next.semester} ainda não saiu; quando sair, dá para montar a grade
+                daqui.
+            </p>
+        );
+    return (
+        <Link
+            to="/buscar"
+            search={{ q: code, category: 'classrooms', semester: next.semester }}
+            className={cn(buttonVariants(), 'w-full')}
+        >
+            <CalendarPlus aria-hidden="true" />
+            Planejar {next.semester}: ver turmas e montar grade
+        </Link>
     );
 }

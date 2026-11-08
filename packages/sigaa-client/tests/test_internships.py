@@ -254,15 +254,16 @@ async def test_reordenacao_do_mural_invalida_referencia():
             await client.internships.get_internship(summary.reference)
 
 
-async def test_detalhe_recusa_resumo_repetido_na_mesma_tabela():
+async def test_detalhe_abre_oferta_repetida_pela_posicao_na_mesma_tabela():
     sigaa = FakeSigaa()
-    sigaa.board = board(MY_ROW + MY_ROW.replace("form:j_id_31", "form:j_id_32"))
+    sigaa.board = board(MY_ROW + MY_ROW.replace("form:j_id_31", "form:j_id_63"))
     async with client_for(sigaa) as client:
         items = await client.internships.list_internships()
         assert len(items) == 2
-        with pytest.raises(InternshipNotFound, match="ambígua"):
-            await client.internships.get_internship(items[0].reference)
-    assert len(sigaa.requests) == 4
+        detail = await client.internships.get_internship(items[1].reference)
+    assert detail.title == items[1].title
+    # abriu a segunda linha, pelo componente dela
+    assert "form%3Aj_id_63" in sigaa.requests[-1].content.decode()
 
 
 async def test_consulta_vaga_de_outro_curso():

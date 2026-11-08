@@ -25,6 +25,7 @@ const lesson = (occurred_on: string, fields: Partial<Lesson> = {}): Lesson => ({
 const registered: ClassroomFrequency = {
     progress,
     frequency_status: 'registrada',
+    upcoming: [],
     lessons: [
         lesson('2026-10-07', { status: 'falta', absences: 2 }),
         lesson('2026-10-06'),
@@ -36,6 +37,7 @@ const registered: ClassroomFrequency = {
 const notRegistered: ClassroomFrequency = {
     progress,
     frequency_status: 'nao_registrada',
+    upcoming: [],
     lessons: [],
     totals: null
 };
@@ -57,6 +59,7 @@ describe('FrequencyContent', () => {
         const yesterday = new Date(Date.parse(today) - 86_400_000).toISOString().slice(0, 10);
         const markup = render({
             ...notRegistered,
+            upcoming: [],
             lessons: [lesson(today), lesson(yesterday), lesson('2020-10-05')]
         });
         expect(markup).toContain('<span>Hoje</span>');
@@ -102,6 +105,7 @@ describe('FrequencyContent', () => {
     test('identifica as marcações do aluno e a frequência estimada', () => {
         const markup = render({
             ...registered,
+            upcoming: [],
             lessons: [
                 lesson('2026-10-08', { status: 'cancelada', marked: true }),
                 lesson('2026-10-06', { status: 'falta', absences: 2, marked: true })
@@ -137,6 +141,7 @@ describe('FrequencyContent', () => {
     test('aulas sem chamada viram checkbox e as marcadas mantêm o menu', () => {
         const markup = render({
             ...registered,
+            upcoming: [],
             lessons: [
                 ...registered.lessons,
                 lesson('2026-10-04', { status: 'falta', absences: 1, marked: true })
@@ -179,6 +184,33 @@ describe('marcação das aulas', () => {
         return { page, calls };
     }
 
+    test('a barra também marca as selecionadas como aula cancelada', () => {
+        const { fireEvent } = dom.testing;
+        const { page, calls } = renderMarking();
+
+        fireEvent.click(page.getByRole('checkbox', { name: 'Selecionar aula de 06/10/2026' }));
+        const toolbar = page.getByRole('toolbar', { name: 'Marcar aulas selecionadas' });
+        fireEvent.click(
+            dom.testing.within(toolbar).getByRole('button', { name: 'Aula cancelada' })
+        );
+
+        expect(calls).toEqual([[[semChamada[1]], 'cancelada']]);
+    });
+
+    test('aula futura pode ser marcada como cancelada antes do dia', () => {
+        const futuras = [lesson('2026-12-01'), lesson('2026-12-03')];
+        const { page, calls } = renderMarking({ ...data, upcoming: futuras });
+
+        expect(page.getByRole('region', { name: 'Próximas aulas' }).textContent).toContain(
+            '01/12/2026'
+        );
+        dom.testing.fireEvent.click(
+            page.getByRole('button', { name: 'Marcar a aula de 03/12/2026 como cancelada' })
+        );
+
+        expect(calls).toEqual([[[futuras[1]], 'cancelada']]);
+    });
+
     test('seleciona aulas e marca todas de uma vez pela barra', () => {
         const { fireEvent } = dom.testing;
         const { page, calls } = renderMarking();
@@ -216,6 +248,7 @@ describe('marcação das aulas', () => {
         ] satisfies Lesson[];
         const { page, calls } = renderMarking({
             ...data,
+            upcoming: [],
             lessons: [...marcadas, semChamada[2]]
         });
 
@@ -240,6 +273,7 @@ describe('marcação das aulas', () => {
             <FrequencyContent
                 data={{
                     ...data,
+                    upcoming: [],
                     lessons: [
                         { ...semChamada[0], status: 'presente', marked: true },
                         ...semChamada.slice(1)

@@ -84,12 +84,10 @@ class Internships:
             raise InternshipNotFound(
                 "Referência de estágio ausente ou mural alterado; liste novamente."
             )
+        # A referência traz a posição e a impressão da tabela inteira: com a tabela igual, a
+        # linha é a mesma, inclusive entre ofertas repetidas (o SIGAA as publica em dobro).
         summary, anchor = match
         key = _summary_key(summary)
-        if sum(_summary_key(item) == key for item, _ in items) > 1:
-            raise InternshipNotFound(
-                "Referência de estágio ambígua: há ofertas com o mesmo resumo na tabela."
-            )
         form = read_form(page, "form")
         action, payload = build_postback(
             form, link_params(anchor), read_viewstate(form)

@@ -1,5 +1,8 @@
 import type { TurmaProps } from '#/components/search/TurmaCard';
 
+import { ProfessorRatings } from '#/components/community/ProfessorRatings';
+import { useProfessorRatings } from '#/components/community/RatingBadge';
+import { SubjectOutcomesSection } from '#/components/OutcomeRates';
 import { RequirementList } from '#/components/search/RequirementList';
 import { OCCUPANCY_COLOR } from '#/components/search/Seats';
 import { SubjectDisclosure } from '#/components/search/SubjectDisclosure';
@@ -13,6 +16,7 @@ import { displayedRequirements, seats } from '#/queries/subjects';
 export function TurmaDetails({ subject, classroom }: TurmaProps) {
     const { prerequisites, corequisites, equivalences } = displayedRequirements(subject);
     const status = seats(classroom);
+    const ratings = useProfessorRatings(classroom.professors.map(({ siape }) => siape));
 
     return (
         <div className="flex flex-col gap-4">
@@ -36,6 +40,11 @@ export function TurmaDetails({ subject, classroom }: TurmaProps) {
                           ))
                         : 'Docentes não informados'}
                 </Detail>
+                {classroom.professors.some(({ siape }) => siape != null) && (
+                    <Detail label="Avaliação dos docentes" className="col-span-2">
+                        <ProfessorRatings professors={classroom.professors} ratings={ratings} />
+                    </Detail>
+                )}
                 <Detail label="Carga horária">
                     {subject.hours == null ? 'Não informada' : `${subject.hours} horas`}
                 </Detail>
@@ -80,6 +89,10 @@ export function TurmaDetails({ subject, classroom }: TurmaProps) {
                     </span>
                 </Detail>
             </dl>
+            <SubjectOutcomesSection
+                code={subject.code}
+                professors={classroom.professors.map(({ name }) => name)}
+            />
             <SubjectStatistics
                 key={`${subject.code}/${classroom.semester}/${classroom.number}`}
                 code={subject.code}

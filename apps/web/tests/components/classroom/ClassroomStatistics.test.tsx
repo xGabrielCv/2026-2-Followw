@@ -9,6 +9,7 @@ import {
     classroomFrequencyQueryOptions,
     classroomStatisticsQueryOptions
 } from '#/queries/classrooms';
+import { meQueryOptions } from '#/queries/me';
 
 import { useDom } from '../../helpers/dom';
 
@@ -18,6 +19,7 @@ afterEach(() => dom.testing.cleanup());
 const frequency: ClassroomFrequency = {
     progress: { taught: 48, total: 72, percentage: 67 },
     frequency_status: 'registrada',
+    upcoming: [],
     lessons: [],
     totals: { presences: 42, absences: 4, percentage: 91.7, max_absences: 15, estimated: false }
 };
@@ -26,6 +28,8 @@ function render(shares: components['schemas']['StatisticsShare'][]) {
     const client = new QueryClient({
         defaultOptions: { queries: { staleTime: Infinity, retry: false } }
     });
+    // as marcações de presença são da conta, que vem do /me
+    client.setQueryData(meQueryOptions.queryKey, null);
     client.setQueryData(classroomStatisticsQueryOptions('antiga').queryKey, shares);
     client.setQueryData(classroomFrequencyQueryOptions('antiga').queryKey, frequency);
     client.setQueryData(classroomStatisticsQueryOptions('outra').queryKey, [

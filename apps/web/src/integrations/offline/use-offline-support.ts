@@ -1,5 +1,6 @@
 import { noop, onlineManager, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useRouterState } from '@tanstack/react-router';
+import { useEffect, useRef, useState } from 'react';
 
 import { persistQueryCache, warmPages } from '#/integrations/offline/storage';
 import { useOnline } from '#/lib/online';
@@ -22,12 +23,22 @@ export function useOfflineSupport() {
     const loggedIn = Boolean(user);
     const campus = campusOf(user?.unit?.code);
 
-    // depois da hidratação, para o cache restaurado não divergir do HTML do SSR
+    // só depois de a rota (com o código dela) carregar e hidratar: o SSR não traz dado pessoal, e
+    // o cache restaurado antes disso faria a tela divergir do HTML do servidor
+    const routerIdle = useRouterState({ select: (state) => state.status === 'idle' });
+    const started = useRef(false);
+    const stop = useRef<() => void>(noop);
+    // para de salvar só ao desmontar: trocar de rota não interrompe a persistência
+    useEffect(() => () => stop.current(), []);
     useEffect(() => {
+        if (!routerIdle || started.current) return;
+        started.current = true;
         onlineManager.setOnline(navigator.onLine);
         if (serviceWorkerEnabled()) navigator.serviceWorker.register('/sw.js').catch(noop);
-        return persistQueryCache(queryClient, () => setRestoring(false));
-    }, [queryClient]);
+        requestAnimationFrame(() => {
+            stop.current = persistQueryCache(queryClient, () => setRestoring(false));
+        });
+    }, [queryClient, routerIdle]);
 
     // com o app aberto e online, deixa páginas e cardápio da semana prontos para o modo offline
     useEffect(() => {

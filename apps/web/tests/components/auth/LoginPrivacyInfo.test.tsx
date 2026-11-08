@@ -1,16 +1,25 @@
+import {
+    RouterProvider,
+    createMemoryHistory,
+    createRootRoute,
+    createRouter
+} from '@tanstack/react-router';
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { LoginPrivacyInfo } from '#/components/auth/LoginPrivacyInfo';
 
 describe('LoginPrivacyInfo', () => {
-    test('mantém o resumo visível e oferece uma explicação em diálogo', () => {
-        const markup = renderToStaticMarkup(<LoginPrivacyInfo />);
+    test('mostra o resumo do uso de dados e leva à página completa', async () => {
+        const router = createRouter({
+            routeTree: createRootRoute({ component: LoginPrivacyInfo }),
+            history: createMemoryHistory({ initialEntries: ['/'] })
+        });
+        await router.load();
+        const markup = renderToStaticMarkup(<RouterProvider router={router} />);
 
-        expect(markup).toContain('não são armazenadas');
-        expect(markup).toContain('>Saiba mais</button>');
-        expect(markup).toContain('aria-haspopup="dialog"');
-        expect(markup).toContain('aria-expanded="false"');
-        expect(markup).toContain('data-slot="dialog-trigger"');
+        expect(markup).toContain('Seus dados pessoais não ficam no servidor do Followw');
+        expect(markup).toContain('Suas credenciais não são armazenadas');
+        expect(markup).toContain('href="/perfil/dados"');
     });
 });

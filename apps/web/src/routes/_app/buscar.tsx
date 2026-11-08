@@ -15,11 +15,15 @@ import {
     type CatalogCategory,
     catalogQueryOptions
 } from '#/components/search/CatalogResults';
+import { OfferSemesterBar } from '#/components/search/OfferSemesterBar';
+import { PlanningGuide } from '#/components/search/PlanningGuide';
 import { RecommendationsSection } from '#/components/search/RecommendationsSection';
 import { SearchResults } from '#/components/search/SearchResults';
 import { SubjectResults } from '#/components/search/SubjectResults';
 import { TabFilter } from '#/components/TabFilter';
 import { Input } from '#/components/ui/input';
+import { offerChoices, semesterParam } from '#/lib/offer';
+import { nowInBrasilia } from '#/lib/schedule';
 import {
     SEARCH_CATEGORIES,
     searchCategoryLabels,
@@ -29,15 +33,22 @@ import {
 } from '#/lib/search-categories';
 import { loadSearchParams, useSearchState, validateSearch } from '#/lib/search-params';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
-import { loadQuery } from '#/queries/load';
+import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
-import { recommendationsQueryOptions, showRecommendations } from '#/queries/recommendations';
+import {
+    classroomHistory,
+    recommendationsQueryOptions,
+    showRecommendations
+} from '#/queries/recommendations';
 import { searchQueryOptions } from '#/queries/search';
+import { settingsStore } from '#/queries/settings';
+import { useCompletedSubjects } from '#/queries/settings';
 import {
     takenCodes,
     currentCurriculumPeriod,
     SEARCH_MAX_LENGTH,
     SEARCH_MIN_LENGTH,
+    offerSemestersQueryOptions,
     searchText,
     subjectsQueryOptions
 } from '#/queries/subjects';
@@ -63,6 +74,13 @@ function searchView(
     return subjects && unit ? { kind: 'unit', unit } : null;
 }
 
+/** Semestre exibido (o escolhido com oferta ou o atual) e o parâmetro que vai à API. */
+function offerSemester(available: string[], picked: string | null) {
+    const { choices, resolve } = offerChoices(available, nowInBrasilia().date);
+    const selected = resolve(picked);
+    return { choices, selected, param: semesterParam(selected, available) };
+}
+
 export const Route = createFileRoute('/_app/buscar')({
     head: () => ({ meta: [{ title: 'Buscar | Followw' }] }),
     validateSearch,
@@ -70,25 +88,46 @@ export const Route = createFileRoute('/_app/buscar')({
     shouldReload: ({ cause }) => cause !== 'stay',
     loader: async ({ context: { queryClient }, location }) => {
         const user = await loadQuery(queryClient, meQueryOptions);
-        const { q, category } = loadSearchParams(location.searchStr);
+        const { q, category, semester } = loadSearchParams(location.searchStr);
         const view = searchView(category, q, searchText(q), user);
+        // a lista de semestres não segura a página: usa a salva, e o componente atualiza
+        const offer: string[] | undefined = queryClient.getQueryData(
+            offerSemestersQueryOptions.queryKey
+        );
+        const apiSemester = offerSemester(offer ?? [], semester).param;
         await Promise.all([
-            showsSubjects(category) &&
-                user &&
-                loadQuery(queryClient, allClassroomsQueryOptions).catch(noop),
+            showsSubjects(category) && user && loadPersonal(queryClient, allClassroomsQueryOptions),
             view?.kind === 'recommendations' &&
-                loadQuery(queryClient, recommendationsQueryOptions).catch(noop),
-            view?.kind === 'search' &&
-                loadQuery(queryClient, searchQueryOptions(view.text, searchTypes[category])).catch(
-                    noop
+                user &&
+                queryClient.getQueryData(allClassroomsQueryOptions.queryKey) &&
+                loadPersonal(
+                    queryClient,
+                    recommendationsQueryOptions(
+                        settingsStore(user.registration).getSnapshot().completedSubjects,
+                        classroomHistory(
+                            queryClient.getQueryData(allClassroomsQueryOptions.queryKey)
+                        )
+                    )
                 ),
+            view?.kind === 'search' &&
+                loadQuery(
+                    queryClient,
+                    searchQueryOptions(view.text, searchTypes[category], apiSemester)
+                ).catch(noop),
             view?.kind === 'catalog' &&
                 (view.category === 'courses'
                     ? loadQuery(queryClient, catalogQueryOptions.courses)
                     : loadQuery(queryClient, catalogQueryOptions.professors)
                 ).catch(noop),
             view?.kind === 'unit' &&
-                loadQuery(queryClient, subjectsQueryOptions({ unit: view.unit })).catch(noop)
+                loadQuery(
+                    queryClient,
+                    subjectsQueryOptions(
+                        apiSemester
+                            ? { unit: view.unit, semester: apiSemester }
+                            : { unit: view.unit }
+                    )
+                ).catch(noop)
         ]);
     },
     staticData: {
@@ -104,8 +143,10 @@ export const Route = createFileRoute('/_app/buscar')({
 
 function BuscarPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
-    const [{ q, category }, setSearch] = useSearchState();
+    const [{ q, category, semester }, setSearch] = useSearchState();
     const subjects = showsSubjects(category);
+    const { data: offer } = useQuery({ ...offerSemestersQueryOptions, enabled: subjects });
+    const { choices, selected, param: apiSemester } = offerSemester(offer ?? [], semester);
     const currentPeriod = currentCurriculumPeriod(
         user?.entry_semester,
         getCurrentSemester()?.semester
@@ -121,7 +162,12 @@ function BuscarPage() {
         ...allClassroomsQueryOptions,
         enabled: subjects && Boolean(user)
     });
-    const taken = useMemo(() => (history ? takenCodes(history) : null), [history]);
+    const { codes: manual } = useCompletedSubjects();
+    // as marcadas como concluídas no fluxo também contam como cursadas
+    const taken = useMemo(
+        () => (history ? new Set([...takenCodes(history), ...manual]) : null),
+        [history, manual]
+    );
     return (
         <div className="flex flex-col gap-5">
             <div className="relative">
@@ -150,6 +196,15 @@ function BuscarPage() {
                 onChange={(value) => void setSearch({ category: value })}
                 className="-my-2"
             />
+            {subjects && (view?.kind === 'search' || view?.kind === 'unit') && (
+                <OfferSemesterBar
+                    choices={choices}
+                    selected={selected}
+                    onChange={(value) =>
+                        void setSearch({ semester: value === choices[0]?.semester ? null : value })
+                    }
+                />
+            )}
             <SchedulePreview />
             <div aria-live="polite" className="flex flex-col gap-5 pb-8">
                 {!view && (
@@ -164,7 +219,10 @@ function BuscarPage() {
                     </p>
                 )}
                 {view?.kind === 'recommendations' && (
-                    <RecommendationsSection currentPeriod={currentPeriod} taken={taken} />
+                    <>
+                        <PlanningGuide choices={choices} />
+                        <RecommendationsSection currentPeriod={currentPeriod} taken={taken} />
+                    </>
                 )}
                 {view?.kind === 'search' && (
                     <SearchResults
@@ -174,6 +232,7 @@ function BuscarPage() {
                         empty={searchEmptyMessages[category]}
                         currentPeriod={currentPeriod}
                         taken={taken}
+                        semester={apiSemester}
                         onShowCategory={
                             category === 'all'
                                 ? (value) => void setSearch({ category: value })
@@ -183,7 +242,12 @@ function BuscarPage() {
                 )}
                 {view?.kind === 'catalog' && <CatalogResults category={view.category} />}
                 {view?.kind === 'unit' && (
-                    <SubjectResults unit={view.unit} currentPeriod={currentPeriod} taken={taken} />
+                    <SubjectResults
+                        unit={view.unit}
+                        currentPeriod={currentPeriod}
+                        taken={taken}
+                        semester={apiSemester}
+                    />
                 )}
             </div>
         </div>

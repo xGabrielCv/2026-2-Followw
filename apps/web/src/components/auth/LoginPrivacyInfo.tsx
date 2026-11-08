@@ -1,75 +1,21 @@
-import { ShieldCheck, X } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { ShieldCheck } from 'lucide-react';
 
-import { Button } from '#/components/ui/button';
-import {
-    Dialog,
-    DialogClose,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger
-} from '#/components/ui/dialog';
+/** O mesmo resumo de "Uso de dados", antes de o aluno entrar. */
 export function LoginPrivacyInfo() {
     return (
-        <Dialog>
-            <div className="mt-8 max-w-80 text-center text-xs leading-5 text-muted-foreground">
-                <p>
-                    Suas credenciais <strong>não são armazenadas</strong> no Followw.{' '}
-                    <DialogTrigger
-                        render={
-                            <Button variant="link" className="h-auto p-0 text-xs font-semibold" />
-                        }
-                    >
-                        Saiba mais
-                    </DialogTrigger>
-                </p>
-            </div>
-
-            <DialogContent className="max-w-110 gap-0 p-6 pb-8" showCloseButton={false}>
-                <div className="flex items-start justify-between gap-4">
-                    <div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                        <ShieldCheck className="size-6" aria-hidden="true" />
-                    </div>
-                    <DialogClose
-                        render={<Button variant="ghost" size="icon-lg" className="rounded-full" />}
-                        aria-label="Fechar informações de privacidade"
-                    >
-                        <X className="size-5" aria-hidden="true" />
-                    </DialogClose>
-                </div>
-
-                <DialogHeader className="mt-5">
-                    <DialogTitle className="text-xl font-bold tracking-tight">
-                        Seu acesso é protegido
-                    </DialogTitle>
-                </DialogHeader>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    Ao conectar com o SIGAA, suas credenciais são usadas apenas para autenticar nos
-                    servidores oficiais da UnB e não são armazenadas no banco de dados do Followw.
-                </p>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    Suas credenciais e sessão ficam salvas no seu navegador para que você não
-                    precise digitar sua senha toda vez.
-                </p>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                    O Followw é um projeto de código aberto, e você pode conferir todo o
-                    código-fonte no{' '}
-                    <a
-                        className="text-primary"
-                        href="https://github.com/unb-mds/2026-2-Followw"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                    >
-                        GitHub
-                    </a>
-                    .
-                </p>
-                <DialogClose
-                    render={<Button className="mt-6 h-11 w-full rounded-full font-bold" />}
-                >
-                    Entendi
-                </DialogClose>
-            </DialogContent>
-        </Dialog>
+        <div className="mt-8 flex max-w-80 gap-3 rounded-2xl bg-primary/5 p-4 text-left text-xs leading-5 text-muted-foreground ring-1 ring-primary/20">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+            <p>
+                <strong className="text-foreground">
+                    Seus dados pessoais não ficam no servidor do Followw.
+                </strong>{' '}
+                O que identifica você fica neste aparelho; o servidor só guarda o que é da
+                comunidade, sem dizer quem escreveu. Suas credenciais não são armazenadas.{' '}
+                <Link to="/perfil/dados" className="font-semibold text-primary">
+                    Saiba mais
+                </Link>
+            </p>
+        </div>
     );
 }

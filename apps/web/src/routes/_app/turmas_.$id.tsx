@@ -2,12 +2,16 @@ import { type QueryClient, noop, useQuery, useSuspenseQuery } from '@tanstack/re
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useQueryStates } from 'nuqs';
 
+import type { Rating } from '#/queries/reviews';
 import type { components } from '#/queries/schema.gen';
 
 import { ClassroomPosts } from '#/components/classroom/ClassroomPosts';
 import { ClassroomStatistics } from '#/components/classroom/ClassroomStatistics';
 import { ClassroomSummary } from '#/components/classroom/ClassroomSummary';
 import { FrequencyContent } from '#/components/classroom/FrequencyContent';
+import { SubjectColorPicker } from '#/components/classroom/SubjectColorPicker';
+import { ClassroomCommunity } from '#/components/community/ClassroomCommunity';
+import { RatingBadge, useProfessorRatings } from '#/components/community/RatingBadge';
 import {
     ErrorCard,
     ErrorState,
@@ -18,9 +22,12 @@ import { BackHeader } from '#/components/HeaderBar';
 import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { ListCard } from '#/components/ListCard';
 import { LoadingText } from '#/components/LoadingText';
+import { SubjectMaterialsPanel } from '#/components/materials/SubjectMaterialsPanel';
+import { SubjectOutcomesSection } from '#/components/OutcomeRates';
 import { Card, CardContent } from '#/components/ui/card';
 import { PersonPhoto } from '#/components/ui/person-photo';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs';
+import { automaticColorIndex } from '#/lib/agenda';
 import {
     CLASSROOM_TABS,
     classroomTab,
@@ -30,6 +37,7 @@ import {
     validateClassroomSearch
 } from '#/lib/classroom-search';
 import { mailto } from '#/lib/contact';
+import { withMarks } from '#/lib/lesson-marks';
 import { titleCase } from '#/lib/profile';
 import {
     allClassroomsQueryOptions,
@@ -37,9 +45,9 @@ import {
     classroomMembersQueryOptions,
     classroomPostsQueryOptions,
     classroomStatisticsQueryOptions,
-    useMarkLessons
+    useLessonMarks
 } from '#/queries/classrooms';
-import { loadQuery } from '#/queries/load';
+import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 
 type Member = components['schemas']['ClassroomMember'];
@@ -49,19 +57,22 @@ const TAB_LABELS: Record<ClassroomTab, string> = {
     frequency: 'Frequência',
     statistics: 'Estatísticas',
     posts: 'Postagens',
-    members: 'Participantes'
+    materials: 'Material',
+    members: 'Pessoas'
 };
 
 // a aba aberta é pré-carregada; as outras buscam ao serem abertas
 const PRELOAD_TAB: Record<ClassroomTab, (client: QueryClient, id: string) => Promise<unknown>> = {
-    frequency: (client, id) => loadQuery(client, classroomFrequencyQueryOptions(id)),
+    frequency: (client, id) => loadPersonal(client, classroomFrequencyQueryOptions(id)),
     statistics: (client, id) =>
         Promise.all([
-            loadQuery(client, classroomStatisticsQueryOptions(id)),
-            loadQuery(client, classroomFrequencyQueryOptions(id))
+            loadPersonal(client, classroomStatisticsQueryOptions(id)),
+            loadPersonal(client, classroomFrequencyQueryOptions(id))
         ]),
-    posts: (client, id) => loadQuery(client, classroomPostsQueryOptions(id)),
-    members: (client, id) => loadQuery(client, classroomMembersQueryOptions(id))
+    posts: (client, id) => loadPersonal(client, classroomPostsQueryOptions(id)),
+    // o material é da matéria, não da turma: carrega ao abrir a aba
+    materials: () => Promise.resolve(),
+    members: (client, id) => loadPersonal(client, classroomMembersQueryOptions(id))
 };
 
 export const Route = createFileRoute('/_app/turmas_/$id')({
@@ -70,8 +81,9 @@ export const Route = createFileRoute('/_app/turmas_/$id')({
     shouldReload: ({ cause }) => cause !== 'stay',
     loader: async ({ context: { queryClient }, params, location }) => {
         const user = await loadQuery(queryClient, meQueryOptions);
+        // turmas vêm do SIGAA na hora: a página abre com o que o navegador já tem
         const classrooms = user
-            ? await loadQuery(queryClient, allClassroomsQueryOptions).catch(noop)
+            ? await loadPersonal(queryClient, allClassroomsQueryOptions)
             : undefined;
         const classroom = classrooms?.find(({ id }) => id === params.id);
         if (classroom) {
@@ -117,7 +129,32 @@ function ClassroomPage() {
                 <InformationCard>Turma não encontrada.</InformationCard>
             ) : (
                 <>
-                    <ClassroomSummary classroom={classroom} />
+                    <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                            <ClassroomSummary classroom={classroom} />
+                        </div>
+                        <ClassroomCommunity
+                            className="w-38 shrink-0 desk:w-56"
+                            code={classroom.subject.code}
+                            semester={classroom.semester}
+                            number={classroom.number}
+                            name={classroom.subject.name}
+                            professors={classroom.professors}
+                        />
+                    </div>
+                    {classroom.current && (
+                        <div className="mt-3">
+                            <SubjectColorPicker
+                                code={classroom.subject.code}
+                                automatic={automaticColorIndex(
+                                    (classrooms.data ?? [])
+                                        .filter((item) => item.current)
+                                        .map((item) => item.subject.code),
+                                    classroom.subject.code
+                                )}
+                            />
+                        </div>
+                    )}
                     <Tabs
                         value={classroomTab(tab, classroom.current)}
                         onValueChange={(value: ClassroomTab) => void setSearch({ tab: value })}
@@ -125,7 +162,7 @@ function ClassroomPage() {
                     >
                         <TabsList
                             variant="line"
-                            className="grid w-full grid-cols-3 border-b border-border group-data-horizontal/tabs:h-auto"
+                            className="grid w-full grid-cols-4 border-b border-border group-data-horizontal/tabs:h-auto"
                             aria-label="Detalhes da turma"
                         >
                             {CLASSROOM_TABS.filter(
@@ -134,7 +171,7 @@ function ClassroomPage() {
                                 <TabsTrigger
                                     key={item}
                                     value={item}
-                                    className="h-auto min-w-0 py-2 after:bg-primary data-active:text-primary"
+                                    className="h-auto min-w-0 px-1 py-2 text-xs after:bg-primary data-active:text-primary desk:text-sm"
                                 >
                                     {TAB_LABELS[item]}
                                 </TabsTrigger>
@@ -152,10 +189,26 @@ function ClassroomPage() {
                                 <ClassroomStatistics id={id} />
                             </TabsContent>
                         )}
+                        <TabsContent value="materials">
+                            <SubjectMaterialsPanel
+                                code={classroom.subject.code}
+                                classroom={{
+                                    semester: classroom.semester,
+                                    number: classroom.number,
+                                    professors: classroom.professors.map(({ name }) => name)
+                                }}
+                            />
+                        </TabsContent>
                         <TabsContent value="members">
                             <MembersTab id={id} />
                         </TabsContent>
                     </Tabs>
+                    <div className="mt-6 pb-4">
+                        <SubjectOutcomesSection
+                            code={classroom.subject.code}
+                            professors={classroom.professors.map(({ name }) => name)}
+                        />
+                    </div>
                 </>
             )}
         </>
@@ -186,7 +239,7 @@ function TabError({ onRetry }: { onRetry: () => void }) {
 
 function FrequencyTab({ id }: { id: string }) {
     const frequency = useQuery(classroomFrequencyQueryOptions(id));
-    const markLessons = useMarkLessons(id);
+    const { marks, mark } = useLessonMarks(id);
 
     if (frequency.isPending) return <TabLoading />;
     if (frequency.isLoadingError) return <TabError onRetry={() => frequency.refetch()} />;
@@ -194,16 +247,14 @@ function FrequencyTab({ id }: { id: string }) {
     return (
         <>
             {frequency.isError && <StaleDataNotice subject="a frequência" className="mb-2" />}
-            {markLessons.isError && (
-                <p role="alert" className="mb-2 text-sm text-destructive">
-                    Não foi possível salvar a marcação. Tente novamente.
-                </p>
-            )}
             <FrequencyContent
-                data={frequency.data}
-                pending={markLessons.isPending}
+                data={withMarks(frequency.data, marks)}
+                pending={false}
                 onMark={(lessons, status) =>
-                    markLessons.mutate(lessons.map((lesson) => ({ lesson_id: lesson.id, status })))
+                    mark(
+                        lessons.map((lesson) => lesson.id),
+                        status
+                    )
                 }
             />
         </>
@@ -224,6 +275,19 @@ function MembersTab({ id }: { id: string }) {
     if (members.isPending) return <TabLoading />;
     if (members.isLoadingError) return <TabError onRetry={() => members.refetch()} />;
     const { professors, monitors, students } = members.data;
+    return <Members professors={professors} monitors={monitors} students={students} />;
+}
+
+function Members({
+    professors,
+    monitors,
+    students
+}: {
+    professors: Professor[];
+    monitors: Member[];
+    students: Member[];
+}) {
+    const ratings = useProfessorRatings(professors.map(({ siape }) => siape));
     if (professors.length + monitors.length + students.length === 0)
         return <InformationCard>Nenhum participante encontrado.</InformationCard>;
 
@@ -231,7 +295,11 @@ function MembersTab({ id }: { id: string }) {
         <div className="flex flex-col gap-4">
             <MemberGroup title="Professores" count={professors.length}>
                 {professors.map((professor) => (
-                    <ProfessorRow key={professor.siape ?? professor.name} professor={professor} />
+                    <ProfessorRow
+                        key={professor.siape ?? professor.name}
+                        professor={professor}
+                        rating={professor.siape == null ? undefined : ratings[professor.siape]}
+                    />
                 ))}
             </MemberGroup>
             <MemberGroup title="Monitores" count={monitors.length}>
@@ -266,7 +334,7 @@ function MemberGroup({
     );
 }
 
-function ProfessorRow({ professor }: { professor: Professor }) {
+function ProfessorRow({ professor, rating }: { professor: Professor; rating?: Rating }) {
     const name = titleCase(professor.name);
     return (
         <PersonRow
@@ -275,13 +343,16 @@ function ProfessorRow({ professor }: { professor: Professor }) {
                 professor.siape == null ? (
                     name
                 ) : (
-                    <Link
-                        to="/professores/$siape"
-                        params={{ siape: professor.siape }}
-                        className="hover:text-primary"
-                    >
-                        {name}
-                    </Link>
+                    <>
+                        <Link
+                            to="/professores/$siape"
+                            params={{ siape: professor.siape }}
+                            className="hover:text-primary"
+                        >
+                            {name}
+                        </Link>{' '}
+                        <RatingBadge rating={rating} />
+                    </>
                 )
             }
             email={professor.email}

@@ -1,19 +1,24 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link, Navigate, createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
-import { GitFork, LogOut, Pencil } from 'lucide-react';
+import { GitFork, LogOut, Pencil, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 
 import { ErrorState } from '#/components/ErrorState';
+import { GitHubLink } from '#/components/GitHubLink';
 import { HeaderBar, HeaderTitle } from '#/components/HeaderBar';
 import { ListCard } from '#/components/ListCard';
+import { BackupSetting } from '#/components/profile/BackupSetting';
+import { DemoDataSetting } from '#/components/profile/DemoDataSetting';
 import { DocumentDownloads } from '#/components/profile/DocumentDownloads';
 import { InstallPromptCard } from '#/components/profile/InstallPromptCard';
+import { LayoutModeSetting } from '#/components/profile/LayoutModeSetting';
 import {
     AcademicPerformance,
     ProfileIdentity,
     ProfileSection,
     ProgressSection
 } from '#/components/profile/ProfileOverview';
+import { ShareStatisticsSetting } from '#/components/profile/ShareStatisticsSetting';
 import { ThemeToggle } from '#/components/ThemeToggle';
 import {
     AlertDialog,
@@ -54,7 +59,14 @@ export const Route = createFileRoute('/_app/perfil')({
     },
     staticData: {
         header: () => (
-            <HeaderBar actions={<ThemeToggle />}>
+            <HeaderBar
+                actions={
+                    <>
+                        <GitHubLink />
+                        <ThemeToggle />
+                    </>
+                }
+            >
                 <HeaderTitle>Perfil</HeaderTitle>
             </HeaderBar>
         )
@@ -77,7 +89,11 @@ function PerfilPage() {
                 <InstallPromptCard />
                 <AcademicPerformance user={user} />
                 <ProgressSection user={user} />
-                <AccountSection displayName={settings.displayName} courseId={user.course?.id} />
+                <AccountSection
+                    displayName={settings.displayName}
+                    courseId={user.course?.id}
+                    registration={user.registration}
+                />
             </div>
         </>
     );
@@ -85,10 +101,12 @@ function PerfilPage() {
 
 function AccountSection({
     displayName,
-    courseId
+    courseId,
+    registration
 }: {
     displayName?: string | null;
     courseId?: number;
+    registration: string;
 }) {
     return (
         <ProfileSection title="Conta">
@@ -114,6 +132,29 @@ function AccountSection({
                     </div>
                 )}
                 <DocumentDownloads />
+                <ShareStatisticsSetting />
+                <LayoutModeSetting />
+                <DemoDataSetting />
+                <BackupSetting registration={registration} />
+                <div className="-mx-3">
+                    <Link
+                        to="/perfil/dados"
+                        className={cn(
+                            buttonVariants({ variant: 'ghost' }),
+                            'h-auto min-h-12 w-full justify-start gap-3 rounded-none px-3 py-2.5'
+                        )}
+                    >
+                        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <ShieldCheck className="size-4" aria-hidden="true" />
+                        </span>
+                        <span className="min-w-0 flex-1 text-left">
+                            <span className="block">Uso de dados</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                                O que fica no aparelho, o que vai para a nuvem
+                            </span>
+                        </span>
+                    </Link>
+                </div>
                 <LogoutButton />
             </ListCard>
         </ProfileSection>

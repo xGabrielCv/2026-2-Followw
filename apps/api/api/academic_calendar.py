@@ -106,3 +106,21 @@ def _days(start: date, end: date) -> Iterator[date]:
     while day <= end:
         yield day
         day += timedelta(days=1)
+
+
+def current_regular_semester(day: date | None = None) -> str:
+    """O último semestre regular (`.1` ou `.2`) já iniciado; nas férias, o que terminou."""
+    day = day or today()
+    started = [
+        semester.semester
+        for semester in load_academic_calendar().list_semesters()
+        if semester.semester[-1] in "12" and semester.period.start <= day
+    ]
+    return max(started)
+
+
+def shift_regular_semester(semester: str, offset: int) -> str:
+    """`2026.2` com -1 é `2026.1`; com +1, `2027.1`. Só conta semestres regulares."""
+    year, term = (int(part) for part in semester.split("."))
+    index = year * 2 + (term - 1) + offset
+    return f"{index // 2}.{index % 2 + 1}"

@@ -371,9 +371,11 @@ def test_openapi_so_tem_os_filtros_do_banco(client):
         "code",
         "unit",
         "semester",
+        "completed",
+        "history",
         "Cache-Control",
     }
-    assert set(operation["responses"]) == {"200", "401", "422", "502", "503"}
+    assert set(operation["responses"]) == {"200", "401", "422", "502"}
 
 
 def test_desbloqueia_lista_dependentes_diretos_sem_duplicar_nem_exigir_oferta(

@@ -2,7 +2,10 @@ export const STORAGE_PREFIX = 'followw:';
 
 export const STORAGE_KEYS = {
     THEME: 'theme',
-    SCHEDULE: 'schedule'
+    SCHEDULE: 'schedule',
+    SCHEDULE_PLANS: 'schedule-plans',
+    LAYOUT: 'layout',
+    REVIEWS: 'reviews'
 } as const;
 
 function getStorage(): Storage | null {
@@ -110,7 +113,7 @@ export const localStorageRepository: LocalStorageRepository = {
 };
 
 // Dados da conta, apagados ao trocar de sessão.
-const ACCOUNT_KEYS: string[] = [STORAGE_KEYS.SCHEDULE];
+const ACCOUNT_KEYS: string[] = [STORAGE_KEYS.SCHEDULE_PLANS, STORAGE_KEYS.REVIEWS];
 const stores = new Map<string, { clear: () => void }>();
 
 /** Valor salvo no storage e observável pelo `useSyncExternalStore`. */
@@ -149,4 +152,20 @@ export function clearAccountStorage() {
         localStorageRepository.remove(key);
         stores.get(key)?.clear();
     }
+}
+
+const accountStores = new Map<string, ReturnType<typeof storedValue<unknown>>>();
+
+/**
+ * Valor da conta guardado só neste navegador, numa chave por matrícula: sobrevive ao logout e
+ * a meses sem abrir o app, e nunca vai para o servidor.
+ */
+export function accountStore<T>(key: string, empty: T) {
+    let store = accountStores.get(key);
+    if (!store) {
+        store = storedValue<unknown>(key, empty);
+        accountStores.set(key, store);
+    }
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- mesma chave, mesmo tipo
+    return store as ReturnType<typeof storedValue<T>>;
 }

@@ -8,6 +8,8 @@ interface TabFilterProps<T extends string> {
     labels?: Partial<Record<T, string>>;
     onChange: (value: T) => void;
     className?: string;
+    // classe extra de uma opção, como o verde do semestre futuro
+    optionClassName?: (option: T) => string | undefined;
 }
 
 export function TabFilter<T extends string>({
@@ -16,7 +18,8 @@ export function TabFilter<T extends string>({
     options,
     labels,
     onChange,
-    className
+    className,
+    optionClassName
 }: TabFilterProps<T>) {
     return (
         <fieldset
@@ -32,7 +35,7 @@ export function TabFilter<T extends string>({
                     variant={option === value ? 'secondary' : 'ghost'}
                     aria-pressed={option === value}
                     onClick={() => onChange(option)}
-                    className="shrink-0"
+                    className={cn('shrink-0', optionClassName?.(option))}
                 >
                     {labels?.[option] ?? option}
                 </Button>

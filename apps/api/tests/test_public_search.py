@@ -1,18 +1,16 @@
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from sigaa_client import Credentials
+from sigaa_client import Credentials, UserLevel, UserProfile
 
-from api.db.enums import UserLevel
 from api.db.models import (
+    Classroom,
     Course,
     Curriculum,
     CurriculumComponent,
     Professor,
     Subject,
     Unit,
-    User,
 )
 
 URL = "/public/search"
@@ -67,6 +65,25 @@ def test_busca_todos_os_tipos_numa_resposta(client, catalog):
     assert result["courses"]["total"] == 1
     assert result["professors"]["total"] == 1
     assert result["professors"]["page"] == 1
+
+
+def test_semester_escolhe_a_oferta_das_materias(client, catalog, database):
+    with database.begin() as session:
+        session.add_all(
+            [
+                Classroom(subject_code="MAT0025", number="01", semester="2026.2"),
+                Classroom(subject_code="MAT0025", number="02", semester="2027.1"),
+                Classroom(subject_code="MAT0025", number="03", semester="2027.1"),
+            ]
+        )
+
+    def numbers(**params):
+        subjects = _search(client, q="MAT0025", type="subjects", **params)["subjects"]
+        return [classroom["number"] for classroom in subjects[0]["classrooms"]]
+
+    assert numbers() == ["02", "03"]
+    assert numbers(semester="2026.2") == ["01"]
+    assert client.get("/public/subjects/semesters").json() == ["2027.1", "2026.2"]
 
 
 def test_cada_termo_precisa_casar(client, catalog):
@@ -124,7 +141,6 @@ def test_parametros_invalidos_retornam_422(client, catalog, params):
 def test_com_login_materias_trazem_o_tipo_da_matriz(
     client, catalog, database, cookies, stub_sigaa
 ):
-    now = datetime.now(UTC)
     with database.begin() as session:
         curriculum = Curriculum(
             course_id=2,
@@ -145,27 +161,33 @@ def test_com_login_materias_trazem_o_tipo_da_matriz(
                 period=1,
             )
         )
-        session.add(
-            User(
-                name="Aluno",
-                registration="251000000",
-                level=UserLevel.GRADUACAO,
-                course_id=2,
-                entry_semester="2025.1",
-                curriculum_id=curriculum.id,
-                profile_synced_at=now,
-                classrooms_synced_at=now,
-                grades_synced_at=now,
-            )
-        )
 
     def kinds():
         result = _search(client, q="matematica", type="subjects")
         return {subject["code"]: subject["kind"] for subject in result["subjects"]}
 
     assert kinds() == {"MAT0025": None, "MAT0031": None}
+    # O perfil vem do cookie cifrado do navegador: a busca não vai ao SIGAA.
+    perfil = UserProfile(
+        name="Aluno",
+        registration="251000000",
+        photo=None,
+        bio=None,
+        unit="FCTE",
+        course="ENGENHARIA DE SOFTWARE",
+        shift=None,
+        entry_semester="2025.1",
+        integralization=None,
+        workload=None,
+        ira=None,
+        mp=None,
+        level=UserLevel.GRADUACAO,
+    )
     client.cookies.update(
-        cookies(refresh=Credentials(registration="251000000", password="senha"))
+        cookies(
+            refresh=Credentials(registration="251000000", password="senha"),
+            profile=perfil,
+        )
     )
     assert kinds() == {"MAT0025": "mandatory", "MAT0031": "free"}
     stub_sigaa.profile.get_profile.assert_not_awaited()

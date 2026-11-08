@@ -4,19 +4,27 @@ import { expect, test } from 'bun:test';
 import { shouldPersistQuery } from '#/integrations/offline/storage';
 import { recommendationsQueryOptions } from '#/queries/recommendations';
 
-test('recomendações não são gravadas no cache offline; catálogo continua persistido', () => {
+test('recomendações não são gravadas no cache offline; a busca continua persistida', () => {
     const client = new QueryClient();
-    client.setQueryData(recommendationsQueryOptions.queryKey, { items: [] });
-    client.setQueryData(['get', '/public/subjects'], []);
-    expect(
-        shouldPersistQuery(
-            client.getQueryCache().find({ queryKey: recommendationsQueryOptions.queryKey })!
-        )
-    ).toBe(false);
-    expect(
-        shouldPersistQuery(client.getQueryCache().find({ queryKey: ['get', '/public/subjects'] })!)
-    ).toBe(true);
+    const plain = recommendationsQueryOptions().queryKey;
+    const marked = recommendationsQueryOptions(['FGA0302', 'MAT0025']).queryKey;
+    const search = ['get', '/public/subjects', { params: { query: { q: 'calculo' } } }];
+    client.setQueryData(plain, []);
+    client.setQueryData(marked, []);
+    client.setQueryData(search, []);
+    const persisted = (key: readonly unknown[]) =>
+        shouldPersistQuery(client.getQueryCache().find({ queryKey: key, exact: true })!);
+    expect(persisted(plain)).toBe(false);
+    expect(persisted(marked)).toBe(false);
+    expect(persisted(search)).toBe(true);
     client.clear();
+});
+
+test('as concluídas à mão vão na consulta, sempre na mesma ordem', () => {
+    expect(recommendationsQueryOptions(['MAT0025', 'FGA0302']).queryKey).toEqual(
+        recommendationsQueryOptions(['FGA0302', 'MAT0025']).queryKey
+    );
+    expect(recommendationsQueryOptions().queryKey).toEqual(['get', '/public/subjects', {}]);
 });
 
 test('recomendações aparecem só para graduação e sem pesquisa', async () => {

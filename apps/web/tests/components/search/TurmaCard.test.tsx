@@ -58,8 +58,28 @@ describe('TurmaCard', () => {
         expect(markup).not.toContain('FGA0108 · T01');
         expect(markup).toContain('Ter, Qui · 14:00–15:50');
         expect(markup).toContain(' · S3 · T01');
-        expect(markup).toContain('font-semibold text-foreground">Ana Silva, João Costa<');
+        expect(markup).toContain(
+            'font-semibold text-foreground"><span>Ana Silva</span><span>, João Costa</span>'
+        );
         expect(markup).toContain('aria-label="Detalhes da turma 01"');
+    });
+
+    test('mostra a nota do docente ao lado do nome', () => {
+        const markup = renderWithRouter(
+            <QueryClientProvider client={client}>
+                <TurmaCard
+                    subject={subject}
+                    classroom={{
+                        ...classroom,
+                        professors: [{ ...professorRef('Ana Silva'), siape: 1 }]
+                    }}
+                    ratings={{ 1: { count: 3, average: 82.4 } }}
+                />
+            </QueryClientProvider>
+        );
+        expect(markup).toContain('Ana Silva<span');
+        expect(markup).toContain('Nota 82</span>');
+        expect(markup).toContain('title="Nota 82 de 100 em 3 avaliações"');
     });
 
     test('resumo abre os detalhes sem cadeado nem ocultar turmas cheias', () => {
@@ -362,7 +382,9 @@ describe('TurmaSection', () => {
         expect(markup).toContain('Optativa');
         expect(markup).toContain('Módulo livre');
         expect(markup).not.toContain('Obrigatória');
-        expect(markup.match(/group\/badge/g)).toHaveLength(2);
+        // dois do tipo (a terceira não informa) e um da oferta em cada matéria
+        expect(markup.match(/group\/badge/g)).toHaveLength(2 + 3);
+        expect(markup.match(/title="Turmas da oferta de/g)).toHaveLength(3);
     });
 
     test('semestre fica azul nas matérias já feitas ou em andamento', () => {

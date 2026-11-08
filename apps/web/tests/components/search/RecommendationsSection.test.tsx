@@ -17,6 +17,7 @@ import {
     RecommendationReasons,
     RecommendationsSection
 } from '#/components/search/RecommendationsSection';
+import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { apiClient } from '#/queries/client';
 import { meQueryOptions } from '#/queries/me';
 let testing: typeof import('@testing-library/react/pure');
@@ -116,6 +117,8 @@ describe('seção de recomendações', () => {
     beforeEach(() => {
         client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
         client.setQueryData(meQueryOptions.queryKey, null);
+        // o histórico das recomendações vem das turmas salvas no navegador
+        client.setQueryData(allClassroomsQueryOptions.queryKey, []);
         requests = [];
         response = () => Response.json(result);
         middleware = {

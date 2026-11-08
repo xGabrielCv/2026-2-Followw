@@ -49,6 +49,7 @@ def test_openapi_agrupa_recursos_publicos_sem_ocultar_rotas_privadas(client):
         "Public Professors",
         "Public Restaurant",
         "Public Search",
+        "Public Config",
         "Public Subjects",
     ]
     tags = {tag["name"]: tag for tag in schema["tags"]}

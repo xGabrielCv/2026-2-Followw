@@ -95,6 +95,37 @@ async def test_seed_atualiza_so_docentes_e_vagas_e_ignora_componente_desconhecid
     ]
 
 
+async def test_docentes_de_muitas_turmas_sao_ligados_em_lotes(
+    async_database, tmp_path, monkeypatch
+):
+    # com lotes de uma turma, cada consulta acha só a sua e nada se perde
+    monkeypatch.setattr("api.db.seed.classrooms._LOOKUP_BATCH", 1)
+    async with async_database.begin() as session:
+        session.add(Subject(code="FGA0001", name="A", unit_id=673))
+    async with async_database.begin() as session:
+        await seed_classrooms(
+            session,
+            _csv(
+                tmp_path,
+                "FGA0001,01,2026.2,,,,,FULANO",
+                "FGA0001,01,2027.1,,,,,CICLANO",
+                "FGA0001,02,2027.1,,,,,BELTRANO",
+            ),
+        )
+
+    async with async_database() as session:
+        classrooms = (
+            await session.scalars(
+                select(Classroom).order_by(Classroom.semester, Classroom.number)
+            )
+        ).all()
+    assert [(c.semester, [p.name for p in c.professors]) for c in classrooms] == [
+        ("2026.2", ["FULANO"]),
+        ("2027.1", ["CICLANO"]),
+        ("2027.1", ["BELTRANO"]),
+    ]
+
+
 async def test_turmas_de_componente_desconhecido_sao_contadas_no_log(
     async_database, tmp_path, monkeypatch
 ):
@@ -154,3 +185,42 @@ async def test_seed_vincula_docentes_ao_catalogo_e_preserva_turma_sem_nomes(
     ]
     # O docente fora do catálogo não é recriado a cada seed.
     assert professors == 3
+
+
+async def test_seed_apaga_turmas_publicas_antigas_mas_guarda_historico_e_estatisticas(
+    async_database, tmp_path
+):
+    async with async_database.begin() as session:
+        session.add(Subject(code="FGA0001", name="A", unit_id=673))
+        old = Classroom(subject_code="FGA0001", number="01", semester="2025.2")
+        # aberta por algum aluno: o frontEndIdTurma diz que alguém a viu, não quem
+        mine = Classroom(
+            subject_code="FGA0001", number="02", semester="2025.2", front_end_id="X"
+        )
+        stats = Classroom(
+            subject_code="FGA0001",
+            number="03",
+            semester="2025.2",
+            statistics=[{"situation": "aprovado", "percentage": 90}],
+        )
+        session.add_all([old, mine, stats])
+    async with async_database.begin() as session:
+        await seed_classrooms(
+            session,
+            _csv(tmp_path, "FGA0001,01,2026.2,,,,,", "FGA0001,01,2027.1,,,,,"),
+        )
+
+    async with async_database() as session:
+        kept = (
+            await session.execute(
+                select(Classroom.semester, Classroom.number).order_by(
+                    Classroom.semester, Classroom.number
+                )
+            )
+        ).all()
+    assert kept == [
+        ("2025.2", "02"),
+        ("2025.2", "03"),
+        ("2026.2", "01"),
+        ("2027.1", "01"),
+    ]

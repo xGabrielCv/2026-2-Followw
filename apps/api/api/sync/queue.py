@@ -2,9 +2,10 @@ import asyncio
 import base64
 import hashlib
 import logging
-from collections.abc import AsyncGenerator
+import time
+from collections.abc import AsyncGenerator, Coroutine
 from functools import cache
-from typing import Annotated
+from typing import Annotated, Any, Protocol
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -14,10 +15,11 @@ from qstash import AsyncQStash, Receiver
 from qstash.errors import QStashError, SignatureError
 from qstash.message import BatchRequest
 
+from api.anonymous import anonymous_key
 from api.cookies import derive_key
 from api.core.config import settings
 from api.logger import event, operation
-from api.sync.engine import Job
+from api.sync import Job
 
 JOBS_URL = f"{settings.public_url.rstrip('/')}/jobs"
 
@@ -27,6 +29,14 @@ _PUBLISH_TIMEOUT = 3
 _PARALLELISM = 4
 # Espera da retentativa das tarefas que falharam.
 _RETRY_DELAY = 60
+# O mesmo job de novo nesse intervalo é descartado, como no QStash.
+_DEDUPLICATION = 600
+
+
+class JobQueue(Protocol):
+    async def enqueue(self, *jobs: Job) -> None: ...
+
+    async def aclose(self) -> None: ...
 
 
 class QStashQueue:
@@ -43,7 +53,7 @@ class QStashQueue:
         # Respostas do cache não precisam construir o cliente HTTP/TLS da fila.
         if self._client is None:
             self._client = AsyncQStash(
-                settings.qstash_token, base_url=settings.qstash_url
+                settings.qstash_token or "", base_url=settings.qstash_url
             )
         messages: list[BatchRequest] = [_message(job) for job in jobs]
         try:
@@ -60,7 +70,54 @@ class QStashQueue:
             await self._client.http._client.aclose()
 
 
-async def get_job_queue() -> AsyncGenerator[QStashQueue]:
+# Estado da fila local: tarefas vivas (o event loop só guarda referência fraca),
+# a deduplicação e o limite de jobs simultâneos por matrícula.
+local_tasks: set[asyncio.Task[None]] = set()
+_local_seen: dict[str, float] = {}
+_local_limits: dict[str, asyncio.Semaphore] = {}
+
+
+class LocalQueue:
+    """Roda os jobs no próprio processo, em segundo plano: o modo 100% local, sem QStash."""
+
+    async def enqueue(self, *jobs: Job) -> None:
+        now = time.monotonic()
+        for job in jobs:
+            if now - _local_seen.get(job.key, -_DEDUPLICATION) < _DEDUPLICATION:
+                continue
+            _local_seen[job.key] = now
+            self._spawn(self._execute(job))
+
+    async def aclose(self) -> None:
+        return None
+
+    @staticmethod
+    def _spawn(coroutine: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.create_task(coroutine)
+        local_tasks.add(task)
+        task.add_done_callback(local_tasks.discard)
+
+    async def _execute(self, job: Job) -> None:
+        # Import tardio: o runner dos jobs depende desta fila.
+        from api.db.main import Database, async_session
+        from api.sync.router import execute
+
+        if job.attempt > 1:
+            await asyncio.sleep(_RETRY_DELAY)
+        limit = _local_limits.setdefault(
+            job.registration, asyncio.Semaphore(_PARALLELISM)
+        )
+        async with limit:
+            try:
+                await execute(job, Database(async_session), self)
+            except Exception:  # noqa: BLE001 — sem quem receba o erro, só resta logar
+                event("queue.local_job_failed", level=logging.ERROR)
+
+
+async def get_job_queue() -> AsyncGenerator[JobQueue]:
+    if settings.job_queue == "local":
+        yield LocalQueue()
+        return
     # Um client por requisição: o pool do httpx fica preso ao event loop que o abriu.
     queue = QStashQueue()
     try:
@@ -69,7 +126,7 @@ async def get_job_queue() -> AsyncGenerator[QStashQueue]:
         await queue.aclose()
 
 
-JobQueueDep = Annotated[QStashQueue, Depends(get_job_queue)]
+JobQueueDep = Annotated[JobQueue, Depends(get_job_queue)]
 
 
 async def get_job(request: Request, upstash_signature: Annotated[str, Header()]) -> Job:
@@ -115,7 +172,8 @@ def _message(job: Job) -> BatchRequest:
         # recusa ':'.
         "deduplication_id": hashlib.sha256(job.key.encode()).hexdigest(),
         "flow_control": {
-            "key": f"sigaa-{job.registration}",
+            # A Upstash não vê a matrícula: só uma chave anônima por aluno.
+            "key": f"sigaa-{anonymous_key(job.author or job.key, 'jobs')[:32]}",
             "parallelism": _PARALLELISM,
         },
     }
@@ -127,8 +185,8 @@ def _message(job: Job) -> BatchRequest:
 @cache
 def _receiver() -> Receiver:
     return Receiver(
-        current_signing_key=settings.qstash_current_signing_key,
-        next_signing_key=settings.qstash_next_signing_key,
+        current_signing_key=settings.qstash_current_signing_key or "",
+        next_signing_key=settings.qstash_next_signing_key or "",
     )
 
 

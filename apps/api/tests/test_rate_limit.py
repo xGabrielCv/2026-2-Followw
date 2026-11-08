@@ -349,7 +349,7 @@ def test_logout_com_cota_esgotada_apaga_cookies_sem_chamar_o_sigaa(
         name
         for name, cookie in ler_cookies(response).items()
         if cookie["max-age"] == "0"
-    } == {"access_token", "refresh_token"}
+    } == {"access_token", "refresh_token", "profile"}
 
 
 def test_falha_da_rota_nao_e_confundida_com_falha_redis(redis):

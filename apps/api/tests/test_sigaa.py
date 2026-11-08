@@ -6,7 +6,12 @@ from joserfc.jwk import OctKey
 from pydantic import SecretStr
 from sigaa_client import Credentials, SessionExpired, SigaaError
 
-from api.cookies import ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, decrypt_cookie
+from api.cookies import (
+    ACCESS_COOKIE_NAME,
+    PROFILE_COOKIE_NAME,
+    REFRESH_COOKIE_NAME,
+    decrypt_cookie,
+)
 from api.core.config import settings
 from api.sigaa import SigaaClientDep, SigaaPublicClientDep
 
@@ -148,6 +153,7 @@ def test_credenciais_recusadas_viram_401_e_apagam_os_cookies(
     assert {nome: jar[nome].value for nome in jar} == {
         ACCESS_COOKIE_NAME: "",
         REFRESH_COOKIE_NAME: "",
+        PROFILE_COOKIE_NAME: "",
     }
     assert jar[REFRESH_COOKIE_NAME]["max-age"] == "0"
 

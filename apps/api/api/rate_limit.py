@@ -2,6 +2,7 @@ import asyncio
 import hmac
 import logging
 import os
+from dataclasses import dataclass
 from ipaddress import ip_address, ip_network
 from math import ceil
 from time import time
@@ -91,9 +92,40 @@ def _retry_headers(result: Response) -> dict[str, str]:
     }
 
 
+@dataclass
+class _Window:
+    start: float
+    count: int
+
+
+@dataclass(frozen=True)
+class _MemoryResult:
+    allowed: bool
+    reset: float
+
+
+# Sem Redis em produção (ex.: uma VPS só), a cota fica na memória do processo.
+_MEMORY: dict[tuple[str, str], _Window] = {}
+_MEMORY_MAX_KEYS = 50_000
+
+
+def _memory_limit(group: str, key: str, limit: int, window: int) -> _MemoryResult:
+    now = time()
+    if len(_MEMORY) > _MEMORY_MAX_KEYS:
+        for stale in [k for k, w in _MEMORY.items() if now - w.start >= window]:
+            del _MEMORY[stale]
+    current = _MEMORY.get((group, key))
+    if current is None or now - current.start >= window:
+        current = _MEMORY[(group, key)] = _Window(now, 0)
+    current.count += 1
+    return _MemoryResult(current.count <= limit, current.start + window)
+
+
 async def _limit(group: str, key: str, limit: int, window: int) -> Response | None:
     redis = redis_client()
     if redis is None:
+        if settings.environment == "production":
+            return _memory_limit(group, key, limit, window)  # type: ignore[return-value]
         return None
 
     identifier = hmac.digest(

@@ -1,8 +1,10 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, notFound, rootRouteId } from '@tanstack/react-router';
 
+import { ProfessorReviewsSection } from '#/components/community/ProfessorReviewsSection';
 import { ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
+import { ProfessorOutcomesSection } from '#/components/OutcomeRates';
 import { ProfessorDetailsSection } from '#/components/professor/ProfessorDetailsSection';
 import { ProfessorHeader } from '#/components/professor/ProfessorHeader';
 import { titleCase } from '#/lib/profile';
@@ -55,6 +57,8 @@ function ProfessorPage() {
     return (
         <div className="flex flex-col gap-5 pb-8">
             <ProfessorHeader professor={professor} />
+            <ProfessorReviewsSection siape={siape} name={professor.name} />
+            <ProfessorOutcomesSection siape={siape} />
             <ProfessorDetailsSection professor={professor} />
         </div>
     );

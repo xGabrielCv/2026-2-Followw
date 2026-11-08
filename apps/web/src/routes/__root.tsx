@@ -17,6 +17,7 @@ import { initializeInstallSupport } from '#/integrations/offline/install';
 import { useOfflineSupport } from '#/integrations/offline/use-offline-support';
 import PostHogProvider from '#/integrations/posthog/provider';
 import { reloadOnPreloadError } from '#/lib/chunk-reload';
+import { layoutScript } from '#/lib/layout';
 import { themeScript } from '#/lib/theme';
 import { useSessionRefresh } from '#/queries/auth';
 import appCss from '#/styles.css?url';
@@ -76,6 +77,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <html lang="pt-BR" suppressHydrationWarning>
             <head>
                 <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+                <script dangerouslySetInnerHTML={{ __html: layoutScript }} />
                 <HeadContent />
             </head>
             <body>

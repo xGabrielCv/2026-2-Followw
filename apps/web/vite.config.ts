@@ -24,8 +24,19 @@ const config = defineConfig({
     plugins: [
         nitro({
             rollupConfig: { external: [/^@sentry\//] },
-            // só no dev; na Vercel, o vercel.json faz o mesmo
-            devProxy: { '/api/**': 'http://127.0.0.1:8000' }
+            // fora da Vercel (ex.: numa VPS), o próprio servidor manda os cabeçalhos de segurança
+            routeRules: {
+                '/**': {
+                    headers: {
+                        'X-Content-Type-Options': 'nosniff',
+                        'Referrer-Policy': 'strict-origin-when-cross-origin',
+                        'X-Frame-Options': 'DENY',
+                        'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()'
+                    }
+                }
+            },
+            // só no dev; na Vercel, o vercel.json faz o mesmo. API_PORT vem do run.ps1 (-ApiPort)
+            devProxy: { '/api/**': `http://127.0.0.1:${process.env.API_PORT ?? 8000}` }
         }),
         tailwindcss(),
         tanstackStart(),

@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { components } from '#/queries/schema.gen';
 
 import { meQueryOptions } from '#/queries/me';
-import { settingsQueryOptions } from '#/queries/settings';
+import { settingsStore } from '#/queries/settings';
 import { Route } from '#/routes/_app/perfil';
 
 test.each([42, null])(
@@ -35,7 +35,7 @@ test.each([42, null])(
             level: 'Graduação'
         };
         client.setQueryData(meQueryOptions.queryKey, user);
-        client.setQueryData(settingsQueryOptions('202600001').queryKey, { displayName: 'Renan' });
+        settingsStore('202600001').set({ displayName: 'Renan' });
         const router = createRouter({
             routeTree: createRootRoute({ component: Route.options.component }),
             history: createMemoryHistory({ initialEntries: ['/'] })
@@ -73,6 +73,12 @@ test.each([42, null])(
             expect(account?.querySelectorAll('.lucide-chevron-right').length).toBe(0);
             expect(account?.querySelector('.lucide-pencil')).not.toBeNull();
             expect(account?.querySelector('.lucide-log-out')).not.toBeNull();
+            // transparência: o que fica no aparelho e o backup, logo antes de desconectar
+            const dados = account?.querySelector('a[href="/perfil/dados"]');
+            expect(dados?.textContent).toContain('Uso de dados');
+            expect(account?.textContent).toContain('Backup das configurações');
+            const texto = account?.textContent ?? '';
+            expect(texto.indexOf('Uso de dados')).toBeLessThan(texto.indexOf('Desconectar'));
         } finally {
             client.clear();
             await browser.happyDOM.abort();

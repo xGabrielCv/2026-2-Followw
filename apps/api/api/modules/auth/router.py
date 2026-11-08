@@ -3,13 +3,14 @@ from fastapi import APIRouter, Request, Response, status
 from pydantic import BaseModel, Field
 from sigaa_client import Credentials, SigaaClient, SigaaError
 
+from api.account import Account
+from api.anonymous import OptionalAuthorDep
 from api.cookies import clear_cookies, read_access_cookie, read_refresh_cookie
 from api.db.main import DatabaseDep
 from api.errors import SIGAA_ERRORS
 from api.modules.auth.account import start_account
 from api.rate_limit import limit_registration
 from api.sigaa import SigaaConnection, SigaaConnectionDep
-from api.sync.queue import JobQueueDep
 
 router = APIRouter()
 
@@ -24,13 +25,13 @@ async def sigaa_login(
     body: SigaaLoginRequest,
     response: Response,
     db: DatabaseDep,
-    queue: JobQueueDep,
+    author: OptionalAuthorDep,
 ):
     await limit_registration(body.registration)
     credentials = Credentials(registration=body.registration, password=body.password)
     connection = SigaaConnection(credentials, response=response)
     try:
-        await start_account(connection, db, queue)
+        await start_account(Account(connection, response=response), db, author)
     finally:
         await connection.aclose()
 
@@ -41,13 +42,13 @@ async def sigaa_login(
     "/sigaa/refresh", status_code=status.HTTP_204_NO_CONTENT, responses=SIGAA_ERRORS
 )
 async def sigaa_refresh(
-    connection: SigaaConnectionDep, db: DatabaseDep, queue: JobQueueDep
+    connection: SigaaConnectionDep,
+    response: Response,
+    db: DatabaseDep,
+    author: OptionalAuthorDep,
 ) -> None:
-    """Confere a senha se não houver access_token e agenda o sync do que venceu.
-
-    O cache sai só com o refresh_token, então o app chama esta rota ao abrir.
-    """
-    await start_account(connection, db, queue)
+    """Confere a sessão e renova o perfil guardado no cookie; o app chama ao abrir."""
+    await start_account(Account(connection, response=response), db, author)
 
 
 @router.delete("/sigaa")

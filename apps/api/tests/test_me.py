@@ -10,7 +10,6 @@ from pydantic import SecretStr
 from sigaa_client import (
     AuthenticationFailed,
     Credentials,
-    CurriculumWorkload,
     DocumentUnavailable,
     MissingProfilePhoto,
     RestaurantCredentials,
@@ -26,14 +25,13 @@ from sqlalchemy import select
 
 from api.cookies import (
     ACCESS_COOKIE_NAME,
+    PROFILE_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
     decrypt_cookie,
     encrypt_cookie,
 )
-from api.db.enums import UserLevel
 from api.db.main import get_sessionmaker
-from api.db.models import Curriculum, User
-from api.modules.me.repository import UserRepository
+from api.db.models import Course, Curriculum
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
 NO_CACHE = {"Cache-Control": "no-cache"}
@@ -62,7 +60,7 @@ PERFIL = """
 """
 
 
-def test_login_seguido_de_me_responde_do_cache(client, sigaa):
+def test_login_seguido_de_me_responde_do_cookie_do_navegador(client, sigaa):
     sigaa.profile = PERFIL
     login = client.post(
         "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
@@ -100,8 +98,8 @@ def test_login_seguido_de_me_responde_do_cache(client, sigaa):
     assert client.get("/me", headers=NO_CACHE).json()["ira"] == 4.0
     assert client.get("/me").json()["ira"] == 4.0
     assert sigaa.profile_requests == requests_before + 1
-    # Só a sessão do usuário segue aberta: a do sync da conta foi encerrada.
-    assert sigaa.logins - sigaa.logouts == 1
+    # Só a sessão do usuário: nenhum job do servidor abre outra.
+    assert (sigaa.logins, sigaa.logouts) == (1, 0)
 
 
 def test_troca_de_curso_loga_com_a_matricula_antiga_e_me_responde_o_perfil(
@@ -115,18 +113,15 @@ def test_troca_de_curso_loga_com_a_matricula_antiga_e_me_responde_o_perfil(
     assert login.status_code == 200
 
     response = client.get("/me")
-    client.patch("/me/settings", json={"displayName": "Ana"})
 
     assert response.status_code == 200
     assert response.json()["registration"] == "252000000"
-    assert client.get("/me/settings").json() == {"displayName": "Ana"}
-
-    with database() as session:
-        users = [
-            (u.registration, u.old_registration, u.settings)
-            for u in session.scalars(select(User))
-        ]
-    assert users == [("252000000", "251000000", {"displayName": "Ana"})]
+    # O cookie fica preso ao login (a matrícula antiga), que é o do refresh_token.
+    perfil = decrypt_cookie(PROFILE_COOKIE_NAME, login.cookies[PROFILE_COOKIE_NAME])
+    assert (perfil["login"], perfil["profile"]["registration"]) == (
+        "251000000",
+        "252000000",
+    )
 
 
 def test_me_sem_campos_opcionais_retorna_null(client, sigaa, cookies):
@@ -154,20 +149,72 @@ def test_me_traz_carga_maxima_por_periodo_da_matriz(client, sigaa, database):
     client.post(
         "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
     )
+    # o curso entra no catálogo público quando o perfil é lido
+    assert client.get("/me").json()["period_max_workload"] is None
     with database.begin() as session:
-        user = session.scalars(select(User)).one()
-        user.curriculum = Curriculum(
-            course_id=user.course_id,
-            sigaa_id=1,
-            code="6360/1",
-            valid_from="2025.1",
-            created_year=2025,
-            active=True,
-            matrix="ENGENHARIA DE SOFTWARE",
-            period_max_workload=420,
+        course = session.scalars(select(Course)).one()
+        session.add(
+            Curriculum(
+                course_id=course.id,
+                sigaa_id=1,
+                code="6360/1",
+                valid_from="2025.1",
+                created_year=2025,
+                active=True,
+                matrix="ENGENHARIA DE SOFTWARE",
+                period_max_workload=420,
+            )
         )
 
+    # A matriz é inferida do perfil a cada pedido, pelo catálogo público.
     assert client.get("/me").json()["period_max_workload"] == 420
+
+
+def test_perfil_vencido_ou_de_outro_login_volta_ao_sigaa(client, sigaa, cookies):
+    sigaa.profile = PERFIL
+    perfil = UserProfile(
+        name="Nome Antigo",
+        registration="251000000",
+        photo=None,
+        bio=None,
+        unit="FCTE",
+        course="ENGENHARIA DE SOFTWARE",
+        shift=None,
+        entry_semester=None,
+        integralization=None,
+        workload=None,
+        ira=None,
+        mp=None,
+        level=SigaaUserLevel.GRADUACAO,
+    )
+    sigaa.valid_tokens.add("app14~VIVO")
+    agora = datetime.now(UTC)
+    client.cookies.update(
+        cookies(
+            access="app14~VIVO", refresh=CREDENCIAIS, profile=perfil, synced_at=agora
+        )
+    )
+    antes = sigaa.profile_requests
+    assert client.get("/me").json()["name"] == "Nome Antigo"
+    assert sigaa.profile_requests == antes
+
+    client.cookies.update(
+        cookies(
+            access="app14~VIVO",
+            refresh=CREDENCIAIS,
+            profile=perfil,
+            synced_at=agora - timedelta(hours=25),
+        )
+    )
+    assert client.get("/me").json()["name"] == "NOME DISCENTE"
+    assert sigaa.profile_requests == antes + 1
+
+    # cookie de perfil de outra conta não vale para este login
+    outra = Credentials(registration="252000000", password=SecretStr("x"))
+    client.cookies.set(
+        PROFILE_COOKIE_NAME, cookies(refresh=outra, profile=perfil)[PROFILE_COOKIE_NAME]
+    )
+    assert client.get("/me").json()["name"] == "NOME DISCENTE"
 
 
 @pytest.mark.parametrize("refresh", [None, "cookie-invalido", "expirado"])
@@ -679,207 +726,3 @@ def test_openapi_documenta_dados_privados_do_restaurante(client):
     assert schema["components"]["schemas"]["RestaurantStatement"]["properties"][
         "group"
     ]["anyOf"][0]["enum"] == [1, 2, 3, 4]
-
-
-def test_configuracoes_aceitam_display_name_no_limite(client, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    nome = "a" * 24
-
-    response = client.patch("/me/settings", json={"displayName": nome})
-
-    assert response.status_code == 200
-    assert response.json() == {"displayName": nome}
-    assert client.get("/me/settings").json() == response.json()
-
-
-def test_configuracoes_de_outra_conta_nao_sao_lidas_nem_alteradas(client, cookies):
-    outra = Credentials(registration="251000001", password=SecretStr("senha123"))
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    assert client.patch("/me/settings", json={"displayName": "Ana"}).status_code == 200
-
-    client.cookies.clear()
-    client.cookies.update(cookies(refresh=outra))
-    assert client.get("/me/settings").json() == {"displayName": None}
-    assert client.patch("/me/settings", json={"displayName": "Bia"}).status_code == 200
-    assert client.get("/me/settings").json() == {"displayName": "Bia"}
-
-    client.cookies.clear()
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    assert client.get("/me/settings").json() == {"displayName": "Ana"}
-
-
-def test_patch_sem_campos_preserva_as_configuracoes(client, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    client.patch("/me/settings", json={"displayName": "Ana"})
-
-    response = client.patch("/me/settings", json={})
-
-    assert response.json() == {"displayName": "Ana"}
-
-
-@pytest.mark.parametrize(
-    "body",
-    [
-        {"displayName": "a" * 25},
-        {"displayName": ""},
-        {"displayName": "   "},
-        # A setting saiu: quem ainda a mandar recebe 422.
-        {"defaultRuCampus": "Gama"},
-        {"theme": "dark"},
-    ],
-)
-def test_configuracoes_rejeitam_input_invalido(client, cookies, body):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    response = client.patch("/me/settings", json=body)
-
-    assert response.status_code == 422
-    assert client.get("/me/settings").json() == {"displayName": None}
-
-
-def test_configuracoes_removem_espacos_do_display_name(client, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    response = client.patch("/me/settings", json={"displayName": "  Ana  "})
-
-    assert response.json()["displayName"] == "Ana"
-
-
-def test_configuracoes_sobrevivem_ao_sync_criando_o_usuario_ao_mesmo_tempo(
-    client, cookies, monkeypatch
-):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    client.patch("/me/settings", json={"displayName": "Ana"})
-    original = UserRepository.get_by_registration
-    calls = 0
-
-    # Simula o sync do perfil gravando o usuário entre a leitura e o insert.
-    async def get_by_registration(self, registration):
-        nonlocal calls
-        calls += 1
-        return None if calls == 1 else await original(self, registration)
-
-    monkeypatch.setattr(UserRepository, "get_by_registration", get_by_registration)
-
-    response = client.patch("/me/settings", json={"displayName": "Bia"})
-
-    assert response.status_code == 200
-    assert response.json() == {"displayName": "Bia"}
-
-
-AGORA = datetime(2026, 9, 22, tzinfo=UTC)
-PERFIL_LIDO = UserProfile(
-    name="NOME DISCENTE",
-    registration="251000000",
-    photo=None,
-    bio="Bio.",
-    unit="FCTE",
-    course="ENGENHARIA DE SOFTWARE",
-    shift=None,
-    entry_semester="2025.1",
-    integralization=35,
-    workload=CurriculumWorkload(
-        total=3525,
-        pending_mandatory=2175,
-        pending_optional=420,
-        pending_complementary=0,
-    ),
-    ira=3.9,
-    mp=4.1,
-    level=SigaaUserLevel.GRADUACAO,
-)
-
-
-@pytest.mark.parametrize(
-    "registration", ["251000000", "251000001", "inexistente", "' OR 1=1 --"]
-)
-async def test_repository_busca_somente_a_matricula_pedida(
-    async_database, registration
-):
-    async with async_database() as session:
-        session.add_all(
-            User(
-                name=f"Discente {index}",
-                registration=f"25100000{index}",
-                level=UserLevel.GRADUACAO,
-            )
-            for index in range(2)
-        )
-        await session.commit()
-
-        result = await UserRepository(session).get_by_registration(registration)
-
-    assert (result.registration if result else None) == (
-        registration if registration.startswith("25100000") else None
-    )
-
-
-async def test_perfil_cria_usuario_com_data_de_sync(async_database):
-    async with async_database() as session:
-        await UserRepository(session).save_profile(PERFIL_LIDO, AGORA)
-        await session.commit()
-
-    async with async_database() as session:
-        user = await UserRepository(session).get_by_registration("251000000")
-
-    assert user is not None
-    assert (user.name, user.ira, user.level) == (
-        "NOME DISCENTE",
-        3.9,
-        UserLevel.GRADUACAO,
-    )
-    assert user.workload == PERFIL_LIDO.workload.model_dump()
-    assert user.entry_semester == "2025.1"
-    assert user.profile_synced_at is not None
-
-
-async def test_perfil_assume_o_usuario_sombra_da_mesma_matricula(async_database):
-    async with async_database() as session:
-        session.add(
-            User(
-                name="NOME DA LISTA",
-                registration="251000000",
-                email="discente@example.org",
-            )
-        )
-        await session.commit()
-
-        await UserRepository(session).save_profile(PERFIL_LIDO, AGORA)
-        await session.commit()
-
-    async with async_database() as session:
-        users = list(await session.scalars(select(User)))
-
-    assert len(users) == 1
-    assert users[0].name == "NOME DISCENTE"
-    # O perfil não traz esses campos: o que a lista de participantes trouxe fica.
-    assert users[0].email == "discente@example.org"
-
-
-async def test_settings_retorna_vazio_quando_usuario_nao_tem_configuracoes(
-    async_database,
-):
-    async with async_database() as session:
-        settings = await UserRepository(session).get_settings("251000000")
-        assert settings == {}
-
-
-async def test_settings_salva_e_sobrescreve_preferencias(async_database):
-    async with async_database() as session:
-        repo = UserRepository(session)
-        updated = await repo.update_settings(
-            "251000000", {"displayName": "Discente Teste"}
-        )
-        assert updated == {"displayName": "Discente Teste"}
-        await session.commit()
-
-    async with async_database() as session:
-        repo = UserRepository(session)
-        updated = await repo.update_settings("251000000", {"displayName": "Outro"})
-        assert updated == {"displayName": "Outro"}
-        await session.commit()
-
-    async with async_database() as session:
-        repo = UserRepository(session)
-        settings = await repo.get_settings("251000000")
-        assert settings == {"displayName": "Outro"}

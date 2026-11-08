@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import func, select
 
 from api.db.courses import course_ids
-from api.db.models import Course, User
+from api.db.models import Course
 from api.db.seed.courses import COURSES_CSV, read_courses, seed_courses
 from api.db.seed.units import UNITS_CSV, read_units
 
@@ -159,13 +159,10 @@ def test_perfil_cria_o_curso_e_o_reaproveita_no_proximo_login(client, sigaa, dat
     assert perfil["unit"] == {"id": 673, "code": "FCTE", "name": "CAMPUS UNB GAMA"}
     _login(client, sigaa)
     with database() as session:
-        user = session.scalar(select(User).where(User.registration == "251000000"))
-        assert (user.course.name, user.course.unit_id) == (
-            "ENGENHARIA DE SOFTWARE",
-            673,
-        )
+        course = session.scalar(select(Course))
+        assert (course.name, course.unit_id) == ("ENGENHARIA DE SOFTWARE", 673)
         assert perfil["course"] == {
-            "id": user.course.id,
+            "id": course.id,
             "name": "ENGENHARIA DE SOFTWARE",
             "shift": None,
         }
@@ -180,7 +177,7 @@ def test_perfil_com_unidade_fora_da_tabela_fica_sem_curso(client, sigaa, databas
     assert response.status_code == 200
     assert (response.json()["course"], response.json()["unit"]) == (None, None)
     with database() as session:
-        assert session.scalar(select(User.course_id)) is None
+        assert session.scalar(select(func.count(Course.id))) == 0
 
 
 def test_perfil_de_curso_ambiguo_fica_com_o_diurno(client, sigaa, database):
@@ -208,6 +205,7 @@ def test_perfil_noturno_liga_o_curso_noturno(client, sigaa, database):
         )
     _login(client, sigaa, "ENGENHARIA DE SOFTWARE/FCTE - Bacharelado - N")
 
+    perfil = client.get("/me").json()
     with database() as session:
-        user = session.scalar(select(User).where(User.registration == "251000000"))
-        assert user.course.sigaa_id == 2
+        noturno = session.scalar(select(Course).where(Course.sigaa_id == 2))
+    assert perfil["course"]["id"] == noturno.id

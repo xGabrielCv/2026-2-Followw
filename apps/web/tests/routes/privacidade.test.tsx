@@ -57,16 +57,16 @@ describe('privacidade e termos', () => {
         }
     );
 
-    test('explica retenção, credenciais, análise de uso e exclusão sem prometer bloqueio de novas coletas', async () => {
+    test('explica que dado pessoal não fica no servidor, a cifra da comunidade e a análise de uso', async () => {
         const markup = await renderPage('/privacidade');
-        expect(markup).toContain('prazo automático de exclusão');
-        expect(markup).toContain('14 dias');
-        expect(markup).toContain('cookies cifrados');
-        expect(markup).toContain('QStash (Upstash)');
+        expect(markup).toContain('Não guardamos no servidor nada que identifique você');
+        expect(markup).toContain('cookie cifrado');
+        expect(markup).toContain('AES-256-GCM');
+        expect(markup).toContain('400 dias');
         expect(markup).toContain('PostHog');
-        expect(markup).toContain('gravação de sessões');
+        expect(markup).toContain('sem gravação de sessão');
         expect(markup).toContain('href="mailto:removal@followw.app"');
-        expect(markup).toContain('não impede novas coletas');
+        expect(markup).not.toContain('Guardamos em nosso banco de dados cópias');
         expect(markup).toContain('stalking');
         expect(markup).toContain('automações são permitidos');
     });

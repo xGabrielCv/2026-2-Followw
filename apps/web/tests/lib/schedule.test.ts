@@ -3,11 +3,14 @@ import { describe, expect, test } from 'bun:test';
 import {
     addDays,
     classesOn,
+    dayOverview,
     describeSchedule,
+    formatDuration,
     nextDays,
     nowInBrasilia,
     parseSchedule,
-    weekDays
+    weekDays,
+    weeklyMinutes
 } from '#/lib/schedule.ts';
 
 describe('parseSchedule', () => {
@@ -140,4 +143,54 @@ describe('addDays', () => {
         expect(addDays('2026-09-28', 7)).toBe('2026-10-05');
         expect(addDays('2026-10-05', -7)).toBe('2026-09-28');
     });
+});
+
+describe('dayOverview', () => {
+    const items = [
+        { id: 'a', schedule: '2M12' },
+        { id: 'b', schedule: '2M34' },
+        { id: 'c', schedule: '2T45' }
+    ];
+
+    test('soma o tempo em sala e marca só intervalos longos', () => {
+        const overview = dayOverview(classesOn(items, 1));
+        expect(overview).toMatchObject({
+            count: 3,
+            minutes: 330,
+            start: '08:00',
+            end: '17:50',
+            finished: false
+        });
+        // 10 minutos entre a e b não contam; de 11:50 a 16:00 sim
+        expect(overview.gaps).toEqual([undefined, undefined, 250]);
+    });
+
+    test('conta os minutos até a próxima aula e o fim do dia', () => {
+        expect(dayOverview(classesOn(items, 1, '09:00'), '09:00').nextIn).toBe(60);
+        expect(dayOverview(classesOn(items, 1, '18:00'), '18:00')).toMatchObject({
+            nextIn: undefined,
+            finished: true
+        });
+    });
+
+    test('dia vazio não termina nem tem horários', () => {
+        expect(dayOverview([], '10:00')).toMatchObject({ count: 0, minutes: 0, finished: false });
+    });
+});
+
+describe('formatDuration', () => {
+    test.each([
+        [50, '50 min'],
+        [60, '1h'],
+        [70, '1h10'],
+        [125, '2h05']
+    ])('%p minutos viram %p', (minutes, text) => {
+        expect(formatDuration(minutes)).toBe(text);
+    });
+});
+
+test('weeklyMinutes soma os horários de todas as turmas', () => {
+    expect(weeklyMinutes([{ schedule: '35T23' }, { schedule: '2N12' }, { schedule: null }])).toBe(
+        2 * 110 + 100
+    );
 });

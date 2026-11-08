@@ -1,70 +1,72 @@
 import type { Middleware } from 'openapi-fetch';
 
-import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import type { UserSettings } from '#/queries/settings';
-
-import { clearSession } from '#/queries/auth';
 import { apiClient } from '#/queries/client';
-import { ApiError } from '#/queries/errors';
-import { settingsQueryOptions } from '#/queries/settings';
+import { entriesStore } from '#/queries/events';
+import { settingsStore, syncStatisticsSharing } from '#/queries/settings';
 
-const registration = '251000000';
-const settings: UserSettings = { displayName: 'Ana' };
+import { useDom } from '../helpers/dom';
 
-describe('configurações do usuário', () => {
+useDom();
+
+describe('configurações e lançamentos ficam no navegador', () => {
     let middleware: Middleware;
     let requests: Request[];
-    let response: () => Response;
-    let client: QueryClient;
 
     beforeEach(() => {
         requests = [];
-        response = () => Response.json(settings);
         middleware = {
             onRequest: ({ request }) => {
                 requests.push(request);
-                return response();
+                return Response.json({ shared: true, classrooms: 2 });
             }
         };
         apiClient.use(middleware);
-        client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     });
 
     afterEach(() => {
-        client.clear();
         apiClient.eject(middleware);
+        settingsStore('251000000').clear();
+        settingsStore('252000000').clear();
+        entriesStore('251000000').clear();
     });
 
-    test('busca na API com escopo da matrícula', async () => {
-        expect(await client.query(settingsQueryOptions(registration))).toEqual(settings);
-        expect(settingsQueryOptions(registration).queryKey).not.toEqual(
-            settingsQueryOptions('outra-matricula').queryKey
-        );
-        expect(requests.map((request) => new URL(request.url).pathname)).toEqual([
-            '/api/me/settings'
-        ]);
-    });
+    test('cada matrícula tem as suas, guardadas no localStorage e não na API', () => {
+        settingsStore('251000000').set({ displayName: 'Ana', subjectColors: { FGA0030: 2 } });
+        settingsStore('252000000').set({ displayName: 'Bia' });
 
-    test('sem login resolve vazio sem ir à API', async () => {
-        expect(await client.query(settingsQueryOptions(null))).toEqual({});
+        expect(settingsStore('251000000').getSnapshot().displayName).toBe('Ana');
+        expect(settingsStore('252000000').getSnapshot().displayName).toBe('Bia');
+        expect(JSON.parse(localStorage.getItem('followw:settings:251000000') ?? '{}')).toEqual({
+            displayName: 'Ana',
+            subjectColors: { FGA0030: 2 }
+        });
         expect(requests).toHaveLength(0);
     });
 
-    test('sessão expirada resolve vazio', async () => {
-        response = () => {
-            throw new ApiError(401, 'expirada');
-        };
-
-        expect(await client.query(settingsQueryOptions(registration))).toEqual({});
+    test('lançamentos do calendário também ficam só no navegador', () => {
+        entriesStore('251000000').set([
+            {
+                id: '1',
+                date: '2026-11-20',
+                time: '10:00',
+                title: 'Prova 2',
+                kind: 'prova',
+                subject_code: 'FGA0030',
+                notes: null,
+                remind_days: 1
+            }
+        ]);
+        expect(localStorage.getItem('followw:events:251000000')).toContain('Prova 2');
+        expect(requests).toHaveLength(0);
     });
 
-    test('logout apaga as configurações do cache', async () => {
-        await client.query(settingsQueryOptions(registration));
-
-        await clearSession(client);
-
-        expect(client.getQueryData(settingsQueryOptions(registration).queryKey)).toBeUndefined();
+    test('só o compartilhamento dos índices vai à API, sem dado pessoal no corpo', async () => {
+        await syncStatisticsSharing(true);
+        expect(requests).toHaveLength(1);
+        expect(new URL(requests[0].url).pathname).toBe('/api/me/statistics-sharing');
+        expect(requests[0].method).toBe('PUT');
+        expect(await requests[0].json()).toEqual({ shared: true });
     });
 });

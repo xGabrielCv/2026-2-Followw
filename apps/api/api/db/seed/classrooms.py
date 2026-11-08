@@ -1,8 +1,9 @@
 import logging
+import uuid
 from pathlib import Path
 
 from sigaa_client import lookup_key
-from sqlalchemy import select, tuple_
+from sqlalchemy import delete, func, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.models import Classroom, Subject
@@ -18,6 +19,7 @@ CLASSROOMS_CSV = DATA_DIR / "classrooms.csv"
 KEY = ("subject_code", "number", "semester")
 # Horário e sala das gravadas são do sync, que replaneja as aulas.
 FIELDS = ("vacancies", "occupied")
+_LOOKUP_BATCH = 1000
 
 type ClassroomKey = tuple[str, str, str]
 
@@ -58,16 +60,26 @@ async def seed_classrooms(session: AsyncSession, path: Path = CLASSROOMS_CSV) ->
     if skipped := len(read) - len(offer):
         event("seed.classrooms_skipped", level=logging.WARNING, skipped_count=skipped)
     await upsert(session, Classroom, [c for c, _ in offer], KEY, FIELDS)
+    if offer:
+        await prune_public_classrooms(session, min(c.semester for c, _ in offer))
 
     # Turma sem docente no CSV fica com os da lista de participantes.
     named = {_key(c): names for c, names in offer if names}
     if not named:
         return
     columns = (Classroom.subject_code, Classroom.number, Classroom.semester)
-    rows = await session.execute(
-        select(Classroom.id, *columns).where(tuple_(*columns).in_(named))
-    )
-    ids = {(code, number, semester): id_ for id_, code, number, semester in rows}
+    keys = list(named)
+    ids: dict[ClassroomKey, uuid.UUID] = {}
+    # Em lotes: um IN com todas as turmas estoura a pilha do Postgres.
+    for start in range(0, len(keys), _LOOKUP_BATCH):
+        rows = await session.execute(
+            select(Classroom.id, *columns).where(
+                tuple_(*columns).in_(keys[start : start + _LOOKUP_BATCH])
+            )
+        )
+        ids.update(
+            ((code, number, semester), id_) for id_, code, number, semester in rows
+        )
     unique = {lookup_key(name): name for names in named.values() for name in names}
     seen = [SeenProfessor(name=name) for name in unique.values()]
     professors = dict(zip(unique, await save_professors(session, seen), strict=True))
@@ -78,3 +90,25 @@ async def seed_classrooms(session: AsyncSession, path: Path = CLASSROOMS_CSV) ->
             for key, names in named.items()
         },
     )
+
+
+async def prune_public_classrooms(session: AsyncSession, oldest: str) -> None:
+    """Apaga as turmas da oferta de semestres que saíram do CSV, sem aluno nem estatística.
+
+    As que algum aluno abriu (e as com estatística, que alimentam os índices) ficam.
+    """
+    result = await session.execute(
+        delete(Classroom)
+        .where(
+            Classroom.semester < oldest,
+            Classroom.front_end_id.is_(None),
+            or_(
+                Classroom.statistics.is_(None),
+                func.jsonb_typeof(Classroom.statistics) != "array",
+                Classroom.statistics == [],
+            ),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount:
+        event("seed.classrooms_pruned", pruned_count=result.rowcount)

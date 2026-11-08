@@ -2,11 +2,14 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from sigaa_client import UserProfile as SigaaProfile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.account import Account
 from api.db.main import DatabaseDep
 from api.db.models import Subject
 from api.db.units import find_unit_id
+from api.modules.me.profile import enrollment
 from api.modules.public_subjects.repository import SubjectCatalogRepository
 from api.modules.recommendations.ranking import (
     Component,
@@ -14,7 +17,11 @@ from api.modules.recommendations.ranking import (
     subject_kind,
 )
 from api.modules.recommendations.repository import RecommendationRepository
-from api.modules.recommendations.service import Ranking, RecommendationService
+from api.modules.recommendations.service import (
+    HistoryItem,
+    Ranking,
+    RecommendationService,
+)
 from api.schemas import (
     CatalogRequirements,
     ClassroomOffer,
@@ -27,7 +34,6 @@ from api.schemas import (
     requirement_codes,
     unit_ref,
 )
-from api.sync import Sync
 
 
 class SubjectClassroom(ClassroomOffer):
@@ -69,9 +75,20 @@ class CatalogSubject(UserSubject, DisplayedRequirements):
     recommendation: SubjectRecommendation | None = None
 
 
+# O atual, o próximo e o anterior bastam para montar a grade.
+OFFER_SEMESTERS = 3
+
+
 class PublicSubjectService:
     def __init__(self, db: DatabaseDep) -> None:
         self._db = db
+
+    async def offer_semesters(self) -> list[str]:
+        return await self._db.read(
+            lambda session: SubjectCatalogRepository(session).offer_semesters(
+                OFFER_SEMESTERS
+            )
+        )
 
     async def search(
         self,
@@ -80,16 +97,21 @@ class PublicSubjectService:
         code: str | None = None,
         unit: int | str | None = None,
         semester: str | None = None,
-        sync: Sync | None = None,
+        account: Account | None = None,
+        completed: frozenset[str] = frozenset(),
+        history: tuple[HistoryItem, ...] = (),
     ) -> list[CatalogSubject]:
-        registration = sync.registration if sync else None
         if q is None and code is None and unit is None:
-            if sync is None:
+            if account is None:
                 raise _invalid("Informe `q`, `code` ou `unit`.")
-            ranking = await RecommendationService(sync).recommend()
+            ranking = await RecommendationService(account, self._db).recommend(
+                completed, history
+            )
             return await self._db.read(lambda session: _recommended(session, ranking))
-        return await self._db.read(
-            lambda session: _search(session, q, code, unit, semester, registration)
+        # O perfil vem do cookie do navegador: a matriz do aluno marca as matérias.
+        profile = await account.profile() if account else None
+        return await self._db.write(
+            lambda session: _search(session, q, code, unit, semester, profile)
         )
 
 
@@ -99,7 +121,7 @@ async def _search(
     code: str | None,
     unit: int | str | None,
     semester: str | None,
-    registration: str | None,
+    profile: SigaaProfile | None,
 ) -> list[CatalogSubject]:
     repository = SubjectCatalogRepository(session)
     unit_id = await find_unit_id(session, unit)
@@ -110,8 +132,12 @@ async def _search(
         semester=semester,
     )
     curriculum = None
-    if registration is not None:
-        curriculum = await RecommendationRepository(session).curriculum(registration)
+    if profile is not None:
+        found = await enrollment(session, profile)
+        if found.curriculum_id is not None:
+            curriculum = await RecommendationRepository(session).components(
+                found.curriculum_id
+            )
     return await _catalog(session, curriculum, subjects, semester)
 
 

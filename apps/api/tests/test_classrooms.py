@@ -1,1231 +1,310 @@
-from datetime import UTC, date, datetime, timedelta
-from uuid import UUID
+"""Turmas do aluno: lidas do SIGAA a cada pedido, sem nada do aluno no banco."""
+
+from datetime import date, datetime, time
+from uuid import uuid4
 
 import pytest
-import sigaa_client
 from pydantic import SecretStr
 from sigaa_client import (
+    AttendanceEntry,
+    AttendanceStatus,
     Classroom,
+    ClassroomAttendance,
+    ClassroomFrequency,
     ClassroomGrade,
     ClassroomMember,
+    ClassroomNotFound,
+    ClassroomPost,
+    ClassroomProgress,
     ClassroomRole,
     Credentials,
     Grade,
-    SigaaError,
+    News,
+    PostType,
     StatisticsShare,
     StudentSituation,
     Subject,
-    UserProfile,
 )
-from sigaa_client import UserLevel as SigaaUserLevel
-from sqlalchemy import event, func, select, update
-from sqlalchemy.orm import undefer
+from sqlalchemy import func, inspect, select
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.schema import CreateTable
 
-from api.cookies import (
-    ACCESS_COOKIE_NAME,
-    REFRESH_COOKIE_NAME,
-    encrypt_cookie,
-)
-from api.db.enums import ClassroomRole as DbRole
-from api.db.enums import (
-    ClassroomStatus,
-    UserLevel,
-)
-from api.db.models import Classroom as ClassroomModel
-from api.db.models import (
-    ClassroomParticipant,
-    Professor,
-    User,
-)
-from api.db.models import Subject as SubjectModel
+from api.academic_calendar import class_days
+from api.db.enums import LessonStatus
+from api.db.models import Classroom as ClassroomRow
+from api.db.models import Lesson, Professor
 from api.db.professors import SeenProfessor, _complete, save_professors
+from api.modules.classrooms.lessons import (
+    Attendance,
+    ClassroomFrequencyView,
+    FrequencySummary,
+    FrequencyTotals,
+    Period,
+    Timetable,
+    hours,
+    max_absences,
+    positioned,
+)
 from api.modules.classrooms.repository import ClassroomRepository
-from api.modules.me.repository import UserRepository
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
-NO_CACHE = {"Cache-Control": "no-cache"}
-DASHBOARD = """
-<table>
-  <tr><td colspan="5">2026.2</td></tr>
-  <tr>
-    <td class="descricao"><form id="form_acessarTurmaVirtual">
-      <a href="#" onclick="jsfcljs(x,{'frontEndIdTurma':'CURRENT'},'');">
-        ESTRUTURAS DE DADOS 1
-      </a>
-    </form></td>
-    <td>FCTE - MOCAP</td><td>35M5 35T1</td>
-  </tr>
-  <tr><td id="linha_123" colspan="5"></td></tr>
-</table>
-"""
-HISTORY = """
-<html><body><table class="listagem">
-  <tr><td class="periodo">2026.2</td></tr>
-  <tr>
-    <td>FGA0146 - ESTRUTURAS DE DADOS 1</td><td>01</td>
-    <td>60h</td><td>35M5 35T1</td>
-    <td><a title="Acessar Turma Virtual"
-      onclick="jsfcljs(x,{'frontEndIdTurma':'CURRENT'},'');">Acessar</a></td>
-  </tr>
-  <tr><td class="periodo">2025.2</td></tr>
-  <tr>
-    <td>FGA0158 - ORIENTAÇÃO A OBJETOS</td><td>02</td>
-    <td>60h</td><td>24T23</td>
-    <td><a title="Acessar Turma Virtual"
-      onclick="jsfcljs(x,{'frontEndIdTurma':'OLD'},'');">Acessar</a></td>
-  </tr>
-</table></body></html>
-"""
+
+FREQUENCY = ClassroomFrequency(
+    progress=ClassroomProgress(taught=30, total=90, percentage=33),
+    frequency=ClassroomAttendance(
+        entries=(
+            AttendanceEntry(
+                occurred_on=date(2026, 9, 20), status=AttendanceStatus.PRESENTE
+            ),
+            AttendanceEntry(
+                occurred_on=date(2026, 9, 22), status=AttendanceStatus.FALTA, absences=2
+            ),
+            AttendanceEntry(
+                occurred_on=date(2026, 9, 24), status=AttendanceStatus.NAO_REGISTRADA
+            ),
+        ),
+        attended=28,
+        registered=30,
+        registered_percentage=93,
+        total=90,
+        total_percentage=31,
+    ),
+)
+NOT_REGISTERED = ClassroomFrequency(progress=FREQUENCY.progress)
 
 
-@pytest.fixture
-def classrooms_sigaa(sigaa):
-    sigaa.profile = sigaa.profile.replace("</body>", f"{DASHBOARD}</body>")
-    sigaa.classrooms = HISTORY
-    return sigaa
+# Aulas da tarde pelas horas-aula.
+_ENDS = {1: time(14, 55), 2: time(15, 50), 3: time(16, 55)}
 
 
-def test_login_e_listagem_retornam_apenas_turmas_atuais(client, classrooms_sigaa):
-    login = client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
+def _row(
+    day: date,
+    status: LessonStatus | None = None,
+    *,
+    marked: bool = False,
+    absences: int | None = None,
+    hours: int = 2,
+    scheduled: bool = True,
+) -> tuple[Lesson, Attendance | None]:
+    lesson = Lesson(
+        id=uuid4(),
+        occurred_on=day,
+        start_time=time(14),
+        end_time=_ENDS[hours],
+        scheduled=scheduled,
     )
-    assert login.status_code == 200
-    requests_before = classrooms_sigaa.classrooms_requests
+    if status is None:
+        return lesson, None
+    return lesson, Attendance(status=status, absences=absences, marked=marked)
 
-    response = client.get("/classrooms")
 
-    assert response.status_code == 200
-    assert response.json() == [
-        {
-            "id": "CURRENT",
-            "sigaa_id": 123,
-            "number": "01",
-            "semester": "2026.2",
-            "schedule": "35M5 35T1",
-            "room": "MOCAP",
-            "current": True,
-            "subject": {
-                "name": "ESTRUTURAS DE DADOS 1",
-                "code": "FGA0146",
-                "hours": 60,
-                "unit": {"id": 673, "code": "FCTE", "name": "CAMPUS UNB GAMA"},
-            },
-            "grade": None,
-            "status": "cursando",
-            "professors": [],
-            "vacancies": None,
-            "occupied": None,
-        }
+def _sigaa_rows() -> list[tuple[Lesson, Attendance | None]]:
+    """As aulas com chamada em FREQUENCY, de duas horas-aula."""
+    return [
+        _row(date(2026, 9, 20), LessonStatus.PRESENTE, absences=0),
+        _row(date(2026, 9, 22), LessonStatus.FALTA, absences=2),
     ]
-    # Só a sessão do usuário segue aberta: cada job encerrou a sua.
-    assert classrooms_sigaa.logins - classrooms_sigaa.logouts == 1
-    # O login já sincronizou as turmas: a listagem sai do cache.
-    assert classrooms_sigaa.classrooms_requests == requests_before
-    assert client.get("/me").status_code == 200
 
 
-def test_refresh_reflete_alteracoes_no_sigaa(client, classrooms_sigaa, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    assert client.get("/classrooms").json()[0]["room"] == "MOCAP"
-    classrooms_sigaa.profile = classrooms_sigaa.profile.replace("MOCAP", "SALA 02")
-    assert client.get("/classrooms").json()[0]["room"] == "MOCAP"
-
-    response = client.get("/classrooms", headers=NO_CACHE)
-
-    assert response.status_code == 200
-    assert response.json()[0]["room"] == "SALA 02"
-    assert client.get("/classrooms").json()[0]["room"] == "SALA 02"
-    assert classrooms_sigaa.classrooms_requests == 2
-
-
-def test_lista_todas_as_turmas_ativas(client, classrooms_sigaa, cookies):
-    second_row = """
-      <tr><td class="descricao"><form id="form_acessarTurmaVirtual2">
-        <a onclick="jsfcljs(x,{'frontEndIdTurma':'SECOND'},'');">OUTRA DISCIPLINA</a>
-      </form></td><td>FCTE - SALA 02</td><td>24T23</td></tr>
-    """
-    classrooms_sigaa.profile = classrooms_sigaa.profile.replace(
-        DASHBOARD, DASHBOARD.replace("</table>", f"{second_row}</table>")
+def _view(
+    rows,
+    summary: ClassroomFrequency = FREQUENCY,
+    now: datetime = datetime(2026, 10, 1),
+    workload: int | None = 60,
+) -> ClassroomFrequencyView:
+    return ClassroomFrequencyView.build(
+        FrequencySummary.of(summary), rows, now=now, workload=workload
     )
-    classrooms_sigaa.classrooms = HISTORY.replace("2025.2", "2026.2").replace(
-        "'OLD'", "'SECOND'"
+
+
+def _hours(schedule: str) -> dict[int, tuple[int, ...]]:
+    sessions = Timetable.parse(schedule).sessions
+    return {
+        day: tuple(hours(period.start, period.end) for period in day_sessions)
+        for day, day_sessions in sessions.items()
+    }
+
+
+def test_horario_vira_aulas_por_dia_com_inicio_e_fim():
+    assert Timetable.parse("35T23").sessions == {
+        1: (Period(time(14), time(15, 50)),),
+        3: (Period(time(14), time(15, 50)),),
+    }
+    # Horários consecutivos são uma aula só, mesmo entre turnos ou blocos; separados, duas.
+    assert Timetable.parse("35M5 35T1").sessions[1] == (Period(time(12), time(13, 50)),)
+    assert _hours("3M12 3M34") == {1: (4,)}
+    assert Timetable.parse("3M12 3T45").sessions[1] == (
+        Period(time(8), time(9, 50)),
+        Period(time(16), time(17, 50)),
     )
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms")
-
-    assert response.status_code == 200
-    assert [item["id"] for item in response.json()] == ["CURRENT", "SECOND"]
+    assert _hours("6M1234 6M12") == {4: (4,)}
+    assert Timetable.parse(None).sessions == {}
+    assert Timetable.parse("99Z9 2N6").sessions == {}
 
 
-def test_sem_turmas_atuais_retorna_lista_vazia(client, sigaa, cookies):
-    sigaa.classrooms = HISTORY
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms")
-
-    assert response.status_code == 200
-    assert response.json() == []
+def test_horas_aula_pelo_inicio_e_fim():
+    assert hours(time(8), time(9, 50)) == 2
+    assert hours(time(19), time(22, 30)) == 4
+    assert hours(None, None) == 1
 
 
-def test_campos_opcionais_ausentes_retornam_null(client, classrooms_sigaa, cookies):
-    classrooms_sigaa.profile = classrooms_sigaa.profile.replace(
-        "FCTE - MOCAP", ""
-    ).replace("35M5 35T1", "")
-    classrooms_sigaa.classrooms = HISTORY.replace("60h", "").replace("35M5 35T1", "")
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms")
-
-    assert response.status_code == 200
-    classroom = response.json()[0]
-    assert classroom["room"] is None
-    assert classroom["schedule"] is None
-    assert classroom["subject"]["unit"] is None
-    assert classroom["subject"]["hours"] is None
+def test_aula_fora_do_horario_fica_sem_horario():
+    timetable = Timetable.parse("2M12 4M123 6M123")
+    assert timetable.period(date(2026, 8, 10), 0) == Period(time(8), time(9, 50))
+    assert timetable.period(date(2026, 8, 10), 1) is None
+    assert timetable.period(date(2026, 8, 15), 0) is None
+    assert Timetable.parse(None).period(date(2026, 8, 10), 0) is None
 
 
-def test_unidade_do_componente_nao_se_perde_para_local_desconhecido(
-    client, classrooms_sigaa, database
-):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
+def test_banco_aceita_uma_so_aula_sem_horario_por_dia():
+    ddl = str(CreateTable(Lesson.__table__).compile(dialect=postgresql.dialect()))
+    assert "NULLS NOT DISTINCT (classroom_id, occurred_on, start_time)" in ddl
+
+
+def test_plano_cobre_o_semestre_pelo_horario_sem_feriados():
+    plan = Timetable.parse("35M5 35T1").plan(class_days("2026.2"))
+    assert plan[0] == (date(2026, 8, 11), Period(time(12), time(13, 50)))
+    assert date(2026, 9, 22) not in {day for day, _ in plan}
+    assert {day.weekday() for day, _ in plan} == {1, 3}
+    assert plan[-1][0] == date(2026, 12, 10)
+    assert Timetable.parse("3M12 3T45").plan([date(2026, 8, 11)]) == [
+        (date(2026, 8, 11), Period(time(8), time(9, 50))),
+        (date(2026, 8, 11), Period(time(16), time(17, 50))),
+    ]
+    assert Timetable.parse(None).plan(class_days("2026.2")) == []
+
+
+def test_entradas_do_mesmo_dia_ganham_posicoes_em_ordem():
+    entries = [
+        AttendanceEntry(occurred_on=date(2026, 9, 15), status=AttendanceStatus.FALTA),
+        AttendanceEntry(
+            occurred_on=date(2026, 9, 15), status=AttendanceStatus.PRESENTE
+        ),
+        AttendanceEntry(occurred_on=date(2026, 9, 17), status=AttendanceStatus.FALTA),
+    ]
+    assert [slot for slot, _ in positioned(entries)] == [
+        (date(2026, 9, 15), 0),
+        (date(2026, 9, 15), 1),
+        (date(2026, 9, 17), 0),
+    ]
+
+
+def test_mostra_previstas_ja_comecadas_e_sempre_as_publicadas_ou_com_situacao():
+    rows = [
+        _row(date(2026, 9, 21)),
+        _row(date(2026, 9, 22)),
+        _row(date(2026, 9, 24), scheduled=False),
+        _row(date(2026, 9, 23), LessonStatus.CANCELADA, marked=True),
+    ]
+    view = _view(rows, NOT_REGISTERED, now=datetime(2026, 9, 22, 13, 59))
+    assert [(lesson.occurred_on, lesson.status) for lesson in view.lessons] == [
+        (date(2026, 9, 24), LessonStatus.NAO_REGISTRADA),
+        (date(2026, 9, 23), LessonStatus.CANCELADA),
+        (date(2026, 9, 21), LessonStatus.NAO_REGISTRADA),
+    ]
+
+
+def test_aula_de_hoje_aparece_assim_que_comeca():
+    rows = [_row(date(2026, 9, 21)), _row(date(2026, 9, 22))]
+    view = _view(rows, NOT_REGISTERED, now=datetime(2026, 9, 22, 14))
+    assert [lesson.occurred_on for lesson in view.lessons] == [
+        date(2026, 9, 22),
+        date(2026, 9, 21),
+    ]
+
+
+def test_falta_marcada_conta_a_aula_toda_e_a_do_sigaa_suas_horas():
+    rows = [
+        *_sigaa_rows(),
+        _row(date(2026, 9, 24)),
+        _row(date(2026, 9, 25), LessonStatus.FALTA, marked=True, hours=3),
+    ]
+    assert [
+        (lesson.occurred_on, lesson.status, lesson.absences, lesson.marked)
+        for lesson in _view(rows).lessons
+    ] == [
+        (date(2026, 9, 25), LessonStatus.FALTA, 3, True),
+        (date(2026, 9, 24), LessonStatus.NAO_REGISTRADA, 0, False),
+        (date(2026, 9, 22), LessonStatus.FALTA, 2, False),
+        (date(2026, 9, 20), LessonStatus.PRESENTE, 0, False),
+    ]
+
+
+def test_totais_contam_aulas_com_marcacoes():
+    marks = [
+        _row(date(2026, 9, 24), LessonStatus.FALTA, marked=True),
+        _row(date(2026, 9, 25), LessonStatus.PRESENTE, marked=True),
+        _row(date(2026, 9, 28), LessonStatus.CANCELADA, marked=True),
+        _row(date(2026, 9, 29)),
+    ]
+    # 12 horas-aula, 4 de falta: 8 / 12.
+    assert _view([*_sigaa_rows(), *marks]).totals == FrequencyTotals(
+        presences=4, absences=4, percentage=66.7, max_absences=15, estimated=True
     )
-    assert client.get("/classrooms").json()[0]["subject"]["unit"]["code"] == "FCTE"
-
-    # O local passa a vir com um prefixo que não é unidade: o vínculo anterior fica.
-    classrooms_sigaa.profile = classrooms_sigaa.profile.replace("FCTE - ", "Térreo - ")
-    response = client.get("/classrooms", headers=NO_CACHE)
-
-    assert response.json()[0]["subject"]["unit"]["code"] == "FCTE"
-    with database() as session:
-        assert session.scalar(select(SubjectModel.unit_id)) == 673
-
-
-@pytest.mark.parametrize("refresh", [None, "invalido", "expirado"])
-def test_sem_credenciais_validas_retorna_401(client, sigaa, refresh):
-    if refresh == "expirado":
-        refresh = encrypt_cookie(
-            REFRESH_COOKIE_NAME,
-            {
-                "registration": "251000000",
-                "password": "senha123",
-                "exp": int((datetime.now(UTC) - timedelta(minutes=1)).timestamp()),
-            },
-        )
-    if refresh is not None:
-        client.cookies.set(REFRESH_COOKIE_NAME, refresh)
-
-    assert client.get("/classrooms").status_code == 401
-    assert sigaa.logins == 0
-    assert sigaa.classrooms_requests == 0
-
-
-@pytest.mark.parametrize("access", [None, "app14~MORTO"])
-def test_renova_sessao_e_retorna_as_turmas(client, classrooms_sigaa, cookies, access):
-    client.cookies.update(cookies(access=access, refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms")
-
-    assert response.status_code == 200
-    assert response.json()[0]["id"] == "CURRENT"
-    assert classrooms_sigaa.logins == 1
-    assert ACCESS_COOKIE_NAME in response.cookies
-    assert REFRESH_COOKIE_NAME in response.cookies
-    assert client.get("/classrooms").status_code == 200
-    assert classrooms_sigaa.logins == 1
-
-
-@pytest.mark.parametrize("access", [None, "app14~MORTO"])
-def test_senha_recusada_retorna_401(client, classrooms_sigaa, cookies, access):
-    classrooms_sigaa.password = "senha-alterada"
-    client.cookies.update(cookies(access=access, refresh=CREDENCIAIS))
-
-    assert client.get("/classrooms").status_code == 401
-
-
-@pytest.mark.parametrize("access", [None, "app14~VIVO"])
-def test_sigaa_indisponivel_retorna_502(client, classrooms_sigaa, cookies, access):
-    classrooms_sigaa.unavailable = True
-    client.cookies.update(cookies(access=access, refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms")
-
-    assert response.status_code == 502
-    assert response.json() == {"detail": "SIGAA is unavailable"}
-
-
-@pytest.mark.parametrize("status_code", [403, 500, 503])
-def test_erro_http_na_listagem_retorna_502(
-    client, classrooms_sigaa, cookies, status_code
-):
-    classrooms_sigaa.classrooms_status = status_code
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    assert client.get("/classrooms").status_code == 502
-
-
-def test_html_da_listagem_invalido_retorna_502(client, classrooms_sigaa, cookies):
-    classrooms_sigaa.classrooms = "<html>layout inesperado</html>"
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    assert client.get("/classrooms").status_code == 502
-
-
-def test_logout_impede_nova_consulta(client, classrooms_sigaa):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    assert client.get("/classrooms").status_code == 200
-    assert client.delete("/auth/sigaa").status_code == 200
-    assert client.get("/classrooms").status_code == 401
-
-
-def test_openapi_documenta_lista_de_turmas_e_401(client):
-    schema = client.get("/openapi.json").json()
-    route = schema["paths"]["/classrooms"]["get"]
-    assert "401" in route["responses"]
-    response_schema = route["responses"]["200"]["content"]["application/json"]["schema"]
-    assert response_schema["type"] == "array"
-    assert (
-        response_schema["items"]["$ref"] == "#/components/schemas/ParticipantClassroom"
-    )
-    assert {"number", "semester", "schedule", "room", "subject", "grade"} <= schema[
-        "components"
-    ]["schemas"]["ParticipantClassroom"]["properties"].keys()
-    assert {"name", "code", "hours", "unit"} <= schema["components"]["schemas"][
-        "Subject"
-    ]["properties"].keys()
-    parameter = next(p for p in route["parameters"] if p["name"] == "semester")
-    assert parameter["in"] == "query"
-    assert parameter["required"] is False
-    assert "422" in route["responses"]
-    assert "502" in route["responses"]
 
 
 @pytest.mark.parametrize(
-    "semester,expected",
-    [
-        ("all", ["CURRENT", "OLD"]),
-        ("2026.2", ["CURRENT"]),
-        ("2025.2", ["OLD"]),
-        ("2020.1", []),
-    ],
+    "workload,expected", [(60, 15), (90, 22), (30, 7), (None, None)]
 )
-def test_filtro_por_semestre_consulta_as_duas_paginas_uma_vez(
-    client, classrooms_sigaa, cookies, database, semester, expected
-):
-    # Com o perfil já no cache, gravar as turmas não precisa buscá-lo.
-    with database() as session:
-        session.add(
-            User(
-                name="NOME DISCENTE",
-                registration=CREDENCIAIS.registration,
-                profile_synced_at=datetime.now(UTC),
-            )
-        )
-        session.commit()
-    classrooms_sigaa.valid_tokens.add("app14~VIVO")
-    client.cookies.update(cookies(access="app14~VIVO", refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms", params={"semester": semester})
-
-    assert response.status_code == 200
-    assert [classroom["id"] for classroom in response.json()] == expected
-    assert classrooms_sigaa.profile_requests == 1
-    assert classrooms_sigaa.classrooms_requests == 1
-    assert classrooms_sigaa.logins == 0
+def test_maximo_de_faltas_e_um_quarto_da_carga_horaria(workload, expected):
+    assert max_absences(workload) == expected
 
 
-def test_historico_preserva_campos_das_turmas_atuais(client, classrooms_sigaa, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    current = client.get("/classrooms").json()
-
-    response = client.get("/classrooms?semester=all")
-
-    assert response.status_code == 200
-    assert response.json()[0] == current[0]
-    assert response.json()[1] == {
-        "id": "OLD",
-        "sigaa_id": None,
-        "number": "02",
-        "semester": "2025.2",
-        "schedule": "24T23",
-        "room": None,
-        "current": False,
-        "subject": {
-            "name": "ORIENTAÇÃO A OBJETOS",
-            "code": "FGA0158",
-            "hours": 60,
-            "unit": None,
-        },
-        "grade": None,
-        "status": "concluido",
-        "professors": [],
-        "vacancies": None,
-        "occupied": None,
-    }
-
-
-@pytest.mark.parametrize("semester", ["", "2026", "2026-2", "2026.22", "ALL"])
-def test_semestre_invalido_retorna_422_sem_buscar_turmas(
-    client, classrooms_sigaa, cookies, semester
-):
-    classrooms_sigaa.valid_tokens.add("app14~VIVO")
-    client.cookies.update(cookies(access="app14~VIVO", refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms", params={"semester": semester})
-
-    assert response.status_code == 422
-    assert classrooms_sigaa.profile_requests == 0
-    assert classrooms_sigaa.classrooms_requests == 0
-
-
-def test_filtro_renova_sessao_expirada(client, classrooms_sigaa, cookies):
-    client.cookies.update(cookies(access="app14~MORTO", refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms?semester=all")
-
-    assert response.status_code == 200
-    assert any(item["id"] == "OLD" for item in response.json())
-    assert classrooms_sigaa.logins == 1
-    assert ACCESS_COOKIE_NAME in response.cookies
-
-
-def test_filtro_com_erro_no_sigaa_retorna_502(client, classrooms_sigaa, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    classrooms_sigaa.classrooms_status = 503
-
-    assert client.get("/classrooms?semester=all").status_code == 502
-
-
-ATUAL = Classroom(
-    id="AAA",
-    number="01",
-    semester="2026.2",
-    current=True,
-    subject=Subject(code="FGA0146", name="ESTRUTURAS DE DADOS 1"),
-)
-ANTIGA = Classroom(
-    id="BBB",
-    number="02",
-    semester="2025.2",
-    subject=Subject(code="FGA0158", name="ORIENTAÇÃO A OBJETOS"),
-)
-PARTICIPANTES = [
-    ClassroomMember(
-        name="ZECA",
-        role=ClassroomRole.ALUNO,
-        registration="2",
-        course="ENGENHARIA DE SOFTWARE",
-        unit="FCTE",
-    ),
-    ClassroomMember(name="NOME DOCENTE", role=ClassroomRole.PROFESSOR),
-    ClassroomMember(name="ANA", role=ClassroomRole.ALUNO, registration="3"),
-]
-
-
-@pytest.fixture
-def turmas(stub_sigaa):
-    stub_sigaa.classrooms.list_classrooms.return_value = [ATUAL, ANTIGA]
-    stub_sigaa.classrooms.list_classroom_members.return_value = PARTICIPANTES
-    stub_sigaa.classrooms.get_classroom_statistics.return_value = (
-        StatisticsShare(situation=StudentSituation.MATRICULADO, percentage=10),
-        StatisticsShare(situation=StudentSituation.APROVADO, percentage=90),
-    )
-    return stub_sigaa
-
-
-def test_participantes_saem_do_cache_do_login(client, sigaa, turmas):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    lidas = turmas.classrooms.list_classroom_members.await_count
-
-    response = client.get("/classrooms/AAA/members")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert [m["name"] for m in body["students"]] == ["ANA", "ZECA"]
-    assert body["monitors"] == []
-    assert body["professors"] == [
-        {"siape": None, "name": "NOME DOCENTE", "photo": None, "email": None}
+def test_totais_contam_horas_aula_de_cada_dia():
+    rows = [
+        _row(date(2026, 9, d), LessonStatus.PRESENTE, absences=0) for d in range(1, 20)
     ]
-    assert body["students"][0]["registration"] == "3"
-    assert body["students"][1]["course"]["name"] == "ENGENHARIA DE SOFTWARE"
-    assert body["students"][1]["unit"] == {
-        "id": 673,
-        "code": "FCTE",
-        "name": "CAMPUS UNB GAMA",
-    }
-    assert turmas.classrooms.list_classroom_members.await_count == lidas
-
-
-def test_participantes_sem_cache_buscam_as_turmas_antes(client, turmas, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    primeira = client.get("/classrooms/BBB/members")
-    segunda = client.get("/classrooms/BBB/members")
-
-    assert primeira.status_code == segunda.status_code == 200
-    assert primeira.json() == segunda.json()
-    assert turmas.classrooms.list_classrooms.await_count == 1
-    assert turmas.classrooms.list_classroom_members.await_count == 1
-
-
-def test_turma_fora_da_lista_do_usuario_retorna_404(client, turmas, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    response = client.get("/classrooms/DE-OUTRO-ALUNO/members")
-    assert response.status_code == 404
-    turmas.classrooms.list_classroom_members.assert_not_awaited()
-
-
-def test_turma_nova_fora_do_cache_rele_a_lista(client, sigaa, turmas):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
+    rows.append(_row(date(2026, 9, 21), LessonStatus.FALTA, absences=2))
+    rows.append(_row(date(2026, 9, 22), LessonStatus.FALTA, absences=2))
+    assert _view(rows).totals == FrequencyTotals(
+        presences=38, absences=4, percentage=90.5, max_absences=15, estimated=False
     )
-    nova = ATUAL.model_copy(update={"id": "CCC", "number": "02"})
-    turmas.classrooms.list_classrooms.return_value = [ATUAL, nova, ANTIGA]
-
-    response = client.get("/classrooms/CCC/members")
-
-    assert response.status_code == 200
-    assert turmas.classrooms.list_classrooms.await_count == 2
-    assert turmas.classrooms.list_classroom_members.await_args.args == ("CCC",)
 
 
-def test_detalhes_de_turma_passada_nunca_revalidam(client, sigaa, turmas, database):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    with database() as session:
-        session.execute(
-            update(ClassroomModel).values(
-                members_synced_at=datetime.now(UTC) - timedelta(days=365)
-            )
-        )
-        session.commit()
-
-    client.get("/classrooms/BBB/members")
-    assert turmas.classrooms.list_classroom_members.await_count == 2
-    client.get("/classrooms/AAA/members")
-    assert turmas.classrooms.list_classroom_members.await_count == 3
+def test_turma_sem_carga_horaria_nao_tem_maximo_de_faltas():
+    assert _view(_sigaa_rows(), workload=None).totals.max_absences is None
 
 
-def test_refresh_dos_participantes_busca_no_sigaa(client, sigaa, turmas):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    turmas.classrooms.list_classroom_members.return_value = PARTICIPANTES[:1]
-
-    response = client.get("/classrooms/AAA/members", headers=NO_CACHE)
-
-    assert response.json() == client.get("/classrooms/AAA/members").json()
-    assert [m["name"] for m in response.json()["students"]] == ["ZECA"]
-    assert response.json()["professors"] == []
+def test_turma_sem_horario_nao_tem_maximo_de_faltas():
+    rows = [_row(date(2026, 9, 20), LessonStatus.PRESENTE, scheduled=False)]
+    assert _view(rows).totals.max_absences is None
 
 
-def test_detalhes_com_sigaa_fora_retornam_502(client, turmas, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    turmas.classrooms.list_classroom_members.side_effect = SigaaError("fora")
-
-    assert client.get("/classrooms/AAA/members").status_code == 502
-
-
-def test_openapi_documenta_participantes_e_estatisticas(client):
-    paths = client.get("/openapi.json").json()["paths"]
-
-    route = paths["/classrooms/{classroom_id}/members"]["get"]
-    assert {"401", "404", "502"} <= route["responses"].keys()
-    assert any(p["name"] == "Cache-Control" for p in route["parameters"])
-    assert "/classrooms/{classroom_id}/statistics" in paths
+def test_aula_sem_chamada_ou_cancelada_conta_como_presenca_so_na_porcentagem():
+    totals = _view([*_sigaa_rows(), _row(date(2026, 9, 24))]).totals
+    assert (totals.presences, totals.absences, totals.percentage) == (2, 2, 66.7)
+    cancelada = _row(date(2026, 9, 24), LessonStatus.CANCELADA, marked=True)
+    assert _view([*_sigaa_rows(), cancelada]).totals == totals
 
 
-def test_refresh_atualiza_turmas_antigas(client, sigaa, turmas):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    antiga = ANTIGA.model_copy(update={"schedule": "24T45", "room": "SALA 07"})
-    turmas.classrooms.list_classrooms.return_value = [ATUAL, antiga]
-
-    response = client.get("/classrooms?semester=2025.2", headers=NO_CACHE)
-
-    assert response.json()[0]["schedule"] == "24T45"
-    assert response.json()[0]["room"] == "SALA 07"
-    assert client.get("/classrooms?semester=2025.2").json() == response.json()
-
-
-def test_detalhes_revalidam_a_lista_de_turmas_vencida(client, sigaa, turmas, database):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    with database() as session:
-        session.execute(
-            update(User).values(
-                classrooms_synced_at=datetime.now(UTC) - timedelta(days=4)
-            )
-        )
-        session.commit()
-    # A turma foi trancada: o acesso a ela some depois da revalidação.
-    turmas.classrooms.list_classrooms.return_value = [ANTIGA]
-
-    assert client.get("/classrooms/AAA/members").status_code == 200
-    assert turmas.classrooms.list_classrooms.await_count == 2
-    assert client.get("/classrooms/AAA/members").status_code == 404
-
-
-def test_detalhes_aceitam_sigaa_id(client, turmas, cookies):
-    turmas.classrooms.list_classrooms.return_value = [
-        ATUAL.model_copy(update={"sigaa_id": 1614100})
+def test_falta_parcial_do_sigaa_conta_so_as_horas_de_falta():
+    rows = [
+        _row(date(2026, 9, 20), LessonStatus.PRESENTE, absences=0),
+        _row(date(2026, 9, 22), LessonStatus.FALTA, absences=1, hours=3),
     ]
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    por_sigaa_id = client.get("/classrooms/1614100/members")
-
-    assert por_sigaa_id.status_code == 200
-    assert client.get("/classrooms/AAA/members").json() == por_sigaa_id.json()
-    assert turmas.classrooms.list_classrooms.await_count == 1
+    totals = _view(rows).totals
+    assert (totals.presences, totals.absences, totals.percentage) == (4, 1, 80)
 
 
-@pytest.mark.parametrize("classroom_id", ["99999999999", "-1", "1614100.0"])
-def test_sigaa_id_fora_do_formato_retorna_404(client, turmas, cookies, classroom_id):
-    turmas.classrooms.list_classrooms.return_value = [
-        ATUAL.model_copy(update={"sigaa_id": 1614100})
+def test_totais_sem_chamada_do_sigaa_vem_so_das_marcacoes():
+    marks = [
+        _row(date(2026, 9, 24), LessonStatus.PRESENTE, marked=True),
+        _row(date(2026, 9, 25), LessonStatus.FALTA, marked=True),
     ]
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    assert client.get(f"/classrooms/{classroom_id}/members").status_code == 404
-
-
-def _participantes_sincronizados_em(database, synced_at: datetime) -> None:
-    with database() as session:
-        session.execute(update(ClassroomModel).values(members_synced_at=synced_at))
-        session.commit()
-
-
-# 2026.2 termina em 18/12: com a tolerância, a lista congela no sync a partir de 22/12.
-def test_participantes_fazem_um_ultimo_sync_depois_da_tolerancia_do_semestre(
-    client, sigaa, turmas, database, hoje
-):
-    synced_at = datetime(2026, 9, 22, tzinfo=UTC)
-    login = {"registration": "251000000", "password": "senha123"}
-    client.post("/auth/sigaa", json=login)
-    hoje(date(2026, 12, 22))
-    _participantes_sincronizados_em(database, synced_at)
-    lidas = turmas.classrooms.list_classroom_members.await_count
-
-    # Servida do cache, a lista vence mesmo sem TTL e revalida por job.
-    assert client.get("/classrooms/AAA/members").status_code == 200
-    assert turmas.classrooms.list_classroom_members.await_count == lidas + 1
-
-    _participantes_sincronizados_em(database, synced_at)
-    client.post("/auth/sigaa", json=login)
-    assert turmas.classrooms.list_classroom_members.await_count == lidas + 2
-
-
-def test_participantes_nao_ressincronizam_depois_do_ultimo_sync(
-    client, sigaa, turmas, database, hoje
-):
-    login = {"registration": "251000000", "password": "senha123"}
-    client.post("/auth/sigaa", json=login)
-    hoje(date(2026, 12, 23))
-    _participantes_sincronizados_em(database, datetime(2026, 12, 22, 12, tzinfo=UTC))
-    lidas = turmas.classrooms.list_classroom_members.await_count
-
-    client.post("/auth/sigaa", json=login)
-    assert client.get("/classrooms/AAA/members").status_code == 200
-    assert client.get("/classrooms/AAA/members", headers=NO_CACHE).status_code == 200
-
-    assert turmas.classrooms.list_classroom_members.await_count == lidas
-
-
-def test_participantes_sem_cache_buscam_depois_da_tolerancia_do_semestre(
-    client, turmas, cookies, hoje
-):
-    hoje(date(2026, 12, 22))
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-
-    assert len(client.get("/classrooms/AAA/members").json()["students"]) == 2
-    assert turmas.classrooms.list_classroom_members.await_count == 1
-
-
-def _login(client) -> None:
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
+    assert _view(marks, NOT_REGISTERED).totals == FrequencyTotals(
+        presences=2, absences=2, percentage=50, max_absences=15, estimated=True
     )
+    cancelada = _row(date(2026, 9, 24), LessonStatus.CANCELADA, marked=True)
+    assert _view([cancelada], NOT_REGISTERED).totals is None
 
 
-def _mencoes_sincronizadas_em(database, synced_at: datetime) -> None:
-    with database() as session:
-        session.execute(update(User).values(grades_synced_at=synced_at))
-        session.commit()
-
-
-def _mencoes_sincronizadas(database) -> datetime | None:
-    with database() as session:
-        return session.scalar(
-            select(User.grades_synced_at).where(User.registration == "251000000")
-        )
-
-
-def test_mencao_vem_com_a_turma_pelo_sync_do_login(client, sigaa, turmas, qstash):
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0146", semester="2026.2"),
-        ClassroomGrade(subject_code="FGA0158", semester="2025.2", grade=Grade.MS),
+def test_previstas_futuras_ficam_em_upcoming():
+    rows = [_row(date(2026, 9, 21)), _row(date(2026, 9, 24)), _row(date(2026, 9, 23))]
+    view = _view(rows, NOT_REGISTERED, now=datetime(2026, 9, 22, 13, 59))
+    assert [lesson.occurred_on for lesson in view.upcoming] == [
+        date(2026, 9, 23),
+        date(2026, 9, 24),
     ]
-    _login(client)
-
-    response = client.get("/classrooms?semester=all")
-
-    assert {c["id"]: c["grade"] for c in response.json()} == {"AAA": None, "BBB": "MS"}
-    turmas.classrooms.list_grades.assert_awaited_once_with()
-    assert all(
-        "sync_grades" not in [step.task for step in job.steps] for job in qstash.jobs()
-    )
-
-
-def test_mencoes_vencidas_revalidam_no_login(client, sigaa, turmas, database):
-    _login(client)
-    vencida = datetime.now(UTC) - timedelta(days=2)
-    _mencoes_sincronizadas_em(database, vencida)
-    turmas.classrooms.list_grades.reset_mock()
-
-    _login(client)
-
-    turmas.classrooms.list_grades.assert_awaited_once_with()
-    assert _mencoes_sincronizadas(database) > vencida
-
-
-def test_turma_nova_na_lista_revalida_as_mencoes(client, turmas, database):
-    _login(client)
-    turmas.classrooms.list_grades.reset_mock()
-    nova = ATUAL.model_copy(update={"id": "CCC", "number": "02"})
-    turmas.classrooms.list_classrooms.return_value = [
-        *turmas.classrooms.list_classrooms.return_value,
-        nova,
-    ]
-
-    client.get("/classrooms", headers=NO_CACHE)
-    _login(client)
-
-    turmas.classrooms.list_grades.assert_awaited_once_with()
-
-
-def test_mencao_nula_de_semestre_consolidado_continua_revalidando(
-    client, turmas, database
-):
-    turmas.classrooms.list_classrooms.return_value = [ANTIGA]
-    _login(client)
-    _mencoes_sincronizadas_em(database, datetime.now(UTC) - timedelta(days=2))
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0158", semester="2025.2", grade=Grade.MS)
-    ]
-
-    _login(client)
-
-    assert client.get("/classrooms?semester=all").json()[0]["grade"] == "MS"
-
-
-def test_mencoes_associam_codigo_e_semestre_sem_confundir_repeticao(client, turmas):
-    antiga = ATUAL.model_copy(
-        update={"id": "BBB", "semester": "2025.2", "current": False}
-    )
-    turmas.classrooms.list_classrooms.return_value = [ATUAL, antiga]
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0146", semester="2026.2", grade=Grade.MS),
-        ClassroomGrade(subject_code="FGA0146", semester="2025.2", grade=Grade.MI),
-        ClassroomGrade(subject_code="OUTRA", semester="2026.2", grade=Grade.SS),
-    ]
-    _login(client)
-
-    assert {
-        c["id"]: c["grade"] for c in client.get("/classrooms?semester=all").json()
-    } == {"AAA": "MS", "BBB": "MI"}
-    turmas.classrooms.list_grades.assert_awaited_once_with()
-
-
-def test_mencoes_frescas_nao_releem_relatorio(client, turmas):
-    _login(client)
-    turmas.classrooms.list_grades.reset_mock()
-
-    _login(client)
-
-    turmas.classrooms.list_grades.assert_not_awaited()
-
-
-def test_resultado_vazio_no_relatorio_limpa_a_mencao(client, turmas, database):
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0146", semester="2026.2", grade=Grade.MS)
-    ]
-    _login(client)
-    _mencoes_sincronizadas_em(database, datetime.now(UTC) - timedelta(days=2))
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0146", semester="2026.2")
-    ]
-
-    _login(client)
-
-    assert client.get("/classrooms").json()[0]["grade"] is None
-
-
-def test_disciplina_ausente_do_relatorio_preserva_a_mencao(client, turmas, database):
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0146", semester="2026.2", grade=Grade.MS),
-        ClassroomGrade(subject_code="FGA0158", semester="2025.2", grade=Grade.SS),
-    ]
-    _login(client)
-    _mencoes_sincronizadas_em(database, datetime.now(UTC) - timedelta(days=2))
-    turmas.classrooms.list_grades.return_value = []
-
-    _login(client)
-
-    assert turmas.classrooms.list_grades.await_count == 2
-    assert {
-        c["id"]: c["grade"] for c in client.get("/classrooms?semester=all").json()
-    } == {"AAA": "MS", "BBB": "SS"}
-
-
-def test_falha_no_relatorio_preserva_mencoes_e_tenta_uma_vez(
-    client, turmas, database, qstash
-):
-    turmas.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="FGA0146", semester="2026.2", grade=Grade.MS)
-    ]
-    _login(client)
-    synced_at = datetime.now(UTC) - timedelta(days=2)
-    _mencoes_sincronizadas_em(database, synced_at)
-    turmas.classrooms.list_grades.reset_mock()
-    turmas.classrooms.list_grades.side_effect = SigaaError("relatório indisponível")
-
-    _login(client)
-
-    assert client.get("/classrooms").json()[0]["grade"] == "MS"
-    assert turmas.classrooms.list_grades.await_count == 2
-    assert _mencoes_sincronizadas(database) == synced_at
-    assert qstash.jobs()[-1].attempt == 2
-
-
-def test_falha_no_relatorio_nao_impede_jobs_das_turmas(client, turmas, qstash):
-    turmas.classrooms.list_grades.side_effect = SigaaError("relatório indisponível")
-
-    _login(client)
-
-    assert sorted(
-        call.args[0]
-        for call in turmas.classrooms.list_classroom_members.await_args_list
-    ) == ["AAA", "BBB"]
-    assert turmas.classrooms.list_grades.await_count == 2
-    assert {response.status_code for response in qstash.deliveries} == {204}
-
-
-AGORA = datetime(2026, 9, 22, tzinfo=UTC)
-
-
-def _turma(
-    front_end_id: str,
-    code: str = "FGA0146",
-    semester: str = "2026.2",
-    *,
-    room: str | None = None,
-    current: bool = False,
-) -> sigaa_client.Classroom:
-    return sigaa_client.Classroom(
-        id=front_end_id,
-        number="01",
-        semester=semester,
-        room=room,
-        current=current,
-        subject=sigaa_client.Subject(code=code, name=f"DISCIPLINA {code}", hours=60),
-    )
-
-
-def _membro(name: str, **fields) -> ClassroomMember:
-    return ClassroomMember(
-        name=name, role=fields.pop("role", ClassroomRole.ALUNO), **fields
-    )
-
-
-@pytest.fixture
-async def usuarios(async_database) -> list[User]:
-    async with async_database() as session:
-        users = [
-            User(
-                name=f"Discente {index}",
-                registration=f"25100000{index}",
-                level=UserLevel.GRADUACAO,
-                profile_synced_at=AGORA,
-            )
-            for index in range(2)
-        ]
-        session.add_all(users)
-        await session.commit()
-    return users
-
-
-async def _salvar_turmas(
-    async_database, user: User, turmas, synced_at: datetime = AGORA
-) -> None:
-    async with async_database() as session:
-        user = await session.get_one(User, user.id)
-        await ClassroomRepository(session).save_classroom_participants(
-            user, turmas, synced_at
-        )
-        await session.commit()
-
-
-async def _vinculos(async_database, user: User) -> list[ClassroomParticipant]:
-    async with async_database() as session:
-        links = await ClassroomRepository(session).list_by_user_id(user.id)
-    return [link.row for link in links]
-
-
-async def _contar(async_database, model) -> int:
-    async with async_database() as session:
-        return await session.scalar(select(func.count()).select_from(model))
-
-
-async def test_turmas_do_usuario_guardam_id_do_sigaa_e_semestre_atual(
-    async_database, usuarios
-):
-    await _salvar_turmas(
-        async_database,
-        usuarios[0],
-        [_turma("AAA", current=True), _turma("BBB", "FGA0158", "2025.2")],
-    )
-
-    links = await _vinculos(async_database, usuarios[0])
-
-    assert sorted((l.front_end_id, l.current, l.classroom.semester) for l in links) == [
-        ("AAA", True, "2026.2"),
-        ("BBB", False, "2025.2"),
-    ]
-    assert {l.classroom.subject.code for l in links} == {"FGA0146", "FGA0158"}
-
-
-async def _situacao_na_lista(async_database, user: User) -> dict:
-    async with async_database() as session:
-        rows = await session.execute(
-            select(
-                SubjectModel.code,
-                ClassroomParticipant.front_end_id,
-                ClassroomParticipant.status,
-                ClassroomParticipant.locked_at,
-            )
-            .join(ClassroomParticipant.classroom)
-            .join(ClassroomModel.subject)
-            .where(ClassroomParticipant.user_id == user.id)
-        )
-    return {
-        code: (front_end_id, status, locked_at)
-        for code, front_end_id, status, locked_at in rows
-    }
-
-
-async def test_turma_que_saiu_da_lista_e_trancada(async_database, usuarios):
-    await _salvar_turmas(
-        async_database, usuarios[0], [_turma("AAA"), _turma("BBB", "FGA0158")]
-    )
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-
-    links = await _vinculos(async_database, usuarios[0])
-
-    assert [l.front_end_id for l in links] == ["AAA"]
-    assert await _situacao_na_lista(async_database, usuarios[0]) == {
-        "FGA0146": ("AAA", ClassroomStatus.CURSANDO, None),
-        "FGA0158": (None, ClassroomStatus.TRANCADO, AGORA),
-    }
-
-
-async def test_turma_que_volta_para_a_lista_volta_cursando(async_database, usuarios):
-    await _salvar_turmas(
-        async_database, usuarios[0], [_turma("AAA"), _turma("BBB", "FGA0158")]
-    )
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    # O trancamento mantém a primeira data mesmo em novos syncs.
-    await _salvar_turmas(
-        async_database, usuarios[0], [_turma("AAA")], AGORA + timedelta(days=1)
-    )
-    assert (await _situacao_na_lista(async_database, usuarios[0]))["FGA0158"] == (
-        None,
-        ClassroomStatus.TRANCADO,
-        AGORA,
-    )
-
-    await _salvar_turmas(
-        async_database, usuarios[0], [_turma("AAA"), _turma("CCC", "FGA0158")]
-    )
-
-    assert (await _situacao_na_lista(async_database, usuarios[0]))["FGA0158"] == (
-        "CCC",
-        ClassroomStatus.CURSANDO,
-        None,
-    )
-
-
-async def test_turma_sem_numero_ou_codigo_nao_e_gravada(async_database, usuarios):
-    # A turma só do portal ainda não tem o número e o código que o histórico traz.
-    sem_numero = _turma("AAA", current=True).model_copy(update={"number": ""})
-    sem_codigo = _turma("CCC", current=True).model_copy(
-        update={"subject": sigaa_client.Subject(name="DISCIPLINA SEM CÓDIGO")}
-    )
-
-    await _salvar_turmas(
-        async_database,
-        usuarios[0],
-        [sem_numero, sem_codigo, _turma("BBB", "FGA0158")],
-    )
-
-    links = await _vinculos(async_database, usuarios[0])
-    assert [l.front_end_id for l in links] == ["BBB"]
-    assert await _contar(async_database, ClassroomModel) == 1
-    assert await _contar(async_database, SubjectModel) == 1
-
-
-async def test_turma_e_compartilhada_entre_alunos(async_database, usuarios):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA", room="MOCAP")])
-    # O segundo aluno só vê a turma pelo histórico, sem a sala.
-    await _salvar_turmas(async_database, usuarios[1], [_turma("XYZ")])
-
-    assert await _contar(async_database, ClassroomModel) == 1
-    assert await _contar(async_database, SubjectModel) == 1
-    link = (await _vinculos(async_database, usuarios[1]))[0]
-    assert (link.front_end_id, link.classroom.room) == ("XYZ", "MOCAP")
-
-
-async def _salvar_membros(
-    async_database, classroom_id: UUID, membros, synced_at: datetime = AGORA
-) -> None:
-    async with async_database() as session:
-        await ClassroomRepository(session).save_members(
-            classroom_id, membros, synced_at
-        )
-        await session.commit()
-
-
-async def _membros(async_database, classroom_id: UUID) -> list[ClassroomParticipant]:
-    async with async_database() as session:
-        return await ClassroomRepository(session).list_members(classroom_id)
-
-
-async def test_participantes_viram_usuarios_sombra_sem_duplicar(
-    async_database, usuarios
-):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    membros = [
-        _membro("NOME DOCENTE", role=ClassroomRole.PROFESSOR, email="d@unb.br"),
-        _membro("Discente 0", registration="251000000", email="eu@x.org"),
-        _membro("COLEGA", registration="251000009", role=ClassroomRole.MONITOR),
-    ]
-
-    await _salvar_membros(async_database, classroom_id, membros)
-    await _salvar_membros(async_database, classroom_id, membros)
-
-    links = await _membros(async_database, classroom_id)
-    # Docente não vira usuário: fica em `professors`.
-    assert sorted((l.user.name, l.role) for l in links) == [
-        ("COLEGA", DbRole.MONITOR),
-        ("Discente 0", DbRole.ALUNO),
-    ]
-    assert await _contar(async_database, User) == 3
-    assert await _contar(async_database, Professor) == 1
-    eu = next(l for l in links if l.user_id == usuarios[0].id)
-    # O vínculo da própria lista continua o mesmo, e o perfil ganha o que faltava.
-    assert (eu.front_end_id, eu.user.email) == ("AAA", "eu@x.org")
-
-
-async def test_troca_de_curso_une_a_conta_e_a_sombra_da_matricula_nova(
-    async_database, usuarios
-):
-    conta, colega = usuarios
-    await _salvar_turmas(async_database, conta, [_turma("AAA")])
-    await _salvar_turmas(async_database, colega, [_turma("BBB", "FGA0158")])
-    turmas = [
-        (await _vinculos(async_database, user))[0].classroom_id for user in usuarios
-    ]
-    # Antes do perfil, as listas de participantes já criaram a sombra da matrícula nova.
-    nova = _membro("Discente 0", registration="252000000", email="eu@x.org")
-    for classroom_id in turmas:
-        await _salvar_membros(async_database, classroom_id, [nova])
-
-    perfil = UserProfile(
-        name="Discente 0",
-        registration="252000000",
-        photo=None,
-        bio=None,
-        unit="FCTE",
-        course="ENGENHARIA DE SOFTWARE",
-        shift=None,
-        entry_semester=None,
-        integralization=None,
-        workload=None,
-        ira=None,
-        mp=None,
-        level=SigaaUserLevel.GRADUACAO,
-    )
-    async with async_database() as session:
-        await UserRepository(session).save_profile(perfil, AGORA, login="251000000")
-        await session.commit()
-
-    async with async_database() as session:
-        user = await UserRepository(session).get_by_registration("251000000")
-    assert (user.id, user.registration, user.old_registration, user.email) == (
-        conta.id,
-        "252000000",
-        "251000000",
-        "eu@x.org",
-    )
-    assert await _contar(async_database, User) == 2
-    # A turma da sombra passa para a conta, sem duplicar a que as duas tinham.
-    for classroom_id in turmas:
-        links = await _membros(async_database, classroom_id)
-        assert [l.user_id for l in links] == [conta.id]
-
-
-async def test_matricula_antiga_na_lista_de_participantes_cai_na_conta(
-    async_database, usuarios
-):
-    conta = usuarios[0]
-    async with async_database() as session:
-        await session.execute(
-            update(User)
-            .where(User.id == conta.id)
-            .values(registration="252000000", old_registration="251000000")
-        )
-        await session.commit()
-    await _salvar_turmas(async_database, conta, [_turma("AAA", "FGA0146", "2025.1")])
-    classroom_id = (await _vinculos(async_database, conta))[0].classroom_id
-
-    await _salvar_membros(
-        async_database, classroom_id, [_membro("Discente 0", registration="251000000")]
-    )
-
-    assert await _contar(async_database, User) == 2
-    links = await _membros(async_database, classroom_id)
-    assert [l.user_id for l in links] == [conta.id]
-
-
-async def _docentes(async_database, classroom_id: UUID) -> list[Professor]:
-    async with async_database() as session:
-        classroom = await session.get_one(ClassroomModel, classroom_id)
-        return list(classroom.professors)
-
-
-async def test_docente_fora_do_catalogo_e_criado_e_atualizado_pela_turma(
-    async_database, usuarios
-):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    docente = _membro(
-        "NOME DOCENTE",
-        role=ClassroomRole.PROFESSOR,
-        person_id=42,
-        photo="a.jpg",
-        unit="CAMPUS UNB GAMA: FCTE",
-    )
-
-    await _salvar_membros(async_database, classroom_id, [docente])
-    await _salvar_membros(
-        async_database, classroom_id, [docente.model_copy(update={"photo": "b.jpg"})]
-    )
-
-    (achado,) = await _docentes(async_database, classroom_id)
-    assert (achado.siape, achado.person_id, achado.photo, achado.unit_id) == (
-        None,
-        42,
-        "b.jpg",
-        673,
-    )
-    assert await _contar(async_database, Professor) == 1
-
-
-async def test_docente_casa_com_o_catalogo_pelo_email_e_so_completa(
-    async_database, usuarios
-):
-    async with async_database() as session:
-        session.add(
-            Professor(
-                siape=1, name="MARIA DA SILVA", unit_id=673, email="m@unb.br", photo="c"
-            )
-        )
-        await session.commit()
-    await _salvar_turmas(
-        async_database, usuarios[0], [_turma("AAA"), _turma("BBB", "FGA0158")]
-    )
-    links = await _vinculos(async_database, usuarios[0])
-    docente = _membro(
-        "MARIA S.", role=ClassroomRole.PROFESSOR, email="M@unb.br", person_id=42
-    )
-
-    await _salvar_membros(
-        async_database,
-        links[0].classroom_id,
-        [docente.model_copy(update={"photo": "s"})],
-    )
-    # Na outra turma, só o `idPessoa` identifica o mesmo docente.
-    await _salvar_membros(
-        async_database,
-        links[1].classroom_id,
-        [_membro("OUTRO NOME", role=ClassroomRole.PROFESSOR, person_id=42)],
-    )
-
-    for link in links:
-        (achado,) = await _docentes(async_database, link.classroom_id)
-        assert (achado.siape, achado.name, achado.person_id, achado.photo) == (
-            1,
-            "MARIA DA SILVA",
-            42,
-            "c",
-        )
-    assert await _contar(async_database, Professor) == 1
-
-
-async def test_docente_casa_com_o_catalogo_pelo_nome_sem_acento_nem_caixa(
-    async_database, usuarios
-):
-    async with async_database() as session:
-        session.add(Professor(siape=1, name="José  Araújo", unit_id=673))
-        await session.commit()
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-
-    await _salvar_membros(
-        async_database,
-        classroom_id,
-        [_membro("JOSE ARAUJO", role=ClassroomRole.PROFESSOR, email="j@unb.br")],
-    )
-
-    (achado,) = await _docentes(async_database, classroom_id)
-    assert (achado.siape, achado.email) == (1, "j@unb.br")
-
-
-async def test_docente_nao_completa_email_pessoal_da_turma(async_database, usuarios):
-    async with async_database() as session:
-        session.add(Professor(siape=1, name="José Araújo", unit_id=673))
-        await session.commit()
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-
-    await _salvar_membros(
-        async_database,
-        classroom_id,
-        [_membro("JOSE ARAUJO", role=ClassroomRole.PROFESSOR, email="j@gmail.com")],
-    )
-
-    (achado,) = await _docentes(async_database, classroom_id)
-    assert achado.email is None
-
-    async with async_database() as session:
-        (completado,) = await save_professors(
-            session, [SeenProfessor(name="JOSE ARAUJO", email="j@hotmail.com")]
-        )
-        assert completado.email is None
-
-        (institucional,) = await save_professors(
-            session, [SeenProfessor(name="JOSE ARAUJO", email="j@unb.br")]
-        )
-        assert institucional.email == "j@unb.br"
 
 
 def test_complete_professores_rejeita_email_nao_institucional():
@@ -1260,270 +339,370 @@ def test_complete_nao_troca_person_id_de_docente_fora_do_catalogo():
     assert professor.person_id == 10
 
 
-async def test_docente_repetido_na_listagem_vira_um_so(async_database, usuarios):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    docente = _membro("DOCENTE", role=ClassroomRole.PROFESSOR, email="d@unb.br")
+# --- Pelas rotas, com o SIGAA trocado por dublês -----------------------------------------
 
-    await _salvar_membros(
-        async_database,
-        classroom_id,
-        [docente, docente.model_copy(update={"person_id": 42})],
-    )
+ATUAL = Classroom(
+    id="AAA111",
+    sigaa_id=1614141,
+    number="12",
+    semester="2026.2",
+    current=True,
+    # Terças e quintas, de duas horas-aula.
+    schedule="35T23",
+    subject=Subject(code="MAT0027", name="CÁLCULO 3", hours=90),
+)
+PASSADA = Classroom(
+    id="BBB222",
+    number="01",
+    semester="2025.2",
+    subject=Subject(code="MAT0001", name="CÁLCULO 1", hours=90),
+)
 
-    (achado,) = await _docentes(async_database, classroom_id)
-    assert achado.person_id == 42
-    assert await _contar(async_database, Professor) == 1
+
+@pytest.fixture
+def aluno(client, cookies, stub_sigaa):
+    stub_sigaa.classrooms.list_classrooms.return_value = [ATUAL, PASSADA]
+    stub_sigaa.classrooms.list_grades.return_value = [
+        ClassroomGrade(subject_code="mat0001", semester="2025.2", grade=Grade.MS)
+    ]
+    client.cookies.update(cookies(refresh=CREDENCIAIS))
+    return client
 
 
-async def test_turma_grande_nao_consulta_o_banco_por_participante(
-    async_database, usuarios
+def _tabelas(database) -> set[str]:
+    with database() as session:
+        return set(inspect(session.get_bind()).get_table_names())
+
+
+def test_lista_vem_do_sigaa_e_o_banco_so_guarda_a_turma_publica(
+    aluno, database, stub_sigaa
 ):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    membros = [
-        _membro(f"ALUNO {i}", registration=f"26{i:07}", email=f"{i}@x")
-        for i in range(300)
+    atuais = aluno.get("/classrooms")
+    assert atuais.status_code == 200
+    assert [c["id"] for c in atuais.json()] == ["AAA111"]
+    # Só as atuais: nem vai ao relatório de notas.
+    stub_sigaa.classrooms.list_grades.assert_not_awaited()
+
+    todas = aluno.get("/classrooms", params={"semester": "all"}).json()
+    assert [(c["id"], c["grade"], c["status"]) for c in todas] == [
+        ("AAA111", None, "cursando"),
+        ("BBB222", "MS", "concluido"),
     ]
-    await _salvar_membros(async_database, classroom_id, membros[:100])
-
-    selects: list[str] = []
-    engine = async_database.kw["bind"].sync_engine
-    listener = lambda *args: selects.append(args[2])
-    event.listen(engine, "before_cursor_execute", listener)
-    try:
-        await _salvar_membros(async_database, classroom_id, membros)
-    finally:
-        event.remove(engine, "before_cursor_execute", listener)
-
-    assert len([sql for sql in selects if sql.lstrip().startswith("SELECT")]) < 10
-    assert len(await _membros(async_database, classroom_id)) == 300
-    assert await _contar(async_database, User) == 302
-
-
-async def test_historico_nao_consulta_o_banco_por_turma(async_database, usuarios):
-    historico = [
-        _turma(f"T{i}", f"FGA{i:04}", "2025.2", current=i < 5) for i in range(40)
-    ]
-    await _salvar_turmas(async_database, usuarios[0], historico)
-
-    selects: list[str] = []
-    engine = async_database.kw["bind"].sync_engine
-    listener = lambda *args: selects.append(args[2])
-    event.listen(engine, "before_cursor_execute", listener)
-    try:
-        await _salvar_turmas(async_database, usuarios[1], historico)
-    finally:
-        event.remove(engine, "before_cursor_execute", listener)
-
-    assert len([sql for sql in selects if sql.lstrip().startswith("SELECT")]) < 10
-    assert len(await _vinculos(async_database, usuarios[1])) == 40
-    assert await _contar(async_database, ClassroomModel) == 40
-    assert await _contar(async_database, SubjectModel) == 40
-
-
-async def test_turma_passada_existente_nao_e_regravada(async_database, usuarios):
-    passada = _turma("AAA", semester="2025.2").model_copy(update={"schedule": "24T23"})
-    atual = _turma("CCC", "FGA0158", room="MOCAP", current=True)
-    await _salvar_turmas(async_database, usuarios[0], [passada, atual])
-
-    await _salvar_turmas(
-        async_database,
-        usuarios[1],
-        [
-            passada.model_copy(update={"id": "XYZ", "schedule": "99Z9"}),
-            atual.model_copy(update={"id": "WWW", "room": "SALA 02"}),
-        ],
+    assert (
+        aluno.get("/classrooms", params={"semester": "2025.2"}).json()[0]["id"]
+        == "BBB222"
     )
 
-    links = await _vinculos(async_database, usuarios[1])
-    assert sorted(
-        (l.front_end_id, l.classroom.schedule, l.classroom.room) for l in links
-    ) == [
-        ("WWW", None, "SALA 02"),
-        ("XYZ", "24T23", None),
-    ]
-
-
-async def _situacoes(async_database, classroom_id: UUID) -> dict:
-    async with async_database() as session:
-        rows = await session.execute(
-            select(
-                User.name,
-                ClassroomParticipant.status,
-                ClassroomParticipant.member,
-                ClassroomParticipant.locked_at,
-            )
-            .join(ClassroomParticipant.user)
-            .where(ClassroomParticipant.classroom_id == classroom_id)
-        )
-    return {
-        name: (status, member, locked_at) for name, status, member, locked_at in rows
+    with database() as session:
+        turmas = session.scalars(
+            select(ClassroomRow).order_by(ClassroomRow.semester)
+        ).all()
+        assert [(t.subject_code, t.front_end_id) for t in turmas] == [
+            ("MAT0001", "BBB222"),
+            ("MAT0027", "AAA111"),
+        ]
+        # a turma atual ganha as aulas previstas pelo horário
+        assert session.scalar(select(func.count(Lesson.id))) > 20
+    assert not _tabelas(database) & {
+        "users",
+        "classroom_participants",
+        "lesson_attendances",
+        "classroom_posts",
     }
 
 
-async def test_aluno_que_some_da_turma_e_trancado(async_database, usuarios):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    eu = _membro("Discente 0", registration="251000000")
-    colega = _membro("COLEGA", registration="251000009")
-    await _salvar_membros(async_database, classroom_id, [eu, colega])
-    assert await _situacoes(async_database, classroom_id) == {
-        "Discente 0": (ClassroomStatus.CURSANDO, True, None),
-        "COLEGA": (ClassroomStatus.CURSANDO, True, None),
-    }
-
-    await _salvar_membros(async_database, classroom_id, [])
-
-    assert await _membros(async_database, classroom_id) == []
-    assert await _situacoes(async_database, classroom_id) == {
-        "Discente 0": (
-            ClassroomStatus.TRANCADO,
-            False,
-            AGORA,
-        ),
-        "COLEGA": (
-            ClassroomStatus.TRANCADO,
-            False,
-            AGORA,
-        ),
-    }
-    # O vínculo que veio da lista do próprio usuário continua.
-    assert len(await _vinculos(async_database, usuarios[0])) == 1
-
-
-async def test_aluno_que_saiu_mantem_data_do_trancamento_e_volta_cursando(
-    async_database, usuarios
+def test_turma_desconhecida_consulta_a_lista_e_a_de_outro_aluno_e_404(
+    aluno, stub_sigaa
 ):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    colega = _membro("COLEGA", registration="251000009")
-    await _salvar_membros(async_database, classroom_id, [colega])
-    await _salvar_membros(async_database, classroom_id, [])
+    stub_sigaa.classrooms.get_classroom_statistics.return_value = ()
+    assert aluno.get("/classrooms/AAA111/statistics").json() == []
+    assert stub_sigaa.classrooms.list_classrooms.await_count == 1
+    # já conhecida: não relê a lista
+    aluno.get("/classrooms/1614141/statistics")
+    assert stub_sigaa.classrooms.list_classrooms.await_count == 1
 
-    await _salvar_membros(async_database, classroom_id, [], AGORA + timedelta(days=1))
-    assert (await _situacoes(async_database, classroom_id))["COLEGA"] == (
-        ClassroomStatus.TRANCADO,
-        False,
-        AGORA,
-    )
+    resposta = aluno.get("/classrooms/CCC333/members")
+    assert resposta.status_code == 404
+    assert aluno.get("/classrooms/a b/members").status_code == 422
 
-    await _salvar_membros(async_database, classroom_id, [colega])
-    assert (await _situacoes(async_database, classroom_id))["COLEGA"] == (
-        ClassroomStatus.CURSANDO,
-        True,
-        None,
-    )
-    assert [l.user.name for l in await _membros(async_database, classroom_id)] == [
-        "COLEGA"
+
+def test_participantes_vem_do_sigaa_e_so_os_docentes_ficam_no_banco(
+    aluno, database, stub_sigaa
+):
+    stub_sigaa.classrooms.list_classroom_members.return_value = [
+        ClassroomMember(
+            name="NOME DOCENTE",
+            role=ClassroomRole.PROFESSOR,
+            email="docente@unb.br",
+            unit="CAMPUS UNB GAMA: FCTE",
+        ),
+        ClassroomMember(
+            name="Colega Dois",
+            role=ClassroomRole.ALUNO,
+            registration="252000000",
+            course="ENGENHARIA DE SOFTWARE",
+            unit="FCTE",
+        ),
+        ClassroomMember(
+            name="Colega Um", role=ClassroomRole.MONITOR, registration="253000000"
+        ),
     ]
-
-
-async def test_docente_que_saiu_da_turma_perde_o_vinculo(async_database, usuarios):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    eu = _membro("Discente 0", registration="251000000")
-    docente = _membro("DOCENTE", role=ClassroomRole.PROFESSOR, email="d@unb.br")
-
-    await _salvar_membros(async_database, classroom_id, [eu, docente])
-    assert [d.name for d in await _docentes(async_database, classroom_id)] == [
-        "DOCENTE"
-    ]
-    await _salvar_membros(async_database, classroom_id, [eu])
-
-    assert await _docentes(async_database, classroom_id) == []
-    # O docente segue em `professors` para as outras turmas.
-    assert await _contar(async_database, Professor) == 1
-
-
-async def test_alunos_de_turma_encerrada_concluem(async_database, usuarios, hoje):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-    hoje(date(2026, 12, 19))
-
-    await _salvar_membros(
-        async_database, classroom_id, [_membro("Discente 0", registration="251000000")]
-    )
-
-    assert await _situacoes(async_database, classroom_id) == {
-        "Discente 0": (ClassroomStatus.CONCLUIDO, True, None)
-    }
-
-
-async def test_estatisticas_substituem_as_anteriores(async_database, usuarios):
-    await _salvar_turmas(async_database, usuarios[0], [_turma("AAA")])
-    classroom_id = (await _vinculos(async_database, usuarios[0]))[0].classroom_id
-
-    for shares in (
-        [StatisticsShare(situation=StudentSituation.MATRICULADO, percentage=100)],
-        [
-            StatisticsShare(situation=StudentSituation.APROVADO, percentage=90),
-            StatisticsShare(situation=StudentSituation.MATRICULADO, percentage=10),
-        ],
-    ):
-        async with async_database() as session:
-            await ClassroomRepository(session).save_statistics(
-                classroom_id, shares, AGORA
-            )
-            await session.commit()
-
-    async with async_database() as session:
-        classroom = await session.get_one(
-            ClassroomModel, classroom_id, options=[undefer(ClassroomModel.statistics)]
+    membros = aluno.get("/classrooms/AAA111/members").json()
+    assert [m["name"] for m in membros["students"]] == ["Colega Dois"]
+    assert membros["students"][0]["course"]["name"] == "ENGENHARIA DE SOFTWARE"
+    assert [m["name"] for m in membros["monitors"]] == ["Colega Um"]
+    assert [p["name"] for p in membros["professors"]] == ["NOME DOCENTE"]
+    with database() as session:
+        assert session.scalar(select(Professor.name)) == "NOME DOCENTE"
+        despejo = " ".join(
+            str(row)
+            for tabela in ("classrooms", "professors", "courses")
+            for row in session.execute(
+                select(ClassroomRow.__table__.metadata.tables[tabela])
+            ).all()
         )
-    assert sorted((s["situation"], s["percentage"]) for s in classroom.statistics) == [
-        ("aprovado", 90),
-        ("matriculado", 10),
-    ]
-    assert classroom.statistics_synced_at is not None
+    assert "252000000" not in despejo and "Colega" not in despejo
 
+
+def test_indice_da_turma_encerrada_fica_publico_e_o_da_atual_nem_e_buscado(
+    aluno, database, stub_sigaa
+):
+    stub_sigaa.classrooms.get_classroom_statistics.return_value = (
+        StatisticsShare(situation=StudentSituation.APROVADO, percentage=80),
+        StatisticsShare(situation=StudentSituation.REPROVADO, percentage=20),
+    )
+    aluno.get("/classrooms", params={"semester": "all"})
+    assert aluno.get("/classrooms/AAA111/statistics").json() == []
+    stub_sigaa.classrooms.get_classroom_statistics.assert_not_awaited()
+    passada = aluno.get("/classrooms/BBB222/statistics").json()
+    assert [s["percentage"] for s in passada] == [80, 20]
+    with database() as session:
+        turma = session.scalar(
+            select(ClassroomRow).where(ClassroomRow.front_end_id == "BBB222")
+        )
+        assert turma.statistics_synced_at is not None
+
+
+def _frequencia(*entries):
+    return ClassroomFrequency(
+        progress=ClassroomProgress(taught=30, total=90, percentage=33),
+        frequency=ClassroomAttendance(
+            entries=entries,
+            attended=1,
+            registered=2,
+            registered_percentage=50,
+            total=90,
+            total_percentage=2,
+        ),
+    )
+
+
+def test_frequencia_vem_do_sigaa_e_nao_fica_no_banco(aluno, database, stub_sigaa, hoje):
+    hoje(datetime(2026, 9, 25, 18))
+    stub_sigaa.classrooms.get_classroom_frequency.return_value = _frequencia(
+        AttendanceEntry(
+            occurred_on=date(2026, 9, 22), status=AttendanceStatus.FALTA, absences=2
+        ),
+        AttendanceEntry(
+            occurred_on=date(2026, 9, 24), status=AttendanceStatus.PRESENTE
+        ),
+        # reposição num sábado, fora do horário
+        AttendanceEntry(
+            occurred_on=date(2026, 9, 19), status=AttendanceStatus.PRESENTE
+        ),
+    )
+    resposta = aluno.get("/classrooms/AAA111/frequency")
+    assert resposta.status_code == 200
+    view = resposta.json()
+    por_dia = {(l["occurred_on"], l["status"]) for l in view["lessons"]}
+    assert ("2026-09-22", "falta") in por_dia
+    assert ("2026-09-24", "presente") in por_dia
+    assert ("2026-09-19", "presente") in por_dia
+    assert view["progress"] == {"taught": 30, "total": 90, "percentage": 33}
+    assert view["totals"]["max_absences"] == 22
+    assert all(l["marked"] is False for l in view["lessons"])
+    assert view["upcoming"][0]["occurred_on"] == "2026-09-29"
+
+    with database() as session:
+        turma = session.scalar(
+            select(ClassroomRow).where(ClassroomRow.front_end_id == "AAA111")
+        )
+        assert turma.progress_taught == 30
+        fora_do_plano = session.scalars(
+            select(Lesson.occurred_on).where(Lesson.scheduled.is_(False))
+        ).all()
+        # 19 é sábado e 22 e 24 caem na semana universitária: fora do plano
+        assert sorted(fora_do_plano) == [
+            date(2026, 9, 19),
+            date(2026, 9, 22),
+            date(2026, 9, 24),
+        ]
+
+    # o SIGAA retirou a reposição: a aula fora do plano some
+    stub_sigaa.classrooms.get_classroom_frequency.return_value = _frequencia(
+        AttendanceEntry(
+            occurred_on=date(2026, 9, 22), status=AttendanceStatus.FALTA, absences=2
+        ),
+    )
+    view = aluno.get("/classrooms/AAA111/frequency").json()
+    assert "2026-09-19" not in {l["occurred_on"] for l in view["lessons"]}
+    # a presença de antes não ficou guardada em lugar nenhum
+    assert ("2026-09-24", "presente") not in {
+        (l["occurred_on"], l["status"]) for l in view["lessons"]
+    }
+    # marcar aula no servidor não existe mais: as marcações ficam no navegador
+    assert aluno.patch("/classrooms/AAA111/frequency/lessons", json=[]).status_code in (
+        404,
+        405,
+    )
+
+
+def test_frequencia_de_todas_as_atuais_em_sequencia(aluno, stub_sigaa):
+    stub_sigaa.classrooms.get_classroom_frequency.return_value = _frequencia()
+    resultado = aluno.get("/classrooms/frequency").json()
+    assert [item["classroom"]["id"] for item in resultado] == ["AAA111"]
+    stub_sigaa.classrooms.get_classroom_frequency.assert_awaited_once_with("AAA111")
+
+
+def test_erro_do_sigaa_nao_vira_frequencia_vazia(aluno, stub_sigaa):
+    stub_sigaa.classrooms.get_classroom_frequency.side_effect = ClassroomNotFound("x")
+    assert aluno.get("/classrooms/AAA111/frequency").status_code == 404
+
+
+def test_frequencia_exige_login(client, stub_sigaa):
+    assert client.get("/classrooms/AAA111/frequency").status_code == 401
+    assert client.get("/classrooms").status_code == 401
+
+
+def _post(id_, type_, title, day, **fields):
+    return ClassroomPost(id=id_, type=type_, title=title, published_on=day, **fields)
+
+
+def test_postagens_vem_do_sigaa_e_a_noticia_traz_o_texto_so_no_detalhe(
+    aluno, stub_sigaa
+):
+    stub_sigaa.classrooms.list_classroom_posts.return_value = [
+        _post("news:1", PostType.NEWS, "Aviso", date(2026, 9, 1), content="resumo"),
+        _post(
+            "topic:" + "a" * 64,
+            PostType.TOPIC,
+            "Tópico",
+            date(2026, 9, 3),
+            content="Texto",
+        ),
+    ]
+    stub_sigaa.classrooms.get_classroom_news.return_value = News(
+        id=1, title="Aviso", published_on=date(2026, 9, 1), content="Texto completo"
+    )
+    lista = aluno.get("/classrooms/AAA111/posts").json()
+    assert [(p["title"], p["content"]) for p in lista] == [
+        ("Tópico", "Texto"),
+        ("Aviso", None),
+    ]
+    assert all(p["classroom_sigaa_id"] == 1614141 for p in lista)
+    assert [
+        p["id"]
+        for p in aluno.get("/classrooms/AAA111/posts", params={"type": "news"}).json()
+    ] == ["news:1"]
+
+    detalhe = aluno.get("/classrooms/AAA111/posts/news:1").json()
+    assert detalhe["content"] == "Texto completo"
+    stub_sigaa.classrooms.get_classroom_news.assert_awaited_once_with("AAA111", 1)
+    assert (
+        aluno.get(f"/classrooms/AAA111/posts/topic:{'a' * 64}").json()["title"]
+        == "Tópico"
+    )
+    assert aluno.get(f"/classrooms/AAA111/posts/topic:{'b' * 64}").status_code == 404
+
+
+def test_noticias_recentes_das_turmas_atuais(aluno, stub_sigaa):
+    stub_sigaa.classrooms.list_classroom_posts.return_value = [
+        _post(f"news:{n}", PostType.NEWS, f"Aviso {n}", date(2026, 9, n))
+        for n in range(1, 8)
+    ]
+    feed = aluno.get("/posts/news").json()
+    assert [item["post"]["title"] for item in feed["items"]] == [
+        "Aviso 7",
+        "Aviso 6",
+        "Aviso 5",
+        "Aviso 4",
+        "Aviso 3",
+    ]
+    assert feed["items"][0]["classroom"]["id"] == "AAA111"
+
+
+# --- Docentes da lista de participantes ---------------------------------------------------
+
+
+async def _turma_publica(async_database) -> ClassroomRow:
     async with async_database() as session:
-        await ClassroomRepository(session).save_statistics(classroom_id, [], AGORA)
+        rows = await ClassroomRepository(session).save_public([ATUAL], datetime.now())
         await session.commit()
-        classroom = await session.get_one(
-            ClassroomModel, classroom_id, options=[undefer(ClassroomModel.statistics)]
-        )
-        assert classroom.statistics == []
+        return rows["AAA111"]
 
 
-def test_estatisticas_da_turma_saem_do_cache_do_login(client, sigaa, turmas):
-    client.post(
-        "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
-    )
-    chamadas = turmas.classrooms.get_classroom_statistics.await_count
-    response = client.get("/classrooms/BBB/statistics")
-    assert response.status_code == 200
-    assert response.json() == [
-        {"situation": "matriculado", "percentage": 10},
-        {"situation": "aprovado", "percentage": 90},
-    ]
-    assert turmas.classrooms.get_classroom_statistics.await_count == chamadas
+async def _salvar_docentes(async_database, classroom_id, members):
+    async with async_database() as session:
+        await ClassroomRepository(session).save_professor_members(classroom_id, members)
+        await session.commit()
 
 
-def test_estatisticas_sem_cache_buscam_apenas_a_turma_pedida(client, turmas, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    response = client.get("/classrooms/BBB/statistics")
-    assert response.status_code == 200
-    assert len(response.json()) == 2
-    turmas.classrooms.get_classroom_statistics.assert_awaited_once_with("BBB")
+async def _docentes(async_database, classroom_id) -> list[Professor]:
+    async with async_database() as session:
+        classroom = await session.get_one(ClassroomRow, classroom_id)
+        return list(classroom.professors)
 
 
-def test_estatisticas_de_turma_alheia_retornam_404(client, turmas, cookies):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    assert client.get("/classrooms/ALHEIA/statistics").status_code == 404
-    turmas.classrooms.get_classroom_statistics.assert_not_awaited()
+def _docente(name, **fields):
+    return ClassroomMember(name=name, role=ClassroomRole.PROFESSOR, **fields)
 
 
-@pytest.mark.parametrize("classroom_id", ["AAA", "BBB"])
-def test_estatisticas_indisponiveis_retornam_lista_vazia(
-    client, turmas, cookies, classroom_id
+async def test_docente_fora_do_catalogo_e_criado_e_atualizado_pela_turma(
+    async_database,
 ):
-    client.cookies.update(cookies(refresh=CREDENCIAIS))
-    turmas.classrooms.get_classroom_statistics.return_value = []
-    response = client.get(f"/classrooms/{classroom_id}/statistics")
-    assert response.status_code == 200
-    assert response.json() == []
+    turma = await _turma_publica(async_database)
+    docente = _docente(
+        "NOME DOCENTE", person_id=42, photo="a.jpg", unit="CAMPUS UNB GAMA: FCTE"
+    )
+    await _salvar_docentes(async_database, turma.id, [docente])
+    await _salvar_docentes(
+        async_database, turma.id, [docente.model_copy(update={"photo": "b.jpg"})]
+    )
+    (achado,) = await _docentes(async_database, turma.id)
+    assert (achado.siape, achado.person_id, achado.photo, achado.unit_id) == (
+        None,
+        42,
+        "b.jpg",
+        673,
+    )
 
 
-def test_estatisticas_exigem_autenticacao(client):
-    assert client.get("/classrooms/BBB/statistics").status_code == 401
+async def test_docente_casa_com_o_catalogo_pelo_nome_sem_acento_nem_caixa(
+    async_database,
+):
+    async with async_database() as session:
+        session.add(Professor(siape=1, name="José  Araújo", unit_id=673))
+        await session.commit()
+    turma = await _turma_publica(async_database)
+    await _salvar_docentes(
+        async_database, turma.id, [_docente("JOSE ARAUJO", email="j@unb.br")]
+    )
+    (achado,) = await _docentes(async_database, turma.id)
+    assert (achado.siape, achado.email) == (1, "j@unb.br")
+
+
+async def test_docente_nao_completa_email_pessoal_da_turma(async_database):
+    async with async_database() as session:
+        session.add(Professor(siape=1, name="José Araújo", unit_id=673))
+        await session.commit()
+    turma = await _turma_publica(async_database)
+    await _salvar_docentes(
+        async_database, turma.id, [_docente("JOSE ARAUJO", email="j@gmail.com")]
+    )
+    (achado,) = await _docentes(async_database, turma.id)
+    assert achado.email is None
+    async with async_database() as session:
+        (institucional,) = await save_professors(
+            session, [SeenProfessor(name="JOSE ARAUJO", email="j@unb.br")]
+        )
+        assert institucional.email == "j@unb.br"

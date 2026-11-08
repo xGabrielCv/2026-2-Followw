@@ -425,6 +425,28 @@ def test_curriculo_por_ingresso_traz_materias_agrupadas_e_requisitos(catalog):
     }
 
 
+def test_equivalencia_citada_so_pela_materia_antiga_entra_no_curriculo(
+    catalog, database
+):
+    with database.begin() as session:
+        session.add_all(
+            [
+                # código antigo cita o atual, que não cita de volta
+                Subject(code="FGA0161", name="ANTIGA", equivalences=[["FGA0001"]]),
+                Subject(code="CIC0001", name="JÁ CITADA", equivalences=[["FGA0001"]]),
+                # conjunto não vale ao contrário
+                Subject(
+                    code="FGA0900", name="CONJUNTO", equivalences=[["FGA0001", "X"]]
+                ),
+            ]
+        )
+    subject = _get(catalog).json()["periods"][1]["subjects"][0]
+    assert subject["equivalences"] == [
+        [{"code": "CIC0001", "subject": {"code": "CIC0001", "name": "JÁ CITADA"}}],
+        [{"code": "FGA0161", "subject": {"code": "FGA0161", "name": "ANTIGA"}}],
+    ]
+
+
 def _displayed(client):
     subject = _get(client).json()["periods"][1]["subjects"][0]
     return {

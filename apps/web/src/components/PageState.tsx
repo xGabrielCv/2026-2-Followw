@@ -2,7 +2,6 @@ import { createContext, useContext, useMemo, useState } from 'react';
 
 interface PageStateValues {
     // home
-    week: boolean;
     date: string | null;
     // ru
     filters: boolean;

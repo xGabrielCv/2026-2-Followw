@@ -16,8 +16,14 @@ import {
     DialogTitle,
     DialogTrigger
 } from '#/components/ui/dialog';
-import { reasonLabel, recommendationsQueryOptions } from '#/queries/recommendations';
+import { allClassroomsQueryOptions } from '#/queries/classrooms';
+import {
+    classroomHistory,
+    reasonLabel,
+    recommendationsQueryOptions
+} from '#/queries/recommendations';
 import { refreshQuery } from '#/queries/refresh';
+import { useCompletedSubjects } from '#/queries/settings';
 import { withClassrooms } from '#/queries/subjects';
 
 export function RecommendationReasons({ subject }: { subject: CatalogSubject }) {
@@ -67,8 +73,15 @@ export function RecommendationsSection({
     taken?: Set<string> | null;
 }) {
     const client = useQueryClient();
-    const query = useQuery(recommendationsQueryOptions);
-    const refresh = () => void refreshQuery(client, recommendationsQueryOptions).catch(noop);
+    const { codes } = useCompletedSubjects();
+    // o histórico vem das turmas salvas no navegador; sem elas, espera a lista chegar
+    const classrooms = useQuery(allClassroomsQueryOptions);
+    const options = recommendationsQueryOptions([...codes], classroomHistory(classrooms.data));
+    const query = useQuery({
+        ...options,
+        enabled: classrooms.data !== undefined || classrooms.isError
+    });
+    const refresh = () => void refreshQuery(client, options).catch(noop);
     const subjects = query.data && withClassrooms(query.data);
     return (
         <section

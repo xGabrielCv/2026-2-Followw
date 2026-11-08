@@ -1,6 +1,8 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from typing import Annotated
+from weakref import WeakValueDictionary
 
 import httpx
 from fastapi import Depends, HTTPException, Request, Response, status
@@ -12,7 +14,13 @@ from api.cookies import (
     set_access_cookie,
     set_refresh_cookie,
 )
-from api.logger import operation
+from api.logger import event, operation
+
+# O SIGAA guarda na sessão a turma aberta: duas requisições do mesmo aluno ao mesmo tempo
+# misturariam as telas. Cada aluno usa a sessão uma requisição por vez.
+_SESSION_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+# Uma requisição presa não segura as outras para sempre.
+_LOCK_TIMEOUT = 90
 
 
 class SigaaConnection:
@@ -33,6 +41,7 @@ class SigaaConnection:
         self._session_token = session_token
         self._response = response
         self._client: SigaaClient | None = None
+        self._lock: asyncio.Lock | None = None
 
     @property
     def registration(self) -> str:
@@ -45,6 +54,7 @@ class SigaaConnection:
 
     async def client(self) -> SigaaClient:
         if self._client is None:
+            await self._acquire()
             client = SigaaClient(
                 credentials=self.credentials,
                 session_token=self._session_token,
@@ -55,6 +65,7 @@ class SigaaConnection:
                     token = self._session_token or await client.authenticate()
             except BaseException:
                 await client.aclose()
+                self._release()
                 raise
             self._client = client
             self._renew(token)
@@ -71,6 +82,26 @@ class SigaaConnection:
                     await client.logout()
         finally:
             await client.aclose()
+            self._release()
+
+    async def _acquire(self) -> None:
+        # Só a sessão do navegador é compartilhada; os jobs logam numa sessão própria.
+        if self._response is None or self._lock is not None:
+            return
+        lock = _SESSION_LOCKS.get(self.registration)
+        if lock is None:
+            lock = _SESSION_LOCKS[self.registration] = asyncio.Lock()
+        try:
+            await asyncio.wait_for(lock.acquire(), _LOCK_TIMEOUT)
+        except TimeoutError:
+            event("sigaa.session_lock_timeout")
+            return
+        self._lock = lock
+
+    def _release(self) -> None:
+        lock, self._lock = self._lock, None
+        if lock is not None and lock.locked():
+            lock.release()
 
     def _renew(self, token: str) -> None:
         self._session_token = token

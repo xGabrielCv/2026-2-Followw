@@ -59,50 +59,57 @@ function PrivacyPage() {
                             Política de privacidade
                         </h2>
                         <div>
-                            <h3 className="font-semibold text-foreground">Dados e cache</h3>
+                            <h3 className="font-semibold text-foreground">Seus dados do SIGAA</h3>
                             <p>
-                                Guardamos em nosso banco de dados cópias de informações do SIGAA
-                                para agilizar consultas: nome, matrícula, foto, e-mail, biografia,
-                                curso, indicadores acadêmicos, turmas, participantes, menções,
-                                frequência e postagens. Também salvamos suas preferências e
-                                marcações de presença. Dados de uma turma podem ser reutilizados nas
-                                consultas de outros integrantes autorizados dessa turma.
+                                Não guardamos no servidor nada que identifique você. Perfil, IRA,
+                                turmas, menções, frequência, colegas de turma e postagens são
+                                buscados no SIGAA a cada consulta e devolvidos ao seu aparelho, sem
+                                gravação no nosso banco. O seu perfil fica num cookie cifrado no seu
+                                navegador.
                             </p>
                             <p className="mt-2">
-                                Esse cache é atualizado conforme o tipo de informação, mas não tem
-                                prazo automático de exclusão no servidor: permanece até uma
-                                solicitação de exclusão. O vencimento do prazo de atualização não
-                                apaga os dados.
+                                No servidor ficam só dados públicos das turmas (horário, sala,
+                                docentes e aulas previstas) e, se você liberar, os índices de
+                                aprovação das suas turmas encerradas, que não dizem a sua menção.
+                            </p>
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-foreground">Comunidade</h3>
+                            <p>
+                                Avaliações, grupos, materiais, dúvidas, guias e denúncias não
+                                guardam nome nem matrícula: limites e autoria usam uma chave anônima
+                                por escopo, que não liga um conteúdo a outro. O conteúdo fica
+                                cifrado no banco (AES-256-GCM) e os arquivos ficam cifrados e sem
+                                metadados.
                             </p>
                         </div>
                         <div>
                             <h3 className="font-semibold text-foreground">Credenciais e sessão</h3>
                             <p>
-                                Não guardamos sua senha sob nenhuma circunstância, nem no banco de
-                                dados, nem em logs. Elas ficam apenas em cookies cifrados no seu
-                                navegador e são necessárias para autenticar no CAS/SIGAA. Tarefas de
-                                sincronização também enviam credenciais cifradas à fila QStash
-                                (Upstash) para processamento. Extrato e QR code do RU são
-                                consultados sem cache no servidor.
+                                Não guardamos sua senha no banco nem em logs. Ela fica apenas num
+                                cookie cifrado no seu navegador, usado para autenticar no CAS/SIGAA
+                                a cada pedido. Para buscar os índices que você liberou, uma tarefa
+                                em segundo plano recebe a credencial cifrada e a descarta ao
+                                terminar.
                             </p>
                         </div>
                         <div>
                             <h3 className="font-semibold text-foreground">No seu dispositivo</h3>
                             <p>
-                                Usamos cookies para manter seu acesso e armazenamento local para
-                                preferências, páginas e dados consultados. O cache de dados permite
-                                acesso offline por até 14 dias e é limpo ao sair da conta. Você
-                                também pode remover os dados do site nas configurações do navegador.
+                                Configurações, calendário, marcações de presença, grades e o cache
+                                dos dados do SIGAA ficam no armazenamento do seu navegador por até
+                                400 dias, para o app abrir rápido e funcionar offline. Você pode
+                                exportar, importar ou apagar esses dados em Perfil, Uso de dados.
                             </p>
                         </div>
                         <div>
                             <h3 className="font-semibold text-foreground">Análise de uso</h3>
                             <p>
-                                Usamos PostHog para métricas de navegação e gravação de sessões, com
-                                informações sobre páginas, interações e dispositivo, para entender o
-                                uso e corrigir problemas. Esses dados são enviados ao PostHog. A API
-                                também registra dados técnicos das requisições, como rota, status e
-                                duração, para diagnóstico.
+                                Quando ativado, o PostHog recebe métricas anônimas de navegação
+                                (páginas e interações), sem gravação de sessão e sem os textos da
+                                tela. A API registra dados técnicos das requisições, como rota,
+                                status e duração, sem matrícula, para diagnóstico. A contagem de uso
+                                do painel usa uma chave anônima por dia, semana e mês.
                             </p>
                         </div>
                         <div>
@@ -116,11 +123,11 @@ function PrivacyPage() {
                                 >
                                     {EMAILS.removal}
                                 </a>
-                                . Não envie sua senha. A exclusão não altera seus registros na UnB e
-                                não impede novas coletas: seus dados podem voltar em sincronizações
-                                futuras, inclusive de participantes feitas por outros integrantes da
-                                turma. Para limpar o dispositivo, saia da conta ou remova os dados
-                                do site no navegador.
+                                . Não envie sua senha. Como o servidor não guarda seus dados do
+                                SIGAA, não há o que apagar deles por lá; o que você publicou na
+                                comunidade pode ser apagado no próprio item. Para limpar o
+                                dispositivo, use Perfil, Uso de dados, ou remova os dados do site no
+                                navegador.
                             </p>
                         </div>
                     </section>

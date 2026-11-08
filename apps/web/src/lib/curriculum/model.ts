@@ -42,12 +42,14 @@ export function normalizeCurriculum(curriculum: CourseCurriculum): CurriculumMod
     };
 }
 
+/** `manual` são as matérias que o aluno marcou como concluídas, valendo como aprovadas. */
 export function academicState(
     history: Classroom[] | undefined,
-    currentPeriod: number | null
+    currentPeriod: number | null,
+    manual: ReadonlySet<string> = new Set()
 ): (subject: FlowSubject) => AcademicState {
     if (!history) return () => 'unknown';
-    const approved = approvedCodes(history);
+    const approved = new Set([...approvedCodes(history), ...manual]);
     const taken = takenCodes(history, approved);
     return (subject) => {
         if (covered(approved, subject)) return 'completed';

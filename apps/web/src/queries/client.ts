@@ -3,6 +3,7 @@ import createClient, { type Middleware } from 'openapi-fetch';
 
 import type { paths } from '#/queries/schema.gen.ts';
 
+import { authorSecret } from '#/lib/author';
 import { toApiError } from '#/queries/errors.ts';
 
 // a API fica em /api da mesma origem; no SSR o fetch exige URL absoluta, e a origem provisória é
@@ -78,5 +79,15 @@ export const apiClient = createClient<paths>({
     credentials: 'include'
 });
 
+// a autoria anônima vem do segredo do aparelho, nunca da matrícula
+const authorMiddleware: Middleware = {
+    onRequest({ request }) {
+        const secret = authorSecret();
+        if (secret) request.headers.set('X-Followw-Author', secret);
+        return request;
+    }
+};
+
 apiClient.use(errorHandlingMiddleware);
+apiClient.use(authorMiddleware);
 apiClient.use(ssrMiddleware);

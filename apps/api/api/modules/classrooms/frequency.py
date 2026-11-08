@@ -1,40 +1,24 @@
-from datetime import UTC, datetime
-from typing import Annotated
-from uuid import UUID
+"""A frequência do aluno, lida do SIGAA a cada pedido e devolvida sem ser gravada."""
 
-from fastapi import Depends, HTTPException
+from typing import Annotated
+
+from fastapi import Depends
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
-from api.cache import freshness
-from api.db.enums import LessonStatus
-from api.db.models import OwnLink
+from api.db.main import DatabaseDep
 from api.modules.classrooms.lessons import (
     ClassroomFrequencyView,
     FrequencySummary,
     Timetable,
-    started,
 )
 from api.modules.classrooms.repository import FrequencyRepository
 from api.modules.classrooms.service import (
     ClassroomServiceDep,
     ParticipantClassroom,
-    details_ttl,
+    Turma,
     to_classroom,
 )
-from api.sync import Cached, Context, SyncDep
-
-
-async def sync_frequency(ctx: Context[OwnLink]) -> None:
-    link = ctx.target
-    frequency = await ctx.client.classrooms.get_classroom_frequency(link.front_end_id)
-    timetable = Timetable.parse(link.row.classroom.schedule)
-    await ctx.sync.db.write(
-        lambda session: FrequencyRepository(session).save(
-            link.row.id, frequency, timetable, datetime.now(UTC)
-        )
-    )
 
 
 class ClassroomFrequencyResult(BaseModel):
@@ -43,77 +27,38 @@ class ClassroomFrequencyResult(BaseModel):
 
 
 class FrequencyService:
-    def __init__(self, sync: SyncDep, classrooms: ClassroomServiceDep) -> None:
-        self._sync = sync
+    def __init__(self, db: DatabaseDep, classrooms: ClassroomServiceDep) -> None:
+        self._db = db
         self._classrooms = classrooms
 
     async def get_frequency(self, classroom_id: str) -> ClassroomFrequencyView:
-        link = await self._classrooms.get_link(classroom_id)
-        [view] = await self._views([link])
-        return view
+        return await self._view(await self._classrooms.get_turma(classroom_id))
 
     async def list_frequencies(self) -> list[ClassroomFrequencyResult]:
-        links = await self._classrooms.list_links()
+        turmas = await self._classrooms.list_turmas()
+        # Em sequência: as turmas dividem a sessão do SIGAA.
         return [
-            ClassroomFrequencyResult(classroom=to_classroom(link), frequency=view)
-            for link, view in zip(links, await self._views(links), strict=True)
+            ClassroomFrequencyResult(
+                classroom=to_classroom(turma), frequency=await self._view(turma)
+            )
+            for turma in turmas
         ]
 
-    async def mark_lessons(
-        self, classroom_id: str, marks: dict[UUID, LessonStatus | None]
-    ) -> None:
-        link = await self._classrooms.get_link(classroom_id)
-        now = academic_calendar.now()
-
-        async def write(session: AsyncSession) -> None:
-            repository = FrequencyRepository(session)
-            for lesson_id, status in marks.items():
-                lesson = await repository.get_lesson(link.row.classroom_id, lesson_id)
-                if lesson is None:
-                    raise HTTPException(
-                        404, f"Aula {lesson_id} não encontrada na turma."
-                    )
-                if status is None:
-                    await repository.delete_mark(link.row.id, lesson.id)
-                elif not started(lesson, now):
-                    raise HTTPException(422, f"A aula {lesson_id} ainda não começou.")
-                elif not await repository.save_mark(link.row.id, lesson.id, status):
-                    raise HTTPException(
-                        409, f"O SIGAA já registrou a chamada da aula {lesson_id}."
-                    )
-
-        await self._sync.db.write(write)
-
-    async def _views(self, links: list[OwnLink]) -> list[ClassroomFrequencyView]:
-        # Em sequência: as turmas dividem a sessão do SIGAA.
-        summaries = [await self._summary(link) for link in links]
-        if not links:
-            return []
-        lessons = await self._sync.db.read(
-            lambda session: FrequencyRepository(session).list_lessons(
-                [link.row for link in links]
+    async def _view(self, turma: Turma) -> ClassroomFrequencyView:
+        client = await self._classrooms.account.client()
+        frequency = await client.classrooms.get_classroom_frequency(turma.front_end_id)
+        timetable = Timetable.parse(turma.row.schedule)
+        rows = await self._db.write(
+            lambda session: FrequencyRepository(session).apply(
+                turma.row.id, frequency, timetable
             )
         )
-        now = academic_calendar.now()
-        return [
-            ClassroomFrequencyView.build(
-                summary,
-                lessons[link.row.classroom_id],
-                now=now,
-                workload=link.row.classroom.subject.hours,
-            )
-            for link, summary in zip(links, summaries, strict=True)
-        ]
-
-    async def _summary(self, link: OwnLink) -> FrequencySummary:
-        async def load(session: AsyncSession) -> Cached[FrequencySummary] | None:
-            saved = await FrequencyRepository(session).get_summary(link.row.id)
-            if saved is None:
-                return None
-            summary, synced_at = saved
-            return Cached(summary, synced_at, freshness(synced_at, details_ttl(link)))
-
-        return await self._sync.resolve(sync_frequency, link, load)
+        return ClassroomFrequencyView.build(
+            FrequencySummary.of(frequency),
+            rows.lessons,
+            now=academic_calendar.now(),
+            workload=turma.row.subject.hours,
+        )
 
 
 FrequencyServiceDep = Annotated[FrequencyService, Depends()]

@@ -1,26 +1,37 @@
 import logging
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from api.core.config import settings
 from api.errors import EXCEPTION_HANDLERS
 from api.logger import RequestLoggingMiddleware
+from api.modules.admin.router import router as admin_router
 from api.modules.auth.router import router as auth_router
+from api.modules.class_groups.router import router as class_groups_router
 from api.modules.classrooms.router import router as classrooms_router
+from api.modules.demo.router import router as demo_router
+from api.modules.forum.router import router as forum_router
+from api.modules.internships.router import router as internships_router
+from api.modules.materials.router import router as materials_router
 from api.modules.me.router import router as me_router
 from api.modules.posts.router import router as posts_router
+from api.modules.professor_reviews.router import router as reviews_router
 from api.modules.public_classrooms.router import router as public_classrooms_router
+from api.modules.public_config.router import router as public_config_router
 from api.modules.public_courses.router import router as public_courses_router
 from api.modules.public_professors.router import router as public_professors_router
 from api.modules.public_restaurant.router import router as public_restaurant_router
 from api.modules.public_search.router import router as public_search_router
 from api.modules.public_subjects.router import router as public_subjects_router
+from api.modules.reports.router import router as reports_router
+from api.modules.tutorials.router import router as tutorials_router
 from api.rate_limit import RateLimitMiddleware
+from api.security import BodyTooLarge, SecurityMiddleware
 from api.sync.router import router as jobs_router
 
 # desativa logs "HTTP Request: ..." que o httpx emite pra cada chamada ao SIGAA
@@ -39,6 +50,10 @@ tags_metadata = [
     {
         "name": "Me",
         "description": "Perfil acadêmico, extrato/saldo do RU e carteirinha do estudante autenticado.",
+    },
+    {
+        "name": "Internships",
+        "description": "Mural de estágios do SIGAA, lido na hora e sem gravação.",
     },
     {
         "name": "Public Classrooms",
@@ -61,6 +76,11 @@ tags_metadata = [
         "description": "Cardápio público do RU, sem autenticação.",
     },
     {
+        "name": "Public Config",
+        "x-displayName": "Config",
+        "description": "Cartões do menu Mais e links das ferramentas, definidos no painel do admin.",
+    },
+    {
         "name": "Public Search",
         "x-displayName": "Search",
         "description": "Busca única de matérias, cursos e docentes, sem autenticação.",
@@ -69,6 +89,34 @@ tags_metadata = [
         "name": "Public Subjects",
         "x-displayName": "Subjects",
         "description": "Componentes curriculares de graduação e suas turmas, sem autenticação.",
+    },
+    {
+        "name": "Groups",
+        "description": "Grupos de conversa das turmas, que qualquer aluno logado cadastra e edita, sem autor.",
+    },
+    {
+        "name": "Reviews",
+        "description": "Avaliações anônimas de docentes: nada de quem avaliou é gravado.",
+    },
+    {
+        "name": "Materials",
+        "description": "Material compartilhado por matéria (PDF e imagens), anônimo e sem metadados.",
+    },
+    {
+        "name": "Forum",
+        "description": "Dúvidas e publicações anônimas da comunidade, com respostas.",
+    },
+    {
+        "name": "Tutorials",
+        "description": "Guias escritos pela comunidade, publicados depois de aprovados.",
+    },
+    {
+        "name": "Reports",
+        "description": "Denúncias e pedidos de exclusão de conteúdo, para a moderação.",
+    },
+    {
+        "name": "Demo",
+        "description": "Dados fictícios para testar o app localmente; desligado em produção.",
     },
     {
         "name": "Posts",
@@ -114,12 +162,25 @@ def custom_openapi() -> dict[str, Any]:
                     "Public Professors",
                     "Public Restaurant",
                     "Public Search",
+                    "Public Config",
                     "Public Subjects",
                 ],
             },
             {
                 "name": "SIGAA",
-                "tags": ["Auth", "Classrooms", "Me", "Posts"],
+                "tags": ["Auth", "Classrooms", "Me", "Posts", "Internships"],
+            },
+            {
+                "name": "Comunidade",
+                "tags": [
+                    "Groups",
+                    "Reviews",
+                    "Materials",
+                    "Forum",
+                    "Tutorials",
+                    "Reports",
+                    "Demo",
+                ],
             },
         ]
     return app.openapi_schema
@@ -164,6 +225,14 @@ app.add_middleware(
 )
 
 app.add_middleware(RequestLoggingMiddleware)
+# Por fora de tudo: cabeçalhos de segurança, origem das escritas e tamanho do corpo.
+app.add_middleware(SecurityMiddleware)
+
+
+@app.exception_handler(BodyTooLarge)
+async def body_too_large(_request: Request, _error: BodyTooLarge) -> JSONResponse:
+    return JSONResponse({"detail": "Corpo grande demais."}, status_code=413)
+
 
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(classrooms_router, prefix="/classrooms", tags=["Classrooms"])
@@ -183,8 +252,20 @@ app.include_router(
     public_search_router, prefix="/public/search", tags=["Public Search"]
 )
 app.include_router(
+    public_config_router, prefix="/public/config", tags=["Public Config"]
+)
+app.include_router(
     public_subjects_router, prefix="/public/subjects", tags=["Public Subjects"]
 )
 app.include_router(me_router, prefix="/me", tags=["Me"])
+app.include_router(internships_router, prefix="/internships", tags=["Internships"])
 app.include_router(posts_router, prefix="/posts", tags=["Posts"])
+app.include_router(class_groups_router, prefix="/groups", tags=["Groups"])
+app.include_router(reviews_router, prefix="/reviews", tags=["Reviews"])
+app.include_router(demo_router, prefix="/demo", tags=["Demo"])
+app.include_router(materials_router, prefix="/materials", tags=["Materials"])
+app.include_router(forum_router, prefix="/forum", tags=["Forum"])
+app.include_router(tutorials_router, prefix="/tutorials", tags=["Tutorials"])
+app.include_router(reports_router, prefix="/reports", tags=["Reports"])
+app.include_router(admin_router, prefix="/admin")
 app.include_router(jobs_router, prefix="/jobs", tags=["Jobs"])

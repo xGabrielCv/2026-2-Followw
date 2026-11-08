@@ -1,0 +1,6 @@
+# Os formatadores (ruff e oxfmt) exigem LF, inclusive no Windows.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+# Já versionados com CRLF; mantidos como estão.
+docs/sprints/*.md -text

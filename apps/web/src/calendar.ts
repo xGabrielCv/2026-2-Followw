@@ -95,3 +95,50 @@ export function getCurrentSemester(date: Date = new Date()): SemesterCalendar | 
             )
     );
 }
+
+const DAY_MS = 86_400_000;
+const daysBetween = (start: string, end: string) =>
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / DAY_MS);
+
+export interface SemesterProgress {
+    semester: string;
+    start: string;
+    end: string;
+    percent: number;
+    week: number;
+    weeks: number;
+    daysLeft: number;
+}
+
+/** Quanto do período de aulas do semestre de `date` já passou. */
+export function semesterProgress(date: string): SemesterProgress | undefined {
+    const current = listSemesters().find(
+        ({ period }) => period.start <= date && date <= period.end
+    );
+    if (!current) return undefined;
+    const { start, end } = current.classes;
+    const total = daysBetween(start, end) + 1;
+    const elapsed = Math.min(total, Math.max(0, daysBetween(start, date) + 1));
+    return {
+        semester: current.semester,
+        start,
+        end,
+        percent: Math.round((elapsed / total) * 100),
+        week: Math.ceil(elapsed / 7),
+        weeks: Math.ceil(total / 7),
+        daysLeft: total - elapsed
+    };
+}
+
+/** Data em que o evento importa: o início ou, se já começou, o prazo final. */
+export const eventDate = (event: CalendarEvent, date: string) =>
+    event.start_date >= date ? event.start_date : event.end_date;
+
+/** Próximos eventos do calendário a partir de `date`; os em andamento contam pelo prazo. */
+export function upcomingEvents(date: string, limit = 3): CalendarEvent[] {
+    return listSemesters()
+        .flatMap(({ events }) => events)
+        .filter((event) => event.end_date >= date)
+        .toSorted((a, b) => eventDate(a, date).localeCompare(eventDate(b, date)))
+        .slice(0, limit);
+}

@@ -1,4 +1,7 @@
-"""As aulas da turma: o plano pelo horário e calendário e a situação do aluno em cada uma."""
+"""As aulas da turma: o plano pelo horário e calendário e a situação do aluno em cada uma.
+
+A situação vem do SIGAA a cada leitura e não é gravada; as marcações do aluno ficam no navegador.
+"""
 
 import re
 from collections import Counter
@@ -46,6 +49,15 @@ def hours(start: time | None, end: time | None) -> int:
     if start is None or end is None:
         return 1
     return sum(start <= s and e <= end for s, e in _SLOTS.values()) or 1
+
+
+@dataclass(frozen=True)
+class Attendance:
+    """A chamada do SIGAA numa aula; `absences` em horas-aula, quando o SIGAA informa."""
+
+    status: LessonStatus
+    absences: int | None = None
+    marked: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,13 +117,19 @@ class ClassroomFrequencyView(BaseModel):
     progress: ClassroomProgress
     frequency_status: FrequencyStatus
     lessons: tuple[Lesson, ...]
+    # Previstas que ainda não começaram, da mais próxima à mais distante: o aluno
+    # pode marcá-las como canceladas antes do dia.
+    upcoming: tuple[Lesson, ...] = ()
     totals: FrequencyTotals | None
+    # Faltas que a turma comporta, mesmo sem chamada: o navegador refaz os totais com as
+    # marcações do aluno, que só existem nele.
+    max_absences: int | None = None
 
     @classmethod
     def build(
         cls,
         summary: FrequencySummary,
-        rows: Collection[tuple[models.Lesson, models.LessonAttendance | None]],
+        rows: Collection[tuple[models.Lesson, Attendance | None]],
         *,
         now: datetime,
         workload: int | None,
@@ -129,11 +147,25 @@ class ClassroomFrequencyView(BaseModel):
                 reverse=True,
             )
         )
+        upcoming = tuple(
+            sorted(
+                (
+                    _lesson(row, None)
+                    for row, attendance in rows
+                    if row.scheduled and attendance is None and not started(row, now)
+                ),
+                key=lesson_order,
+            )
+        )
         return cls(
             progress=summary.progress,
             frequency_status=summary.frequency_status,
             lessons=lessons,
-            totals=_totals(lessons, max_absences(workload) if planned else None),
+            upcoming=upcoming,
+            totals=_totals(
+                lessons, limit := max_absences(workload) if planned else None
+            ),
+            max_absences=limit,
         )
 
 
@@ -199,7 +231,7 @@ def lesson_order(lesson: models.Lesson | Lesson) -> tuple[date, bool, time, str]
     )
 
 
-def _lesson(row: models.Lesson, attendance: models.LessonAttendance | None) -> Lesson:
+def _lesson(row: models.Lesson, attendance: Attendance | None) -> Lesson:
     status = attendance.status if attendance else LessonStatus.NAO_REGISTRADA
     absences = attendance.absences if attendance else None
     if absences is None:

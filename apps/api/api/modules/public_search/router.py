@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
 
+from api.account import OptionalAccountDep
 from api.cache import no_store
 from api.modules.public_search.service import (
     SearchResult,
@@ -9,7 +10,6 @@ from api.modules.public_search.service import (
     SearchType,
 )
 from api.schemas import SearchText, UnitFilter
-from api.sync import OptionalSyncDep
 
 router = APIRouter()
 
@@ -23,7 +23,7 @@ router = APIRouter()
 )
 async def search(
     service: SearchServiceDep,
-    sync: OptionalSyncDep,
+    account: OptionalAccountDep,
     response: Response,
     q: Annotated[
         SearchText,
@@ -39,7 +39,14 @@ async def search(
         UnitFilter | None,
         Query(description="ID ou código exato da unidade, aplicado a todos os tipos."),
     ] = None,
+    semester: Annotated[
+        str | None,
+        Query(
+            pattern=r"^[0-9]{4}\.[0-9]$",
+            description="Semestre das turmas das matérias, no formato AAAA.P. Sem ele, usa o mais recente gravado.",
+        ),
+    ] = None,
 ) -> SearchResult:
-    result = await service.search(q, type, unit, sync)
+    result = await service.search(q, type, unit, account, semester)
     no_store(response)
     return result

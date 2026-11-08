@@ -33,9 +33,7 @@ export interface paths {
         put?: never;
         /**
          * Sigaa Refresh
-         * @description Confere a senha se não houver access_token e agenda o sync do que venceu.
-         *
-         *     O cache sai só com o refresh_token, então o app chama esta rota ao abrir.
+         * @description Confere a sessão e renova o perfil guardado no cookie; o app chama ao abrir.
          */
         post: operations["sigaa_refresh_auth_sigaa_refresh_post"];
         delete?: never;
@@ -53,7 +51,7 @@ export interface paths {
         };
         /**
          * Consultar posts de uma turma
-         * @description Notícias, tópicos, materiais e agenda de avaliações. Materiais referenciam o tópico por topic_id. Conteúdo de notícias é carregado no detalhe. Cache de 60 minutos nas turmas atuais; posts removidos são preservados.
+         * @description Notícias, tópicos, materiais e agenda de avaliações, lidos do SIGAA na hora e sem gravação (podem citar alunos). Materiais referenciam o tópico por topic_id. O texto das notícias vem no detalhe.
          */
         get: operations["get_classroom_posts_classrooms__classroom_id__posts_get"];
         put?: never;
@@ -73,7 +71,7 @@ export interface paths {
         };
         /**
          * Consultar um post da turma
-         * @description Use o id retornado na listagem. Notícias trazem texto em Markdown e anexos, salvos sob demanda; no-cache força revalidação. Avaliações não incluem notas individuais.
+         * @description Use o id retornado na listagem. Notícias trazem texto em Markdown e anexos, lidos do SIGAA na hora. Avaliações não incluem notas individuais.
          */
         get: operations["get_classroom_post_classrooms__classroom_id__posts__post_id__get"];
         put?: never;
@@ -93,7 +91,7 @@ export interface paths {
         };
         /**
          * Consultar as turmas do usuário autenticado
-         * @description Cada turma traz a menção do usuário em grade (null até ser lançada ou sincronizada). A menção é atualizada pelo sync do login e de /auth/sigaa/refresh.
+         * @description Lida do SIGAA na hora, sem gravar quem está na turma. As encerradas trazem a menção em grade (null até ser lançada); o navegador guarda a resposta.
          */
         get: operations["get_classrooms_classrooms_get"];
         put?: never;
@@ -133,7 +131,7 @@ export interface paths {
         };
         /**
          * Consultar frequência e andamento de uma turma
-         * @description Aceita Classroom.id (hash) ou sigaa_id numérico. frequency_status indica nao_registrada, parcialmente_registrada ou registrada nas entradas publicadas. lessons traz as aulas da turma (criadas pelo calendário e horário no sync das turmas, com start_time e end_time) já começadas, as publicadas pelo SIGAA fora delas e as com situação do aluno, mais recentes primeiro; totals soma as marcações aos totais do SIGAA.
+         * @description Lida do SIGAA na hora; a situação do aluno não é gravada. frequency_status indica nao_registrada, parcialmente_registrada ou registrada nas entradas publicadas. lessons traz as aulas da turma (previstas pelo calendário e horário, com start_time e end_time) já começadas, as publicadas pelo SIGAA fora delas e as com situação, mais recentes primeiro; upcoming, as previstas que não começaram. As marcações do aluno ficam no navegador, que refaz os totais com elas.
          */
         get: operations["get_classroom_frequency_classrooms__classroom_id__frequency_get"];
         put?: never;
@@ -144,26 +142,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/classrooms/{classroom_id}/frequency/lessons": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Marcar presença, falta ou aula cancelada
-         * @description Aplica todas as marcações ou nenhuma. Vale enquanto o SIGAA não registra a aula: a chamada publicada substitui a marcação. status null remove a marcação, sem apagar a chamada do SIGAA. Aula repetida ou que ainda não começou retorna 422.
-         */
-        patch: operations["mark_lessons_classrooms__classroom_id__frequency_lessons_patch"];
-        trace?: never;
-    };
     "/classrooms/{classroom_id}/members": {
         parameters: {
             query?: never;
@@ -171,7 +149,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Consultar docentes e discentes de uma turma do usuário */
+        /**
+         * Consultar docentes e discentes de uma turma do usuário
+         * @description Lida do SIGAA na hora. Só os docentes, que são públicos, ficam no banco.
+         */
         get: operations["get_classroom_members_classrooms__classroom_id__members_get"];
         put?: never;
         post?: never;
@@ -304,9 +285,29 @@ export interface paths {
         };
         /**
          * Buscar docentes do catálogo público
-         * @description Lista docentes coletados do SIGAA, sem login. Nome, unidade e semestre se combinam. O semestre seleciona docentes que ministraram uma disciplina de graduação naquele período.
+         * @description Lista docentes coletados do SIGAA, sem login. Nome, unidade, semestre e matéria se combinam. O semestre seleciona docentes que ministraram uma disciplina de graduação naquele período. Nos rankings (`best`, `worst`), quem não tem avaliação conta como nota zero.
          */
         get: operations["list_professors_public_professors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/professors/ratings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Notas médias e chamada de vários docentes de uma vez
+         * @description Pelo SIAPE; quem não tem avaliação fica de fora.
+         */
+        get: operations["get_ratings_public_professors_ratings_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -324,6 +325,46 @@ export interface paths {
         };
         /** Consultar o perfil público de um docente */
         get: operations["get_professor_public_professors__siape__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/professors/{siape}/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Índices de aprovação e reprovação do docente
+         * @description Média por turma das estatísticas já sincronizadas por alunos do Followw: a geral do docente e a de cada matéria com dados.
+         */
+        get: operations["get_professor_outcomes_public_professors__siape__outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/professors/{siape}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Avaliações anônimas do docente
+         * @description A nota média, quantos dizem que cobra chamada e os comentários, sem nada de quem avaliou.
+         */
+        get: operations["get_professor_reviews_public_professors__siape__reviews_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -369,6 +410,100 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Configuração pública do app (cartões do Mais e links das ferramentas) */
+        get: operations["get_config_public_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/config/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Versão do conteúdo da comunidade, para o app saber o que mudou */
+        get: operations["get_version_public_config_version_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/subjects/comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Índices gerais da UnB e de um curso, para comparação no aparelho
+         * @description Médias das turmas com índices liberados pelos alunos (cada turma pesa igual). O app compara com o histórico que só ele guarda: nada do aluno é enviado.
+         */
+        get: operations["get_comparison_public_subjects_comparison_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/subjects/semesters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Semestres com oferta de turmas gravada
+         * @description Os semestres mais recentes com turmas no Followw, do mais novo ao mais antigo. O próximo semestre aparece assim que a oferta dele é coletada do SIGAA.
+         */
+        get: operations["offer_semesters_public_subjects_semesters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/subjects/{code}/outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Índices de aprovação e reprovação da matéria e de cada docente
+         * @description Médias por turma das estatísticas já sincronizadas por alunos do Followw, de todos os semestres: a da matéria e, para cada docente que já a ofertou, a nela e a geral. `classrooms` diz em quantas turmas cada índice se baseia; sem dados, vem null.
+         */
+        get: operations["subject_outcomes_public_subjects__code__outcomes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/subjects/{code}/statistics": {
         parameters: {
             query?: never;
@@ -398,7 +533,7 @@ export interface paths {
         };
         /**
          * Buscar matérias com suas turmas
-         * @description Consulta os componentes e turmas gravados no Followw, sem ir ao SIGAA; os filtros se combinam. Cada componente traz as turmas do semestre consultado, vazias se não houver oferta. Sem q, code e unit, um aluno de graduação logado recebe as recomendações para o próximo semestre, ordenadas e com `recommendation`; visitantes precisam informar um filtro.
+         * @description Consulta os componentes e turmas gravados no Followw, sem ir ao SIGAA; os filtros se combinam. Cada componente traz as turmas do semestre consultado, vazias se não houver oferta. Sem q, code e unit, um aluno de graduação logado recebe as recomendações para o próximo semestre, ordenadas e com `recommendation`, a partir do histórico que o navegador manda em `history`; visitantes precisam informar um filtro.
          */
         get: operations["search_subjects_public_subjects_get"];
         put?: never;
@@ -416,7 +551,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Consultar o perfil do usuário autenticado */
+        /**
+         * Consultar o perfil do usuário autenticado
+         * @description O perfil fica num cookie cifrado do navegador e é renovado no SIGAA a cada 24 h (ou com no-cache); o servidor não o grava.
+         */
         get: operations["get_me_me_get"];
         put?: never;
         post?: never;
@@ -497,22 +635,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/me/settings": {
+    "/me/statistics-sharing": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Consultar as configurações pessoais do usuário */
-        get: operations["get_settings_me_settings_get"];
+        get?: never;
+        /**
+         * Compartilhar (ou não) as estatísticas das turmas do aluno
+         * @description Libera nos índices públicos as estatísticas das turmas encerradas do aluno. A escolha fica no navegador; o servidor só guarda que a turma tem estatística liberada, com uma chave anônima por turma. Índices que faltam são buscados num job (pending).
+         */
+        put: operations["put_statistics_sharing_me_statistics_sharing_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar as ofertas de estágio do mural do SIGAA
+         * @description Lidas do SIGAA na hora, sem gravação. `mine` marca as do curso do aluno.
+         */
+        get: operations["list_internships_internships_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /** Atualizar as configurações pessoais do usuário */
-        patch: operations["update_settings_me_settings_patch"];
+        patch?: never;
+        trace?: never;
+    };
+    "/internships/{reference}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver os detalhes de uma oferta de estágio */
+        get: operations["get_internship_internships__reference__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/posts/news": {
@@ -555,10 +732,320 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar as turmas com a quantidade de grupos cadastrados */
+        get: operations["list_groups_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/groups/{code}/{semester}/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Consultar os grupos de conversa de uma turma */
+        get: operations["get_groups_groups__code___semester___number__get"];
+        /**
+         * Trocar os grupos de conversa de uma turma (até 3)
+         * @description Qualquer aluno logado edita; só a turma e os links são gravados, nunca quem editou.
+         */
+        put: operations["put_groups_groups__code___semester___number__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Avaliar um docente anonimamente */
+        post: operations["create_review_reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reviews/{review_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Editar a própria avaliação */
+        put: operations["update_review_reviews__review_id__put"];
+        post?: never;
+        /** Apagar a própria avaliação */
+        delete: operations["delete_review_reviews__review_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/demo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver se os dados de demonstração estão carregados */
+        get: operations["get_demo_demo_get"];
+        put?: never;
+        /** Carregar grupos, avaliações e índices fictícios das turmas do aluno */
+        post: operations["load_demo_demo_post"];
+        /** Apagar os dados de demonstração */
+        delete: operations["clear_demo_demo_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Matérias com material compartilhado */
+        get: operations["list_subjects_materials_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/materials/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Materiais de uma matéria, com os limites e o uso */
+        get: operations["list_materials_materials__code__get"];
+        put?: never;
+        /**
+         * Enviar um material para a matéria, anonimamente
+         * @description PDF ou imagem de até 20 MB. O tipo é conferido pelo conteúdo e o arquivo é regravado sem metadados (autor, GPS, aparelho).
+         */
+        post: operations["upload_material_materials__code__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/materials/{code}/{material_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Baixar um material */
+        get: operations["download_material_materials__code___material_id__get"];
+        put?: never;
+        post?: never;
+        /** Apagar um material que o próprio aluno enviou */
+        delete: operations["delete_material_materials__code___material_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dúvidas e publicações da comunidade */
+        get: operations["list_posts_forum_get"];
+        put?: never;
+        /** Publicar uma dúvida ou um post anônimo */
+        post: operations["create_post_forum_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum/{post_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ler uma publicação com as respostas */
+        get: operations["get_post_forum__post_id__get"];
+        put?: never;
+        post?: never;
+        /** Apagar a própria publicação */
+        delete: operations["delete_post_forum__post_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum/{post_id}/replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Responder anonimamente */
+        post: operations["reply_post_forum__post_id__replies_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/forum/{post_id}/replies/{reply_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Apagar a própria resposta */
+        delete: operations["delete_reply_forum__post_id__replies__reply_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tutorials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Guias aprovados da comunidade */
+        get: operations["list_tutorials_tutorials_get"];
+        put?: never;
+        /**
+         * Enviar um guia para aprovação
+         * @description Só aparece depois que a moderação aprovar. Não guarda quem escreveu.
+         */
+        post: operations["submit_tutorial_tutorials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tutorials/{tutorial_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ler um guia */
+        get: operations["get_tutorial_tutorials__tutorial_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Denunciar ou pedir a exclusão de um conteúdo da comunidade
+         * @description Vai para a fila da moderação, que decide se apaga. Não guarda quem pediu.
+         */
+        post: operations["create_report_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AppConfig
+         * @description O que o app mostra: cartões do Mais ligados pelo admin e os links das ferramentas.
+         */
+        AppConfig: {
+            /** Menu */
+            menu: {
+                [key: string]: boolean;
+            };
+            links: components["schemas"]["AppLinks"];
+        };
+        /** AppLinks */
+        AppLinks: {
+            /** Automatricula */
+            automatricula: string | null;
+            /** Monitor */
+            monitor: string | null;
+        };
+        /** Body_upload_material_materials__code__post */
+        Body_upload_material_materials__code__post: {
+            /** File */
+            file: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "prova" | "lista" | "resumo" | "anotacao" | "outro";
+            /** Semester */
+            semester: string;
+            /** Classroom Number */
+            classroom_number?: string | null;
+        };
         CatalogRequirements: components["schemas"]["SubjectRequirement"][][];
         /**
          * CatalogSubject
@@ -599,7 +1086,20 @@ export interface components {
             frequency_status: components["schemas"]["FrequencyStatus"];
             /** Lessons */
             lessons: components["schemas"]["Lesson"][];
+            /**
+             * Upcoming
+             * @default []
+             */
+            upcoming: components["schemas"]["Lesson"][];
             totals: components["schemas"]["FrequencyTotals"] | null;
+            /** Max Absences */
+            max_absences?: number | null;
+        };
+        /** ClassroomGroups */
+        ClassroomGroups: {
+            classroom: components["schemas"]["ClassroomRef"];
+            /** Groups */
+            groups: components["schemas"]["SavedGroup"][];
         };
         /** ClassroomMember */
         ClassroomMember: {
@@ -675,11 +1175,42 @@ export interface components {
             /** Percentage */
             percentage: number;
         };
+        /** ClassroomRef */
+        ClassroomRef: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Number */
+            number: string;
+            /** Semester */
+            semester: string;
+        };
         /**
          * ClassroomStatus
          * @enum {string}
          */
         ClassroomStatus: "cursando" | "trancado" | "concluido" | "pending_enrollment" | "denied";
+        /**
+         * Comparison
+         * @description Índices gerais para o aluno se comparar no próprio aparelho: o histórico dele não vem aqui.
+         */
+        Comparison: {
+            unb: components["schemas"]["OutcomeRates"] | null;
+            course: components["schemas"]["OutcomeRates"] | null;
+            /** Subjects */
+            subjects: components["schemas"]["SubjectRate"][];
+        };
+        /**
+         * ContentVersion
+         * @description Uma impressão curta por parte do conteúdo (quantidade e última mudança).
+         */
+        ContentVersion: {
+            /** Parts */
+            parts: {
+                [key: string]: string;
+            };
+        };
         /** CourseCurriculum */
         CourseCurriculum: {
             /** Sigaa Id */
@@ -724,6 +1255,22 @@ export interface components {
             name: string;
             /** Shift */
             shift: string | null;
+        };
+        /** CourseTag */
+        CourseTag: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /** CreatedReview */
+        CreatedReview: {
+            review: components["schemas"]["Review"];
+            /**
+             * Token
+             * @description Guarde no navegador para editar ou apagar depois.
+             */
+            token: string;
         };
         /** CurriculumPeriod */
         CurriculumPeriod: {
@@ -794,6 +1341,32 @@ export interface components {
             /** Starts On */
             starts_on?: string | null;
         };
+        /** DemoStatus */
+        DemoStatus: {
+            /** Loaded */
+            loaded: boolean;
+            /** Groups */
+            groups: number;
+            /** Reviews */
+            reviews: number;
+            /** Classrooms */
+            classrooms: number;
+            /**
+             * Materials
+             * @default 0
+             */
+            materials: number;
+            /**
+             * Posts
+             * @default 0
+             */
+            posts: number;
+            /**
+             * Tutorials
+             * @default 0
+             */
+            tutorials: number;
+        };
         /**
          * FrequencyStatus
          * @description Quanto das entradas publicadas o docente já registrou.
@@ -821,17 +1394,149 @@ export interface components {
          * @enum {string}
          */
         Grade: "SS" | "MS" | "MM" | "MI" | "II" | "SR";
+        /** GroupLink */
+        GroupLink: {
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "whatsapp" | "telegram" | "teams" | "aprender3";
+            /** Url */
+            url: string;
+            /**
+             * Password
+             * @description Chave de inscrição; só no Aprender 3.
+             */
+            password?: string | null;
+        };
+        /** GroupedClassroom */
+        GroupedClassroom: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Number */
+            number: string;
+            /** Semester */
+            semester: string;
+            /** Schedule */
+            schedule: string | null;
+            /** Room */
+            room: string | null;
+            /** Professors */
+            professors: string[];
+            /** Groups */
+            groups: number;
+        };
+        /** GroupedClassroomPage */
+        GroupedClassroomPage: {
+            /** Items */
+            items: components["schemas"]["GroupedClassroom"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
+        /** GroupsInput */
+        GroupsInput: {
+            /** Groups */
+            groups: components["schemas"]["GroupLink"][];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** Internship */
+        Internship: {
+            /** Sigaa Id */
+            sigaa_id?: number | null;
+            /** Title */
+            title: string;
+            /** Vacancies */
+            vacancies: number;
+            /** Stipend */
+            stipend: string | null;
+            transport_allowance: components["schemas"]["InternshipTransportAllowance"] | null;
+            /**
+             * Published From
+             * Format: date-time
+             */
+            published_from: string;
+            /**
+             * Published Until
+             * Format: date-time
+             */
+            published_until: string;
+            /** Sigaa Enrollment */
+            sigaa_enrollment: boolean;
+            attachment: components["schemas"]["InternshipAttachment"] | null;
+            grantor: components["schemas"]["InternshipGrantor"];
+            /** Courses */
+            courses: components["schemas"]["InternshipCourse"][];
+            /** Description */
+            description: string | null;
+        };
+        /** InternshipAttachment */
+        InternshipAttachment: {
+            /** Name */
+            name: string;
+            /** Url */
+            url: string;
+        };
+        /** InternshipCourse */
+        InternshipCourse: {
+            /** Name */
+            name: string;
+            /** Unit */
+            unit: string;
+            /** Degree */
+            degree: string;
+        };
+        /** InternshipGrantor */
+        InternshipGrantor: {
+            /** Agreement Type */
+            agreement_type: string;
+            /** Cnpj */
+            cnpj: string;
+            /** Name */
+            name: string;
+            /** Responsibles */
+            responsibles: string[];
+        };
+        /** InternshipItem */
+        InternshipItem: {
+            /** Reference */
+            reference: string;
+            /** Sigaa Id */
+            sigaa_id?: number | null;
+            /** Title */
+            title: string;
+            /** Vacancies */
+            vacancies: number;
+            /** Stipend */
+            stipend: string | null;
+            /**
+             * Published Until
+             * Format: date-time
+             */
+            published_until: string;
+            /** Mine */
+            mine: boolean;
+        };
+        /** InternshipTransportAllowance */
+        InternshipTransportAllowance: {
+            /** Amount */
+            amount: string;
+            /** Period */
+            period: string;
+        };
         /** LatestNewsFeed */
         LatestNewsFeed: {
             /** Items */
             items: components["schemas"]["ClassroomNews"][];
-            /** Updating */
-            updating: boolean;
         };
         /**
          * Lesson
@@ -864,22 +1569,70 @@ export interface components {
              */
             marked: boolean;
         };
-        /** LessonMark */
-        LessonMark: {
-            /**
-             * Lesson Id
-             * Format: uuid
-             * @description Lesson.id de uma aula da turma.
-             */
-            lesson_id: string;
-            /** Status */
-            status: ("presente" | "falta" | "cancelada") | null;
-        };
         /**
          * LessonStatus
          * @enum {string}
          */
         LessonStatus: "presente" | "falta" | "nao_registrada" | "cancelada";
+        /** Limits */
+        Limits: {
+            /**
+             * Max File Bytes
+             * @default 20971520
+             */
+            max_file_bytes: number;
+            /**
+             * Max Per Student
+             * @default 10
+             */
+            max_per_student: number;
+            /**
+             * Max Per Subject
+             * @default 50
+             */
+            max_per_subject: number;
+            /**
+             * Max Subject Bytes
+             * @default 104857600
+             */
+            max_subject_bytes: number;
+            /**
+             * Keep Semesters
+             * @default 6
+             */
+            keep_semesters: number;
+        };
+        /** MaterialItem */
+        MaterialItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "prova" | "lista" | "resumo" | "anotacao" | "outro";
+            /** Semester */
+            semester: string;
+            /** Classroom Number */
+            classroom_number: string | null;
+            /** Professors */
+            professors: string[];
+            /** Filename */
+            filename: string;
+            /** Mime */
+            mime: string;
+            /** Size */
+            size: number;
+            /** Month */
+            month: string;
+            /** Mine */
+            mine: boolean;
+        };
         /** MenuSection */
         MenuSection: {
             key?: components["schemas"]["MenuSectionKey"] | null;
@@ -893,6 +1646,22 @@ export interface components {
          * @enum {string}
          */
         MenuSectionKey: "drink" | "bread" | "extra" | "spread" | "complement" | "complement_vegetarian" | "complement_vegan" | "fruit" | "salad_1" | "salad_2" | "salad_dressing" | "main_dish" | "main_dish_vegetarian" | "main_dish_vegan" | "side_dish" | "accompaniments" | "soup" | "toast" | "dessert";
+        /** NewReview */
+        NewReview: {
+            /** Rating */
+            rating: number;
+            /** Comment */
+            comment?: string | null;
+            /** Attendance */
+            attendance?: ("cobra" | "nao_cobra" | "varia") | null;
+            /**
+             * Subject
+             * @description Matéria em que o aluno teve aula com o docente.
+             */
+            subject?: string | null;
+            /** Siape */
+            siape: number;
+        };
         /** NewsAttachment */
         NewsAttachment: {
             /** Name */
@@ -901,8 +1670,22 @@ export interface components {
             url: string;
         };
         /**
+         * OutcomeRates
+         * @description Médias por turma, em % dos discentes.
+         */
+        OutcomeRates: {
+            /** Classrooms */
+            classrooms: number;
+            /** Approved */
+            approved: number;
+            /** Failed */
+            failed: number;
+            /** Dropped */
+            dropped: number;
+        };
+        /**
          * ParticipantClassroom
-         * @description A turma com a menção do usuário, `None` enquanto não lançada ou sincronizada.
+         * @description A turma com a menção do usuário, `None` enquanto não lançada.
          */
         ParticipantClassroom: {
             /**
@@ -941,6 +1724,112 @@ export interface components {
             grade?: components["schemas"]["Grade"] | null;
             status?: components["schemas"]["ClassroomStatus"] | null;
         };
+        /** PostDetails */
+        PostDetails: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duvida" | "post";
+            /** Title */
+            title: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Campus */
+            campus: ("darcy" | "gama" | "ceilandia" | "planaltina") | null;
+            course: components["schemas"]["CourseTag"] | null;
+            subject: components["schemas"]["SubjectReference"] | null;
+            /** Reply Count */
+            reply_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Mine */
+            mine: boolean;
+            /** Body */
+            body: string;
+            /** Replies */
+            replies: components["schemas"]["ReplyItem"][];
+        };
+        /** PostInput */
+        PostInput: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duvida" | "post";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Campus */
+            campus?: ("darcy" | "gama" | "ceilandia" | "planaltina") | null;
+            /** Subject */
+            subject?: string | null;
+            /**
+             * Tag Course
+             * @default false
+             */
+            tag_course: boolean;
+        };
+        /** PostItem */
+        PostItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duvida" | "post";
+            /** Title */
+            title: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Campus */
+            campus: ("darcy" | "gama" | "ceilandia" | "planaltina") | null;
+            course: components["schemas"]["CourseTag"] | null;
+            subject: components["schemas"]["SubjectReference"] | null;
+            /** Reply Count */
+            reply_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+            /** Mine */
+            mine: boolean;
+        };
+        /** PostPage */
+        PostPage: {
+            /** Items */
+            items: components["schemas"]["PostItem"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+        };
         /**
          * PostType
          * @enum {string}
@@ -970,6 +1859,8 @@ export interface components {
             photo: string | null;
             /** Url */
             url: string;
+            /** @description Avaliações anônimas dos alunos; nulo sem nenhuma. */
+            rating?: components["schemas"]["Rating"] | null;
             /** Description */
             description: string | null;
             /**
@@ -997,6 +1888,23 @@ export interface components {
             photo: string | null;
             /** Url */
             url: string;
+            /** @description Avaliações anônimas dos alunos; nulo sem nenhuma. */
+            rating?: components["schemas"]["Rating"] | null;
+        };
+        /** ProfessorOutcome */
+        ProfessorOutcome: {
+            /** Name */
+            name: string;
+            /** Siape */
+            siape: number | null;
+            subject: components["schemas"]["OutcomeRates"] | null;
+            overall: components["schemas"]["OutcomeRates"] | null;
+        };
+        /** ProfessorOutcomes */
+        ProfessorOutcomes: {
+            overall: components["schemas"]["OutcomeRates"] | null;
+            /** Subjects */
+            subjects: components["schemas"]["SubjectRate"][];
         };
         /** ProfessorPage */
         ProfessorPage: {
@@ -1022,6 +1930,12 @@ export interface components {
             photo: string | null;
             /** Email */
             email: string | null;
+        };
+        /** ProfessorReviews */
+        ProfessorReviews: {
+            summary: components["schemas"]["RatingSummary"] | null;
+            /** Reviews */
+            reviews: components["schemas"]["Review"][];
         };
         /**
          * PublicClassroom
@@ -1066,8 +1980,84 @@ export interface components {
             /** Level */
             level: "Graduação" | null;
         };
+        /** Rating */
+        Rating: {
+            /** Count */
+            count: number;
+            /**
+             * Average
+             * @description Média das notas, de 0 a 100.
+             */
+            average: number;
+        };
+        /** RatingSummary */
+        RatingSummary: {
+            /** Count */
+            count: number;
+            /**
+             * Average
+             * @description Média das notas, de 0 a 100.
+             */
+            average: number;
+            /** Attendance */
+            attendance: {
+                [key: string]: number;
+            };
+        };
         /** @enum {string} */
         ReasonCode: "required" | "target_period" | "overdue" | "same_unit" | "chain_length" | "chain_width" | "hours";
+        /** ReplyInput */
+        ReplyInput: {
+            /** Body */
+            body: string;
+        };
+        /** ReplyItem */
+        ReplyItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Mine */
+            mine: boolean;
+            /** By Author */
+            by_author: boolean;
+        };
+        /** ReportCreated */
+        ReportCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
+        /** ReportInput */
+        ReportInput: {
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "review" | "group" | "material" | "post" | "reply" | "tutorial";
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "ofensivo" | "dados_pessoais" | "spam" | "falso" | "direitos_autorais" | "outro";
+            /** Message */
+            message?: string | null;
+        };
         /** RestaurantCredentials */
         RestaurantCredentials: {
             /** Token */
@@ -1102,6 +2092,54 @@ export interface components {
             /** Amount */
             amount: string;
         };
+        /** Review */
+        Review: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Rating */
+            rating: number;
+            /** Comment */
+            comment: string | null;
+            /** Attendance */
+            attendance: ("cobra" | "nao_cobra" | "varia") | null;
+            subject: components["schemas"]["SubjectReference"] | null;
+            /** Month */
+            month: string;
+        };
+        /** ReviewInput */
+        ReviewInput: {
+            /** Rating */
+            rating: number;
+            /** Comment */
+            comment?: string | null;
+            /** Attendance */
+            attendance?: ("cobra" | "nao_cobra" | "varia") | null;
+            /**
+             * Subject
+             * @description Matéria em que o aluno teve aula com o docente.
+             */
+            subject?: string | null;
+        };
+        /** SavedGroup */
+        SavedGroup: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "whatsapp" | "telegram" | "teams" | "aprender3";
+            /** Url */
+            url: string;
+            /** Password */
+            password: string | null;
+        };
         /**
          * SearchResult
          * @description Cada tipo no formato do seu endpoint; nulo quando não foi pedido.
@@ -1114,6 +2152,23 @@ export interface components {
         };
         /** @enum {string} */
         SearchType: "subjects" | "courses" | "professors";
+        /** SharingInput */
+        SharingInput: {
+            /** Shared */
+            shared: boolean;
+        };
+        /** SharingStatus */
+        SharingStatus: {
+            /** Shared */
+            shared: boolean;
+            /** Classrooms */
+            classrooms: number;
+            /**
+             * Pending
+             * @default false
+             */
+            pending: boolean;
+        };
         /** SigaaLoginRequest */
         SigaaLoginRequest: {
             /** Registration */
@@ -1192,6 +2247,30 @@ export interface components {
             /** Room */
             room?: string | null;
         };
+        /** SubjectMaterials */
+        SubjectMaterials: {
+            subject: components["schemas"]["SubjectReference"];
+            /** Oldest Semester */
+            oldest_semester: string;
+            limits: components["schemas"]["Limits"];
+            usage: components["schemas"]["Usage"];
+            /** Items */
+            items: components["schemas"]["MaterialItem"][];
+        };
+        /** SubjectOutcomes */
+        SubjectOutcomes: {
+            subject: components["schemas"]["OutcomeRates"] | null;
+            /** Professors */
+            professors: components["schemas"]["ProfessorOutcome"][];
+        };
+        /** SubjectRate */
+        SubjectRate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            rates: components["schemas"]["OutcomeRates"];
+        };
         /** SubjectReason */
         SubjectReason: {
             code: components["schemas"]["ReasonCode"];
@@ -1225,6 +2304,15 @@ export interface components {
             /** Semesters */
             semesters: components["schemas"]["StatisticsPeriod"][];
         };
+        /** SubjectWithMaterials */
+        SubjectWithMaterials: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            /** Files */
+            files: number;
+        };
         /** TaughtDiscipline */
         TaughtDiscipline: {
             /** Semester */
@@ -1239,6 +2327,74 @@ export interface components {
              */
             name: string | null;
         };
+        /** TutorialDetails */
+        TutorialDetails: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "matricula" | "estagio" | "documentos" | "auxilios" | "campus" | "sigaa" | "outros";
+            /** Published At */
+            published_at: string | null;
+            /** Body */
+            body: string;
+        };
+        /** TutorialInput */
+        TutorialInput: {
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /** Body */
+            body: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "matricula" | "estagio" | "documentos" | "auxilios" | "campus" | "sigaa" | "outros";
+        };
+        /** TutorialItem */
+        TutorialItem: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "matricula" | "estagio" | "documentos" | "auxilios" | "campus" | "sigaa" | "outros";
+            /** Published At */
+            published_at: string | null;
+        };
+        /** TutorialSubmitted */
+        TutorialSubmitted: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Status
+             * @default pending
+             * @constant
+             */
+            status: "pending";
+        };
         /**
          * UnitRef
          * @description Unidade acadêmica: `id` do SIGAA, `code` a sigla (ex.: FCTE).
@@ -1251,6 +2407,15 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** Usage */
+        Usage: {
+            /** Files */
+            files: number;
+            /** Bytes */
+            bytes: number;
+            /** Mine */
+            mine: number;
+        };
         /**
          * UserLevel
          * @enum {string}
@@ -1258,7 +2423,7 @@ export interface components {
         UserLevel: "Graduação" | "Pós-graduação" | "Mestrado";
         /**
          * UserProfile
-         * @description O perfil como a API devolve: sem curso na tabela, curso e unidade são nulos.
+         * @description O perfil como a API devolve: sem curso conhecido, curso e unidade são nulos.
          */
         UserProfile: {
             /** Name */
@@ -1285,16 +2450,6 @@ export interface components {
             /** Mp */
             mp: number | null;
             level: components["schemas"]["UserLevel"];
-        };
-        /** UserSettings */
-        UserSettings: {
-            /** Displayname */
-            displayName?: string | null;
-        };
-        /** UserSettingsPatch */
-        UserSettingsPatch: {
-            /** Displayname */
-            displayName?: string | null;
         };
         /**
          * UserSubject
@@ -1407,6 +2562,15 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
             /** @description SIGAA indisponível. */
             502: {
                 headers: {
@@ -1427,7 +2591,7 @@ export interface operations {
                 "Cache-Control"?: string | null;
             };
             path: {
-                /** @description Classroom.id ou Classroom.sigaa_id. */
+                /** @description frontEndIdTurma (o id da lista) ou sigaa_id da turma. */
                 classroom_id: string;
             };
             cookie?: never;
@@ -1473,20 +2637,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Cache em atualização. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Posts ainda não disponíveis no cache. */
-            504: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
     get_classroom_post_classrooms__classroom_id__posts__post_id__get: {
@@ -1497,7 +2647,7 @@ export interface operations {
                 "Cache-Control"?: string | null;
             };
             path: {
-                /** @description Classroom.id ou Classroom.sigaa_id. */
+                /** @description frontEndIdTurma (o id da lista) ou sigaa_id da turma. */
                 classroom_id: string;
                 /** @description ID do post na listagem da turma. */
                 post_id: string;
@@ -1540,20 +2690,6 @@ export interface operations {
             };
             /** @description SIGAA indisponível. */
             502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cache em atualização. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Post ainda não disponível no cache. */
-            504: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1661,13 +2797,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Cache em atualização. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
     get_classroom_frequency_classrooms__classroom_id__frequency_get: {
@@ -1678,7 +2807,7 @@ export interface operations {
                 "Cache-Control"?: string | null;
             };
             path: {
-                /** @description Classroom.id ou Classroom.sigaa_id. */
+                /** @description frontEndIdTurma (o id da lista) ou sigaa_id da turma. */
                 classroom_id: string;
             };
             cookie?: never;
@@ -1724,78 +2853,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Cache em atualização. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    mark_lessons_classrooms__classroom_id__frequency_lessons_patch: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
-                "Cache-Control"?: string | null;
-            };
-            path: {
-                /** @description Classroom.id ou Classroom.sigaa_id. */
-                classroom_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LessonMark"][];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Credenciais ausentes ou inválidas. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Turma ou aula não encontrada. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description O SIGAA já registrou a chamada de uma das aulas. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description SIGAA indisponível. */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
     get_classroom_members_classrooms__classroom_id__members_get: {
@@ -1806,7 +2863,7 @@ export interface operations {
                 "Cache-Control"?: string | null;
             };
             path: {
-                /** @description Classroom.id ou Classroom.sigaa_id. */
+                /** @description frontEndIdTurma (o id da lista) ou sigaa_id da turma. */
                 classroom_id: string;
             };
             cookie?: never;
@@ -1862,7 +2919,7 @@ export interface operations {
                 "Cache-Control"?: string | null;
             };
             path: {
-                /** @description Classroom.id ou Classroom.sigaa_id. */
+                /** @description frontEndIdTurma (o id da lista) ou sigaa_id da turma. */
                 classroom_id: string;
             };
             cookie?: never;
@@ -1903,13 +2960,6 @@ export interface operations {
             };
             /** @description SIGAA indisponível. */
             502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Cache em atualização. */
-            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2136,6 +3186,11 @@ export interface operations {
                 unit?: number | string | null;
                 /** @description Período de graduação, como 2026.2; registros antigos podem vir só com o ano. */
                 semester?: string | null;
+                /** @description Código ou nome de uma matéria que o docente deu. */
+                subject?: string | null;
+                order?: "name" | "best" | "worst" | "reviews";
+                /** @description Só docentes com avaliação. */
+                rated?: boolean;
                 page?: number;
                 page_size?: number;
             };
@@ -2163,6 +3218,39 @@ export interface operations {
             };
         };
     };
+    get_ratings_public_professors_ratings_get: {
+        parameters: {
+            query: {
+                siape: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["RatingSummary"];
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_professor_public_professors__siape__get: {
         parameters: {
             query?: never;
@@ -2183,6 +3271,82 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProfessorDetails"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_professor_outcomes_public_professors__siape__outcomes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                siape: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfessorOutcomes"];
+                };
+            };
+            /** @description Docente não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_professor_reviews_public_professors__siape__reviews_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                siape: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfessorReviews"];
+                };
+            };
+            /** @description Docente não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2254,6 +3418,8 @@ export interface operations {
                 type?: components["schemas"]["SearchType"][] | null;
                 /** @description ID ou código exato da unidade, aplicado a todos os tipos. */
                 unit?: number | string | null;
+                /** @description Semestre das turmas das matérias, no formato AAAA.P. Sem ele, usa o mais recente gravado. */
+                semester?: string | null;
             };
             header?: {
                 /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
@@ -2279,6 +3445,135 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_config_public_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfig"];
+                };
+            };
+        };
+    };
+    get_version_public_config_version_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContentVersion"];
+                };
+            };
+        };
+    };
+    get_comparison_public_subjects_comparison_get: {
+        parameters: {
+            query?: {
+                course?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comparison"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    offer_semesters_public_subjects_semesters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    subject_outcomes_public_subjects__code__outcomes_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectOutcomes"];
+                };
+            };
+            /** @description Matéria não encontrada. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -2319,7 +3614,7 @@ export interface operations {
     search_subjects_public_subjects_get: {
         parameters: {
             query?: {
-                /** @description Termos do código, nome do componente ou docente, de 3 a 32 caracteres; cada um precisa aparecer em algum deles, ignorando acentos e maiúsculas. */
+                /** @description Termos do código, nome do componente ou docente, de 3 a 32 caracteres; cada um precisa corresponder, ignorando acentos e maiúsculas. Um código completo também encontra equivalências diretas nos dois sentidos, incluindo integrantes de conjuntos. */
                 q?: string | null;
                 /** @description Código completo do componente, como FGA0003. */
                 code?: string | null;
@@ -2327,6 +3622,10 @@ export interface operations {
                 unit?: number | string | null;
                 /** @description Semestre das turmas, no formato AAAA.P. Sem ele, usa o mais recente gravado. */
                 semester?: string | null;
+                /** @description Nas recomendações: matérias que o aluno marcou como concluídas no fluxo (guardadas só no navegador). */
+                completed?: string[];
+                /** @description Nas recomendações: as turmas do aluno como `CODIGO:AAAA.P:MENCAO:SITUACAO` (menção e situação podem vir vazias). O navegador as tem da lista de turmas; o servidor não guarda o histórico. */
+                history?: string[];
             };
             header?: {
                 /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
@@ -2360,15 +3659,8 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Falha no SIGAA ao sincronizar o histórico das recomendações. */
+            /** @description Falha no SIGAA ao ler o perfil (sem ele no cookie do navegador). */
             502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Histórico alterado durante a consulta das recomendações. */
-            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2579,9 +3871,61 @@ export interface operations {
             };
         };
     };
-    get_settings_me_settings_get: {
+    put_statistics_sharing_me_statistics_sharing_put: {
         parameters: {
             query?: never;
+            header?: {
+                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
+                "Cache-Control"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SharingInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingStatus"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_internships_internships_get: {
+        parameters: {
+            query?: {
+                scope?: "all" | "mine";
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2594,7 +3938,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserSettings"];
+                    "application/json": components["schemas"]["InternshipItem"][];
                 };
             };
             /** @description Credenciais ausentes ou inválidas. */
@@ -2603,6 +3947,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
             /** @description SIGAA indisponível. */
             502: {
@@ -2613,18 +3966,17 @@ export interface operations {
             };
         };
     };
-    update_settings_me_settings_patch: {
+    get_internship_internships__reference__get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description A `reference` da listagem (vale enquanto o mural não muda). */
+                reference: string;
+            };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UserSettingsPatch"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -2632,11 +3984,18 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserSettings"];
+                    "application/json": components["schemas"]["Internship"];
                 };
             };
             /** @description Credenciais ausentes ou inválidas. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description O mural mudou desde a listagem: liste de novo. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2737,6 +4096,1204 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    list_groups_groups_get: {
+        parameters: {
+            query: {
+                semester: string;
+                /** @description Código ou nome da matéria. */
+                q?: string | null;
+                campus?: ("darcy" | "gama" | "ceilandia" | "planaltina") | null;
+                /** @description Só turmas com grupo. */
+                with_groups?: boolean;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupedClassroomPage"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_groups_groups__code___semester___number__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                semester: string;
+                number: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassroomGroups"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Turma não encontrada. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    put_groups_groups__code___semester___number__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                semester: string;
+                number: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupsInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClassroomGroups"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Turma não encontrada. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_review_reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedReview"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Docente não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_review_reviews__review_id__put: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description O segredo devolvido ao criar a avaliação. */
+                "X-Review-Token": string;
+            };
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Review"];
+                };
+            };
+            /** @description Avaliação não encontrada ou segredo errado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_review_reviews__review_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description O segredo devolvido ao criar a avaliação. */
+                "X-Review-Token": string;
+            };
+            path: {
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Avaliação não encontrada ou segredo errado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_demo_demo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoStatus"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Dados de demonstração desligados. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    load_demo_demo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
+                "Cache-Control"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoStatus"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Dados de demonstração desligados. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    clear_demo_demo_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DemoStatus"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Dados de demonstração desligados. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_subjects_materials_get: {
+        parameters: {
+            query?: {
+                /** @description Código ou nome. */
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectWithMaterials"][];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_materials_materials__code__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubjectMaterials"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matéria ou material não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    upload_material_materials__code__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_material_materials__code__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialItem"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matéria ou material não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Limite atingido ou arquivo repetido. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Arquivo grande demais. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tipo de arquivo não aceito. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_material_materials__code___material_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matéria ou material não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_material_materials__code___material_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matéria ou material não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_posts_forum_get: {
+        parameters: {
+            query?: {
+                kind?: ("duvida" | "post") | null;
+                campus?: ("darcy" | "gama" | "ceilandia" | "planaltina") | null;
+                course?: number | null;
+                subject?: string | null;
+                /** @description Só destas matérias (ex.: as que o aluno cursa, que o navegador conhece). */
+                subjects?: string[];
+                q?: string | null;
+                order?: "recent" | "active" | "unanswered";
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostPage"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_post_forum_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
+                "Cache-Control"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PostInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetails"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Campos inválidos. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_post_forum__post_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetails"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_post_forum__post_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reply_post_forum__post_id__replies_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplyInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetails"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Limite de respostas. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_reply_forum__post_id__replies__reply_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+                reply_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_tutorials_tutorials_get: {
+        parameters: {
+            query?: {
+                category?: ("matricula" | "estagio" | "documentos" | "auxilios" | "campus" | "sigaa" | "outros") | null;
+                q?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_tutorial_tutorials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorialInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialSubmitted"];
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Guias demais esperando aprovação. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_tutorial_tutorials__tutorial_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tutorial_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialDetails"];
+                };
+            };
+            /** @description Guia não encontrado ou ainda não aprovado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_report_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportCreated"];
+                };
+            };
+            /** @description Conteúdo não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

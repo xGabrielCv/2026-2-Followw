@@ -119,6 +119,13 @@ describe('matriz e estados acadêmicos', () => {
         expect(academicState([classroom('E', 'cursando')], 4)(b)).toBe('enrolled');
         expect(academicState([classroom('E', 'concluido', 'SR')], 4)(b)).toBe('overdue');
     });
+    test('matéria marcada à mão conta como aprovada, inclusive por equivalência', () => {
+        const manual = new Set(['A', 'E']);
+        const state = academicState([], 4, manual);
+        expect(state(model.byCode.get('A')!)).toBe('completed');
+        expect(state(model.byCode.get('B')!)).toBe('completed');
+        expect(academicState(undefined, 4, manual)(model.byCode.get('A')!)).toBe('unknown');
+    });
     test('sem histórico o estado é desconhecido; sem período não inventa atraso', () => {
         expect(model.subjects.map(academicState(undefined, 4))).toEqual([
             'unknown',

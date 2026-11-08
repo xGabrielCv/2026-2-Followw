@@ -1,6 +1,28 @@
+# Segredos e configuração local: nunca sobem
 .env*
-!.env.example
-__pycache__/
 *.local
-.playwright-mcp
 .vercel
+.playwright-mcp
+
+# Gerados
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+
+# Só nesta máquina (o repositório público leva apenas o código-fonte e os testes):
+# documentação, scripts para rodar o projeto, infraestrutura e configurações de editor e IA
+*.md
+!/README.md
+docs/
+scripts/
+*.ps1
+*.cmd
+compose.yml
+vercel.json
+skills-lock.json
+.agents/
+.claude/
+.github/
+.vscode/
+packages/sigaa-client/tests/test_update_data.py

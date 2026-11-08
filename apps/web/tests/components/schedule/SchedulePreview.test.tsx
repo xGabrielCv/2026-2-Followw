@@ -1,6 +1,12 @@
 import type { Middleware } from 'openapi-fetch';
 
 import { QueryClientProvider } from '@tanstack/react-query';
+import {
+    createMemoryHistory,
+    createRootRoute,
+    createRouter,
+    RouterContextProvider
+} from '@tanstack/react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { useLayoutEffect } from 'react';
 
@@ -78,9 +84,12 @@ function render(ui: React.ReactNode, maxHours: number | null = null) {
     const { queryClient } = getContext();
     const profile: typeof user = { ...user, period_max_workload: maxHours };
     queryClient.setQueryData(meQueryOptions.queryKey, profile);
+    const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
     return dom.testing.render(
         <QueryClientProvider client={queryClient}>
-            <Toaster>{ui}</Toaster>
+            <RouterContextProvider router={router}>
+                <Toaster>{ui}</Toaster>
+            </RouterContextProvider>
         </QueryClientProvider>
     );
 }
@@ -109,7 +118,9 @@ describe('montagem da grade semanal', () => {
             const view = setup();
             localStorageRepository.set(STORAGE_KEYS.THEME, 'dark');
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 01'));
-            expect(JSON.parse(localStorage.getItem('followw:schedule')!)).toHaveLength(1);
+            expect(
+                JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
+            ).toHaveLength(1);
             const middleware: Middleware = {
                 onRequest: () => Response.json({ registration: 'outra-conta' })
             };
@@ -131,7 +142,7 @@ describe('montagem da grade semanal', () => {
                 apiClient.eject(middleware);
                 queryClient.clear();
             }
-            expect(localStorage.getItem('followw:schedule')).toBeNull();
+            expect(localStorage.getItem('followw:schedule-plans')).toBeNull();
             expect(localStorageRepository.get(STORAGE_KEYS.THEME)).toBe('dark');
             expect(view.queryByRole('toolbar')).toBeNull();
             fireEvent.click(button(view, 'Adicionar à grade: FGA0001, turma 01'));
@@ -168,7 +179,9 @@ describe('montagem da grade semanal', () => {
         fireEvent.click(add('FGA0108'));
         fireEvent.click(add('FGA0001'));
         expect(view.getByText(/ultrapassa a carga horária máxima de 100h/)).toBeTruthy();
-        expect(JSON.parse(localStorage.getItem('followw:schedule')!)).toHaveLength(1);
+        expect(
+            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
+        ).toHaveLength(1);
         expect(add('FGA0002').hasAttribute('disabled')).toBe(false);
         expect(add('FGA0003').hasAttribute('disabled')).toBe(false);
         fireEvent.click(add('FGA0002'));
@@ -199,7 +212,9 @@ describe('montagem da grade semanal', () => {
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 01'));
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 02'));
             expect(view.getByText(/já está na grade do semestre 2026.2, na turma 01/)).toBeTruthy();
-            expect(JSON.parse(localStorage.getItem('followw:schedule')!)).toHaveLength(1);
+            expect(
+                JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
+            ).toHaveLength(1);
             fireEvent.click(button(view, 'Remover da grade: FGA0108, turma 01'));
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 02'));
             expect(
@@ -268,7 +283,9 @@ describe('montagem da grade semanal', () => {
         expect(blocked.hasAttribute('disabled')).toBe(false);
         fireEvent.click(blocked);
         expect(view.getByText(/O horário de .*FGA0001.* conflita com .*FGA0108/)).toBeTruthy();
-        expect(JSON.parse(localStorage.getItem('followw:schedule')!)).toHaveLength(1);
+        expect(
+            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
+        ).toHaveLength(1);
         fireEvent.click(blocked);
         expect(view.getAllByText('Não foi possível adicionar à grade')).toHaveLength(1);
         fireEvent.click(await view.findByRole('button', { name: 'Fechar aviso' }));
@@ -297,7 +314,10 @@ describe('montagem da grade semanal', () => {
         expect(view.getByRole('toolbar').textContent).toContain('2 turmas');
         fireEvent.click(button(view, 'Limpar seleção'));
         expect(view.queryByRole('toolbar')).toBeNull();
-        expect(localStorage.getItem('followw:schedule')).toBeNull();
+        // limpar esvazia a grade ativa, que continua no simulador
+        expect(JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items).toEqual(
+            []
+        );
     });
 
     test('salva a grade no localStorage e restaura ao remontar', () => {
@@ -305,14 +325,18 @@ describe('montagem da grade semanal', () => {
         const view = setup({ schedule: '24M12' });
         fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 01'));
         fireEvent.click(button(view, 'Adicionar à grade: FGA0001, turma 01'));
-        expect(JSON.parse(localStorage.getItem('followw:schedule')!)).toHaveLength(2);
+        expect(
+            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
+        ).toHaveLength(2);
         view.unmount();
         const restored = setup({ schedule: '24M12' });
         expect(
             button(restored, 'Remover da grade: FGA0108, turma 01').getAttribute('aria-pressed')
         ).toBe('true');
         fireEvent.click(button(restored, 'Remover da grade: FGA0001, turma 01'));
-        expect(JSON.parse(localStorage.getItem('followw:schedule')!)).toHaveLength(1);
+        expect(
+            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
+        ).toHaveLength(1);
     });
 
     test('fechar e reabrir mantém seleção', async () => {

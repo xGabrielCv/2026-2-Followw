@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 
 import type { ClassroomFrequency, Lesson, LessonMarkStatus } from '#/queries/classrooms';
 
+import { AbsenceAlert } from '#/components/classroom/AbsenceAlert';
 import { ListCard, Meter } from '#/components/ListCard';
 import { SelectionBar } from '#/components/SelectionBar';
 import { Button } from '#/components/ui/button';
@@ -41,8 +42,9 @@ const LESSON_VIEW = {
     cancelada: { icon: CircleSlash, color: 'text-muted-foreground', name: 'Aula cancelada' }
 } as const;
 
-// Marcações que o aluno pode dar a uma aula sem chamada no SIGAA.
+// Marcações que o aluno pode dar a uma aula sem chamada no SIGAA, também em lote.
 const MARKS: LessonMarkStatus[] = ['presente', 'falta', 'cancelada'];
+const UPCOMING_PREVIEW = 4;
 
 // Aviso no fim da lista de aulas enquanto a frequência não está toda registrada.
 const FREQUENCY_NOTICE: Partial<Record<ClassroomFrequency['frequency_status'], string>> = {
@@ -81,10 +83,12 @@ export function FrequencyContent({
 
     return (
         <div className="flex flex-col gap-2">
+            <AbsenceAlert totals={totals} />
             <FrequencySummary data={data} />
             {totals?.estimated && (
                 <p className="px-1 text-xs text-muted-foreground">
-                    Frequência estimada com as aulas marcadas por você.
+                    Frequência estimada com as aulas marcadas por você (as marcações ficam só neste
+                    aparelho).
                 </p>
             )}
             {(lessons.length > 0 || notice) && (
@@ -129,6 +133,9 @@ export function FrequencyContent({
                     </ListCard>
                 </section>
             )}
+            {data.upcoming.length > 0 && (
+                <UpcomingLessons lessons={data.upcoming} onMark={onMark} pending={pending} />
+            )}
             {selected.length > 0 && (
                 <SelectionBar
                     label="Marcar aulas selecionadas"
@@ -136,7 +143,7 @@ export function FrequencyContent({
                     units={['aula', 'aulas']}
                     onClear={() => setSelectedIds(new Set())}
                 >
-                    {(['presente', 'falta'] as const).map((mark) => {
+                    {MARKS.map((mark) => {
                         const option = LESSON_VIEW[mark];
                         return (
                             <Button
@@ -450,5 +457,66 @@ function Stat({
                 {value}
             </dd>
         </div>
+    );
+}
+
+/** Aulas previstas que ainda não aconteceram: dá para avisar antes que uma foi cancelada. */
+function UpcomingLessons({
+    lessons,
+    onMark,
+    pending
+}: {
+    lessons: Lesson[];
+    onMark: MarkLessons;
+    pending: boolean;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const visible = expanded ? lessons : lessons.slice(0, UPCOMING_PREVIEW);
+    const cancel = LESSON_VIEW.cancelada;
+    return (
+        <section aria-label="Próximas aulas">
+            <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                <h3 className="text-sm font-semibold">
+                    Próximas aulas{' '}
+                    <span className="font-normal text-muted-foreground">{lessons.length}</span>
+                </h3>
+                {lessons.length > UPCOMING_PREVIEW && (
+                    <Button
+                        variant="ghost"
+                        size="xs"
+                        className="text-muted-foreground"
+                        onClick={() => setExpanded(!expanded)}
+                    >
+                        {expanded ? 'Mostrar menos' : 'Ver todas'}
+                    </Button>
+                )}
+            </div>
+            <ListCard>
+                {visible.map((lesson) => (
+                    <div key={lesson.id} className="flex items-center gap-2 py-2 text-sm">
+                        <span className="tabular-nums">
+                            {formatClassroomDate(lesson.occurred_on)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                            {formatClassroomWeekday(lesson.occurred_on)}
+                        </span>
+                        <Button
+                            variant="ghost"
+                            size="xs"
+                            disabled={pending}
+                            className="ml-auto text-muted-foreground"
+                            onClick={() => onMark([lesson], 'cancelada')}
+                            aria-label={`Marcar a aula de ${formatClassroomDate(lesson.occurred_on)} como cancelada`}
+                        >
+                            <cancel.icon />
+                            Cancelada
+                        </Button>
+                    </div>
+                ))}
+            </ListCard>
+            <p className="mt-2 px-1 text-xs text-muted-foreground">
+                Aula cancelada não conta como falta nem na frequência.
+            </p>
+        </section>
     );
 }

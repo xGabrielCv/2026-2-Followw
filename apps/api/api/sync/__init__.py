@@ -1,40 +1,35 @@
-from collections.abc import AsyncGenerator
-from typing import Annotated
+"""Jobs em segundo plano, numa sessão própria do SIGAA.
 
-from fastapi import Depends
+Só buscam o que é público e anônimo (os índices das turmas encerradas que o aluno liberou): nada
+do aluno é gravado. A credencial viaja cifrada e some quando o job acaba.
+"""
 
-from api.cache import CacheControlDep
-from api.db.main import DatabaseDep
-from api.sigaa import OptionalSigaaConnectionDep, SigaaConnectionDep
-from api.sync.engine import Cached, Context, Item, Sync
-from api.sync.queue import JobQueueDep
-
-__all__ = ["Cached", "Context", "Item", "OptionalSyncDep", "Sync", "SyncDep"]
+from pydantic import BaseModel, ConfigDict, field_serializer
+from sigaa_client import Credentials
 
 
-async def get_optional_sync(
-    db: DatabaseDep,
-    sigaa: OptionalSigaaConnectionDep,
-    cache: CacheControlDep,
-    queue: JobQueueDep,
-) -> AsyncGenerator[Sync | None]:
-    """O `Sync` de quem está logado; `None` para visitantes."""
-    if sigaa is None:
-        yield None
-        return
-    sync = Sync(db, sigaa, cache)
-    yield sync
-    # Nada roda depois da resposta: os jobs saem antes dela.
-    await queue.enqueue(*sync.jobs())
+class Job(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
+    credentials: Credentials
+    task: str
+    # chave anônima do aparelho, para gravar o que é do aluno sem a matrícula
+    author: str | None = None
+    attempt: int = 1
 
-OptionalSyncDep = Annotated[Sync | None, Depends(get_optional_sync, scope="function")]
+    @property
+    def registration(self) -> str:
+        return self.credentials.registration
 
+    @property
+    def key(self) -> str:
+        """A mesma tarefa do mesmo aluno tem a mesma chave (para descartar repetidas)."""
+        return f"{self.registration}:{self.task}:#{self.attempt}"
 
-async def get_sync(_authenticated: SigaaConnectionDep, sync: OptionalSyncDep) -> Sync:
-    # `SigaaConnectionDep` já respondeu 401 aos visitantes.
-    assert sync is not None
-    return sync
-
-
-SyncDep = Annotated[Sync, Depends(get_sync)]
+    @field_serializer("credentials")
+    def _reveal(self, credentials: Credentials) -> dict[str, str]:
+        # O job sai daqui cifrado: a senha só volta a ser legível na própria API.
+        return {
+            "registration": credentials.registration,
+            "password": credentials.password.get_secret_value(),
+        }

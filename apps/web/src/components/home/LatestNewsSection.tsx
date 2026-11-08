@@ -41,7 +41,7 @@ function LatestNews() {
     if (feed.isLoadingError)
         return <ErrorCard message={SIGAA_DOWN_MESSAGE} onRetry={() => void feed.refetch()} />;
 
-    const { items, updating } = feed.data;
+    const { items } = feed.data;
     return (
         <>
             {feed.isError && <StaleDataNotice subject="as notícias" />}
@@ -49,7 +49,11 @@ function LatestNews() {
                 <NewsCarousel news={items} />
             ) : (
                 <NewsMessage>
-                    {updating ? 'Buscando notícias das turmas...' : 'Nenhuma notícia por enquanto.'}
+                    {feed.isFetching ? (
+                        <LoadingText>Buscando notícias das turmas...</LoadingText>
+                    ) : (
+                        'Nenhuma notícia por enquanto.'
+                    )}
                 </NewsMessage>
             )}
         </>

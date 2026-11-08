@@ -1,37 +1,22 @@
-from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-import httpx
 import pytest
-from sigaa_client import (
-    Classroom as SigaaClassroom,
-)
-from sigaa_client import (
-    ClassroomGrade,
-    Credentials,
-    Grade,
-)
-from sigaa_client import (
-    Subject as SigaaSubject,
-)
+from sigaa_client import Credentials, Grade
 from sigaa_client import UserLevel as SigaaUserLevel
 from sigaa_client import UserProfile as SigaaUserProfile
-from sqlalchemy import select
 
 from api import academic_calendar
 from api.db.enums import ClassroomRole, ClassroomStatus, UserLevel
 from api.db.models import (
     Classroom,
-    ClassroomParticipant,
     Course,
     Curriculum,
     CurriculumComponent,
     Subject,
     Unit,
-    User,
 )
 from api.modules.classrooms.repository import ClassroomRepository
-from api.modules.me.repository import UserRepository
+from api.modules.me.profile import enrollment
 from api.modules.recommendations.ranking import (
     Component,
     chain_length,
@@ -39,38 +24,57 @@ from api.modules.recommendations.ranking import (
     descendants,
     target_period,
 )
-from api.modules.recommendations.service import _rank, _student
+from api.modules.recommendations.repository import RecommendationRepository
+from api.modules.recommendations.service import HistoryItem, _rank, _until
 
-NOW = datetime.now(UTC)
 URL = "/public/subjects"
+LOGIN = Credentials(registration="251000000", password="senha")
 
 
 class Scenario:
-    def __init__(self, database, client):
+    """O aluno de teste: o perfil vai no cookie cifrado e o histórico na própria busca,
+    como o navegador manda; o banco só tem o catálogo público."""
+
+    def __init__(self, database, client, cookies):
         self.db = database
         self.client = client
+        self._cookies = cookies
+        self.items: list[HistoryItem] = []
+        self.profile = {
+            "level": SigaaUserLevel.GRADUACAO,
+            "course": "ENGENHARIA DE SOFTWARE",
+            "entry_semester": "2025.1",
+        }
         with database.begin() as session:
             session.add(Unit(id=99, code="OTHER", name="Outra unidade"))
             course = Course(name="ENGENHARIA DE SOFTWARE", shift="DIURNO", unit_id=673)
             session.add(course)
             session.flush()
             self.course_id = course.id
-            user = User(
-                name="Aluno",
-                registration="251000000",
-                level=UserLevel.GRADUACAO,
-                course_id=course.id,
-                entry_semester="2025.1",
-                profile_synced_at=NOW,
-                classrooms_synced_at=NOW,
-                grades_synced_at=NOW,
-            )
-            session.add(user)
-            session.flush()
-            self.user_id = user.id
         self.matrix = self.curriculum()
-        with database.begin() as session:
-            session.get(User, self.user_id).curriculum_id = self.matrix
+        self._sync_cookie()
+
+    def sigaa_profile(self) -> SigaaUserProfile:
+        return SigaaUserProfile(
+            name="Aluno",
+            registration="251000000",
+            photo=None,
+            bio=None,
+            unit="FCTE",
+            course=self.profile["course"],
+            shift=None,
+            entry_semester=self.profile["entry_semester"],
+            integralization=None,
+            workload=None,
+            ira=None,
+            mp=None,
+            level=self.profile["level"],
+        )
+
+    def _sync_cookie(self):
+        self.client.cookies.update(
+            self._cookies(refresh=LOGIN, profile=self.sigaa_profile())
+        )
 
     def curriculum(
         self,
@@ -113,10 +117,20 @@ class Scenario:
         if kind:
             self.component(code, kind=kind, period=period)
 
-    def user(self, **fields):
-        with self.db.begin() as session:
-            for name, value in fields.items():
-                setattr(session.get(User, self.user_id), name, value)
+    def user(self, *, level=None, course_id=..., curriculum_id=...):
+        """Muda o perfil: sem curso ou sem matriz é um perfil que não casa com nenhuma."""
+        if level is not None:
+            self.profile["level"] = SigaaUserLevel(level.value)
+        if course_id is None:
+            self.profile["course"] = "CURSO FORA DO CATÁLOGO"
+        if curriculum_id is None:
+            self.profile["entry_semester"] = None
+        self._sync_cookie()
+
+    def assign(self, entry="2025.1", course="ENGENHARIA DE SOFTWARE"):
+        self.profile["entry_semester"] = entry
+        self.profile["course"] = course
+        self._sync_cookie()
 
     def component(self, code, *, kind="required", period=1, matrix=None):
         with self.db.begin() as session:
@@ -137,34 +151,46 @@ class Scenario:
         term="2026.1",
         enrolled=False,
         role=ClassroomRole.ALUNO,
-        own=True,
-        user_id=None,
         status=None,
     ):
+        """Uma turma da lista do aluno; a turma pública entra no banco como a lista a grava."""
         with self.db.begin() as session:
             if session.get(Subject, code) is None:
                 session.add(Subject(code=code, name=code))
             classroom = Classroom(subject_code=code, number=str(uuid4()), semester=term)
             session.add(classroom)
-            session.flush()
-            row = ClassroomParticipant(
-                user_id=user_id or self.user_id,
-                classroom_id=classroom.id,
-                front_end_id=str(uuid4()) if own else None,
-                role=role,
-                grade=grade,
-                status=status
+        if role != ClassroomRole.ALUNO:
+            return
+        self.items.append(
+            HistoryItem(
+                code,
+                term,
+                grade,
+                status
                 or (
                     ClassroomStatus.CURSANDO if enrolled else ClassroomStatus.CONCLUIDO
                 ),
-                current=enrolled,
             )
-            session.add(row)
-            session.flush()
-            return row.id
+        )
+
+    def history_params(self) -> list[str]:
+        return [
+            ":".join(
+                (
+                    item.code,
+                    item.semester,
+                    item.grade.value if item.grade else "",
+                    item.status.value if item.status else "",
+                )
+            )
+            for item in self.items
+            # O navegador só tem semestres no formato do SIGAA.
+            if academic_calendar.parse_semester(item.semester)
+        ]
 
     def get(self, **kwargs):
-        response = self.client.get(URL, **kwargs)
+        params = {"history": self.history_params(), **kwargs.pop("params", {})}
+        response = self.client.get(URL, params=params, **kwargs)
         assert response.status_code == 200, response.text
         assert response.headers["cache-control"] == "no-store"
         result = response.json()
@@ -176,10 +202,7 @@ class Scenario:
 
 @pytest.fixture
 def scene(database, client, cookies, stub_sigaa):
-    client.cookies.update(
-        cookies(refresh=Credentials(registration="251000000", password="senha"))
-    )
-    return Scenario(database, client)
+    return Scenario(database, client, cookies)
 
 
 @pytest.fixture
@@ -188,37 +211,30 @@ def ranked(scene, async_database):
 
     async def run():
         async with async_database() as session:
-            user = await UserRepository(session).get_by_registration("251000000")
-            student = await _student(session, user)
+            found = await enrollment(session, scene.sigaa_profile())
+            curriculum = await RecommendationRepository(session).components(
+                found.curriculum_id
+            )
             reference = await ClassroomRepository(session).offer_semester()
-            return await _rank(session, student, reference)
+            items = await _rank(
+                session,
+                curriculum,
+                found.course.unit_id,
+                reference,
+                _until(scene.items, reference),
+            )
+            await session.rollback()
+            return items
 
     return run
 
 
 @pytest.fixture
-def assign(scene, async_database):
-    """Sincroniza o perfil, que infere a matriz pelo semestre de entrada."""
+def assign(scene):
+    """O perfil do SIGAA com outro semestre de entrada ou curso: a matriz é inferida dele."""
 
     async def run(entry="2025.1", course="ENGENHARIA DE SOFTWARE"):
-        profile = SigaaUserProfile(
-            name="Aluno",
-            registration="251000000",
-            photo=None,
-            bio=None,
-            unit="FCTE",
-            course=course,
-            shift=None,
-            entry_semester=entry,
-            integralization=None,
-            workload=None,
-            ira=None,
-            mp=None,
-            level=SigaaUserLevel.GRADUACAO,
-        )
-        async with async_database() as session:
-            await UserRepository(session).save_profile(profile, NOW)
-            await session.commit()
+        scene.assign(entry, course)
 
     return run
 
@@ -404,9 +420,7 @@ def test_busca_e_recomendacoes_informam_apenas_semestre_positivo_do_fluxo(
 
 def test_tipo_e_nulo_sem_matriz_ou_sem_login(scene):
     scene.subject("A")
-    with scene.db.begin() as session:
-        user = session.get(User, scene.user_id)
-        user.course_id = user.curriculum_id = None
+    scene.user(course_id=None, curriculum_id=None)
 
     def kinds():
         return [i["kind"] for i in scene.client.get(URL, params={"unit": "673"}).json()]
@@ -417,9 +431,29 @@ def test_tipo_e_nulo_sem_matriz_ou_sem_login(scene):
 
 
 def test_somente_graduacao(scene):
-    with scene.db.begin() as session:
-        session.get(User, scene.user_id).level = UserLevel.MESTRADO
+    scene.user(level=UserLevel.MESTRADO)
     assert scene.client.get(URL).status_code == 422
+
+
+def test_historico_vem_do_navegador_e_e_validado(scene, stub_sigaa):
+    scene.subject("A")
+    scene.subject("B", prerequisites=[["A"]])
+    assert scene.get() == [] or "B" not in codes(scene.get())
+    scene.history("A", grade=Grade.SS)
+    assert "B" in codes(scene.get())
+    # a recomendação não vai ao SIGAA: perfil no cookie e histórico na busca
+    stub_sigaa.profile.get_profile.assert_not_awaited()
+    stub_sigaa.classrooms.list_classrooms.assert_not_awaited()
+    stub_sigaa.classrooms.list_grades.assert_not_awaited()
+    for invalido in (
+        "A",
+        "A:2026.1:XX:",
+        "A:2026:SS:",
+        "A;drop:2026.1::",
+        "A:2026.1::mentindo",
+    ):
+        resposta = scene.client.get(URL, params={"history": [invalido]})
+        assert resposta.status_code == 422, invalido
 
 
 async def test_toda_a_oferta_entra_no_ranking_com_historico_vazio(scene, ranked):
@@ -479,19 +513,6 @@ def test_encerrada_sem_mencao_libera_seguinte_mesmo_apos_consolidacao(
     scene.subject("B", prerequisites=[["A"]])
     scene.history("A")
     assert codes(scene.get()) == ["B"]
-
-
-def test_so_vinculos_proprios_de_aluno_e_isolamento_entre_usuarios(scene):
-    scene.subject("A", prerequisites=[["B"]])
-    scene.history("B", grade=Grade.SS, role=ClassroomRole.MONITOR)
-    scene.history("B", grade=Grade.SS, own=False)
-    with scene.db.begin() as session:
-        user = User(name="Outro", registration="other")
-        session.add(user)
-        session.flush()
-        other = user.id
-    scene.history("B", grade=Grade.SS, user_id=other)
-    assert scene.get() == []
 
 
 def test_requisitos_e_ou_com_em_andamento_e_equivalencia(scene):
@@ -568,6 +589,22 @@ def test_equivalencia_de_materia_em_curso_exclui_repeticao(scene):
     scene.subject("B", equivalences=[["A"]])
     scene.subject("C", prerequisites=[["B"]])
     assert codes(scene.get()) == ["C"]
+
+
+def test_codigo_antigo_que_cita_o_novo_como_equivalente_vale_o_novo(scene):
+    # FGA0161 cita (FGA0302), mas a FGA0302 não cita a antiga de volta
+    scene.subject("OLD", kind=None, offer=False, equivalences=[["NEW"]])
+    scene.history("OLD", grade=Grade.MS, term="2024.1")
+    scene.subject("NEW", kind="required", period=1)
+    scene.subject("NEXT", kind="required", period=2, prerequisites=[["NEW"]])
+    assert codes(scene.get()) == ["NEXT"]
+
+
+def test_materia_marcada_como_concluida_no_fluxo_sai_e_libera_requisito(scene):
+    scene.subject("A", kind="required", period=1)
+    scene.subject("B", kind="required", period=2, prerequisites=[["A"]])
+    # a marcação fica no navegador e vai junto na consulta
+    assert codes(scene.get(params={"completed": ["a"]})) == ["B"]
 
 
 @pytest.mark.parametrize("grade", [Grade.MI, Grade.II, Grade.SR])
@@ -702,26 +739,6 @@ def test_sem_matriz_a_busca_comum_continua_funcionando(scene, stub_sigaa):
     stub_sigaa.classrooms.list_classrooms.assert_not_awaited()
 
 
-async def test_matriz_e_inferida_so_enquanto_nula(scene, assign):
-    scene.curriculum(valid_from="2024.1")
-    scene.user(curriculum_id=None)
-    await assign(entry="2020.1")
-    await assign(entry="2025.1")
-    with scene.db.begin() as session:
-        assert session.get(User, scene.user_id).curriculum_id == scene.matrix
-
-
-async def test_sync_do_perfil_zera_a_matriz_so_quando_o_curso_muda(scene, assign):
-    def curriculum_id():
-        with scene.db.begin() as session:
-            return session.get(User, scene.user_id).curriculum_id
-
-    await assign()
-    assert curriculum_id() == scene.matrix
-    await assign(course="OUTRO CURSO")
-    assert curriculum_id() is None
-
-
 async def test_cadeias_contam_as_obrigatorias_pendentes_descendentes(scene, ranked):
     scene.subject("X", kind="required", period=1)
     scene.history("A", grade=Grade.MM)
@@ -813,119 +830,6 @@ async def test_optativas_e_complementares_nao_ganham_bonus_de_tipo(scene, ranked
     assert scores(await ranked()) == [("X", 114), ("OPT", 9), ("COMP", 8)]
 
 
-def test_mencoes_ausentes_sincronizam_antes_do_ranking(scene, stub_sigaa):
-    scene.subject("A")
-    scene.subject("B", prerequisites=[["A"]])
-    scene.history("A")
-    scene.user(grades_synced_at=None)
-    stub_sigaa.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="A", semester="2026.1", grade=Grade.MM)
-    ]
-    assert codes(scene.get()) == ["B"]
-    stub_sigaa.classrooms.list_grades.assert_awaited_once()
-
-
-def test_historico_ausente_difere_de_sincronizado_vazio(scene, stub_sigaa):
-    scene.subject("A")
-    scene.get()
-    stub_sigaa.classrooms.list_classrooms.assert_not_awaited()
-    with scene.db.begin() as session:
-        session.get(User, scene.user_id).classrooms_synced_at = None
-    scene.get()
-    stub_sigaa.classrooms.list_classrooms.assert_awaited_once()
-
-
-def test_only_if_cached_sem_historico_e_falha_na_origem(scene, stub_sigaa):
-    scene.subject("A")
-    scene.history("B")
-    scene.user(grades_synced_at=None)
-    assert (
-        scene.client.get(URL, headers={"Cache-Control": "only-if-cached"}).status_code
-        == 504
-    )
-    stub_sigaa.classrooms.list_grades.side_effect = httpx.ConnectError("offline")
-    assert scene.client.get(URL).status_code == 502
-
-
-def test_mencoes_vencidas_com_swr_e_no_cache(scene, stub_sigaa, qstash):
-    scene.subject("A")
-    # Trancada: sem menção, não conta como em andamento.
-    link_id = scene.history("A", term="2026.2", status=ClassroomStatus.TRANCADO)
-    scene.user(grades_synced_at=NOW - timedelta(days=2))
-    stub_sigaa.classrooms.list_grades.return_value = [
-        ClassroomGrade(subject_code="A", semester="2026.2", grade=Grade.MM)
-    ]
-    assert codes(scene.get()) == ["A"]
-    assert any(
-        step.task == "sync_grades" for job in qstash.jobs() for step in job.steps
-    )
-    assert scene.get() == []
-    with scene.db.begin() as session:
-        row = session.get(ClassroomParticipant, link_id)
-        row.grade = None
-        session.get(User, scene.user_id).grades_synced_at = NOW
-    # A revalidação das turmas precisa preservar o vínculo da fonte sintética.
-    with scene.db() as session:
-        row = session.get(ClassroomParticipant, link_id)
-        classroom = session.get(Classroom, row.classroom_id)
-        stub_sigaa.classrooms.list_classrooms.return_value = [
-            SigaaClassroom(
-                id=row.front_end_id,
-                number=classroom.number,
-                semester="2026.2",
-                current=True,
-                subject=SigaaSubject(code="A", name="A", hours=60),
-            )
-        ]
-    assert scene.get(headers={"Cache-Control": "no-cache"}) == []
-    stub_sigaa.profile.get_profile.assert_awaited_once()
-    stub_sigaa.classrooms.list_classrooms.assert_awaited_once()
-    assert stub_sigaa.classrooms.list_grades.await_count == 2
-
-
-def test_mencoes_congeladas_nao_sao_revalidadas(scene, stub_sigaa):
-    scene.subject("A")
-    scene.history("H", grade=Grade.MM, term="2020.1")
-    scene.get(headers={"Cache-Control": "only-if-cached"})
-    scene.get()
-    stub_sigaa.classrooms.list_grades.assert_not_awaited()
-
-
-def test_perfil_ausente_sincroniza_e_falhas(scene, stub_sigaa):
-    scene.subject("A")
-    with scene.db.begin() as session:
-        session.get(User, scene.user_id).profile_synced_at = None
-    assert (
-        scene.client.get(URL, headers={"Cache-Control": "only-if-cached"}).status_code
-        == 504
-    )
-    scene.get()
-    stub_sigaa.profile.get_profile.assert_awaited_once()
-
-
-def test_perfil_vencido_sem_matriz_sincroniza_antes_do_422(scene, stub_sigaa, qstash):
-    scene.subject("A")
-    scene.user(curriculum_id=None, profile_synced_at=NOW - timedelta(days=2))
-    profile = stub_sigaa.profile.get_profile
-    profile.return_value = profile.return_value.model_copy(
-        update={"entry_semester": "2025.1"}
-    )
-    assert (
-        scene.client.get(URL, headers={"Cache-Control": "only-if-cached"}).status_code
-        == 504
-    )
-    profile.assert_not_awaited()
-    assert codes(scene.get()) == ["A"]
-    profile.assert_awaited_once()
-    assert not any(
-        step.task == "sync_profile" for job in qstash.jobs() for step in job.steps
-    )
-    # Perfil em dia sem matriz responde 422 sem ir ao SIGAA.
-    scene.user(curriculum_id=None)
-    assert scene.client.get(URL).status_code == 422
-    profile.assert_awaited_once()
-
-
 async def test_empates_por_obrigatoria_periodo_positivo_e_codigo(scene, ranked):
     # Optativa com carga alta empata com obrigatórias atrasadas.
     scene.subject("R", kind="required", period=1, unit_id=99)
@@ -953,33 +857,6 @@ async def test_referencia_normalizada_da_matriz_conta_sem_oferta(scene, ranked):
     assert codes(scene.get()) == ["X"]
     x = points(await ranked(), "X")
     assert x["chain_length"] == 10 and x["chain_width"] == 5
-
-
-def test_mencoes_vencidas_servem_stale_if_error(scene, stub_sigaa):
-    scene.subject("A")
-    scene.subject("B")
-    scene.history("OLD", grade=Grade.MM, term="2020.1")
-    scene.history("A", term="2026.2")
-    scene.user(grades_synced_at=NOW - timedelta(days=2))
-    with scene.db() as session:
-        links = list(session.scalars(select(ClassroomParticipant)))
-        stub_sigaa.classrooms.list_classrooms.return_value = [
-            SigaaClassroom(
-                id=link.front_end_id,
-                number=link.classroom.number,
-                semester=link.classroom.semester,
-                current=link.classroom.semester == "2026.2",
-                subject=SigaaSubject(
-                    code=link.classroom.subject_code,
-                    name=link.classroom.subject_code,
-                    hours=60,
-                ),
-            )
-            for link in links
-        ]
-    stub_sigaa.classrooms.list_grades.side_effect = httpx.ConnectError("offline")
-    result = scene.get(headers={"Cache-Control": "no-cache, stale-if-error=259200"})
-    assert codes(result) == ["B"]
 
 
 def test_modulo_livre_fica_de_fora_mesmo_da_unidade_ou_destravando(scene):
@@ -1023,40 +900,3 @@ async def test_sem_matricula_mira_o_periodo_pendente_inferido(scene, ranked):
         "same_unit": 5,
         "hours": 4,
     }
-
-
-async def test_historico_removido_durante_sync_das_mencoes_e_vazio_valido(
-    scene, async_database, stub_sigaa
-):
-    scene.subject("A")
-    link_id = scene.history("OLD")
-    scene.user(grades_synced_at=None)
-
-    async def grades_after_history_refresh():
-        async with async_database.begin() as session:
-            link = await session.get(ClassroomParticipant, link_id)
-            link.front_end_id = None
-        return []
-
-    stub_sigaa.classrooms.list_grades.side_effect = grades_after_history_refresh
-    assert codes(scene.get()) == ["A"]
-
-
-def test_historico_novo_apos_resolver_mencoes_pede_nova_tentativa(scene, monkeypatch):
-    from api.sync.engine import Sync
-
-    scene.subject("A")
-    scene.history("OLD", grade=Grade.MM)
-    resolve = Sync.resolve
-
-    async def resolve_with_concurrent_history(self, task, target, load):
-        result = await resolve(self, task, target, load)
-        if task.__name__ == "sync_grades":
-            # Como o sync das turmas: vínculo novo zera a data das menções.
-            scene.history("NEW")
-            scene.user(grades_synced_at=None)
-        return result
-
-    monkeypatch.setattr(Sync, "resolve", resolve_with_concurrent_history)
-    response = scene.client.get(URL)
-    assert response.status_code == 503

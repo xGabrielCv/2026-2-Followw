@@ -1,29 +1,20 @@
-from datetime import UTC, datetime, timedelta
+"""As postagens das turmas, lidas do SIGAA a cada pedido: podem citar alunos, então não são gravadas."""
+
+from datetime import date, datetime, time
 from typing import Annotated
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from sigaa_client import ClassroomPost, PostType
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.cache import Freshness, freshness
-from api.db.models import ClassroomPosts, OwnLink
-from api.modules.classrooms.repository import ClassroomRepository, PostsRepository
 from api.modules.classrooms.service import (
     ClassroomServiceDep,
     ParticipantClassroom,
+    Turma,
     to_classroom,
 )
-from api.sync import Cached, Context, Item, SyncDep
 
-POSTS_LIST_TTL = timedelta(minutes=60)
-NEWS_CONTENT_TTL: timedelta | None = None
 LATEST_NEWS_LIMIT = 5
-
-
-def posts_freshness(link: OwnLink, synced_at: datetime | None) -> Freshness:
-    # Listas históricas não vencem.
-    return freshness(synced_at, POSTS_LIST_TTL if link.row.current else None)
 
 
 class ClassroomNews(BaseModel):
@@ -35,128 +26,68 @@ class ClassroomNews(BaseModel):
 
 class LatestNewsFeed(BaseModel):
     items: list[ClassroomNews]
-    updating: bool
-
-
-async def sync_posts(ctx: Context[OwnLink]) -> None:
-    link = ctx.target
-    posts = await ctx.client.classrooms.list_classroom_posts(link.front_end_id)
-    await ctx.sync.db.write(
-        lambda session: PostsRepository(session).save_list(
-            link.row.classroom_id, posts, datetime.now(UTC)
-        )
-    )
-
-
-async def sync_news_content(ctx: Context[Item]) -> None:
-    link, news_id = ctx.target.link, ctx.target.id
-    content = await ctx.client.classrooms.get_classroom_news(link.front_end_id, news_id)
-    await ctx.sync.db.write(
-        lambda session: PostsRepository(session).save_content(
-            link.row.classroom_id, content, datetime.now(UTC)
-        )
-    )
 
 
 class ClassroomPostsService:
-    def __init__(self, sync: SyncDep, classrooms: ClassroomServiceDep) -> None:
-        self._sync = sync
+    def __init__(self, classrooms: ClassroomServiceDep) -> None:
         self._classrooms = classrooms
 
     async def latest_news(self) -> LatestNewsFeed:
-        """O conteúdo de cada notícia segue sob demanda, por `get_post`."""
-        links = await self._classrooms.list_links()
-        by_id = {link.row.classroom_id: link for link in links}
-        posts = await self._sync.db.read(
-            lambda session: PostsRepository(session).latest_news(
-                by_id.keys(), LATEST_NEWS_LIMIT
+        """As notícias mais recentes das turmas atuais; o conteúdo segue pelo detalhe."""
+        news: list[ClassroomNews] = []
+        # Em sequência: as turmas dividem a sessão do SIGAA.
+        for turma in await self._classrooms.list_turmas():
+            classroom = to_classroom(turma)
+            news.extend(
+                ClassroomNews(classroom=classroom, post=post)
+                for post in await self._posts(turma)
+                if post.type == PostType.NEWS
             )
-        )
-        stale = [
-            link
-            for link in links
-            if posts_freshness(link, link.row.classroom.posts_synced_at)
-            is Freshness.STALE
-        ]
-        for link in stale:
-            self._sync.schedule(sync_posts, link)
-        return LatestNewsFeed(
-            items=[
-                ClassroomNews(
-                    classroom=to_classroom(by_id[post.classroom_id]),
-                    post=_to_post(
-                        post,
-                        by_id[post.classroom_id].row.classroom.sigaa_id,
-                        detail=True,
-                    ),
-                )
-                for post in posts
-            ],
-            updating=bool(stale),
-        )
+        news.sort(key=lambda item: _published(item.post), reverse=True)
+        return LatestNewsFeed(items=news[:LATEST_NEWS_LIMIT])
 
     async def list_posts(self, classroom_id: str) -> list[ClassroomPost]:
-        link = await self._classrooms.get_link(classroom_id)
-
-        async def load(session: AsyncSession) -> Cached[list[ClassroomPost]] | None:
-            classroom = await ClassroomRepository(session).get(link.row.classroom_id)
-            if classroom is None or classroom.posts_synced_at is None:
-                return None
-            posts = await PostsRepository(session).list_by_classroom(
-                link.row.classroom_id
-            )
-            return Cached(
-                [_to_post(item, classroom.sigaa_id) for item in posts],
-                classroom.posts_synced_at,
-                posts_freshness(link, classroom.posts_synced_at),
-            )
-
-        return await self._sync.resolve(sync_posts, link, load)
+        return await self._posts(await self._classrooms.get_turma(classroom_id))
 
     async def get_post(self, classroom_id: str, post_id: str) -> ClassroomPost:
+        turma = await self._classrooms.get_turma(classroom_id)
         if not post_id.startswith("news:"):
-            posts = await self.list_posts(classroom_id)
-            post = next((post for post in posts if post.id == post_id), None)
+            post = next(
+                (post for post in await self._posts(turma) if post.id == post_id), None
+            )
             if post is None:
                 raise HTTPException(404, "Classroom post not found")
             return post
-        link = await self._classrooms.get_link(classroom_id)
-        news_id = int(post_id.removeprefix("news:"))
+        client = await self._classrooms.account.client()
+        news = await client.classrooms.get_classroom_news(
+            turma.front_end_id, int(post_id.removeprefix("news:"))
+        )
+        return ClassroomPost.from_news(news).model_copy(
+            update={"classroom_sigaa_id": turma.row.sigaa_id}
+        )
 
-        async def load(session: AsyncSession) -> Cached[ClassroomPost] | None:
-            item = await PostsRepository(session).get(link.row.classroom_id, post_id)
-            if item is None or item.content_synced_at is None:
-                return None
-            return Cached(
-                _to_post(item, link.row.classroom.sigaa_id, detail=True),
-                item.content_synced_at,
-                freshness(item.content_synced_at, NEWS_CONTENT_TTL),
-            )
-
-        return await self._sync.resolve(sync_news_content, Item(link, news_id), load)
+    async def _posts(self, turma: Turma) -> list[ClassroomPost]:
+        client = await self._classrooms.account.client()
+        posts = await client.classrooms.list_classroom_posts(turma.front_end_id)
+        return sorted(
+            (_listed(post, turma.row.sigaa_id) for post in posts),
+            key=lambda post: (post.published_on or post.starts_on or date.min, post.id),
+            reverse=True,
+        )
 
 
-def _to_post(
-    item: ClassroomPosts, classroom_sigaa_id: int | None, *, detail: bool = False
-) -> ClassroomPost:
-    include_content = detail or item.type != PostType.NEWS
-    return ClassroomPost(
-        id=item.source_id,
-        type=item.type,
-        sigaa_id=item.sigaa_id,
-        classroom_sigaa_id=classroom_sigaa_id,
-        topic_id=item.topic_id,
-        title=item.title,
-        published_on=item.published_on,
-        published_at=item.published_at if include_content else None,
-        content=item.content if include_content else None,
-        starts_on=item.starts_on,
-        ends_on=item.ends_on,
-        starts_at=item.starts_at,
-        time_label=item.time_label,
-        url=item.url,
-        attachments=tuple(item.attachments) if include_content else (),
-    )
+def _listed(post: ClassroomPost, classroom_sigaa_id: int | None) -> ClassroomPost:
+    """Na lista, a notícia vem sem o texto: ele segue pelo detalhe."""
+    update: dict[str, object] = {"classroom_sigaa_id": classroom_sigaa_id}
+    if post.type == PostType.NEWS:
+        update |= {"content": None, "published_at": None, "attachments": ()}
+    return post.model_copy(update=update)
+
+
+def _published(post: ClassroomPost) -> datetime:
+    if post.published_at is not None:
+        return post.published_at.replace(tzinfo=None)
+    return datetime.combine(post.published_on or date.min, time.min)
 
 
 ClassroomPostsServiceDep = Annotated[ClassroomPostsService, Depends()]

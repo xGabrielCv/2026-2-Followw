@@ -28,6 +28,7 @@ def caplog(caplog):
         logger.removeHandler(caplog.handler)
 
 
+AUTOR_DE_TESTE = "a" * 64
 QSTASH_SIGNING_KEY = "sig_atual_de_teste_com_32_bytes_ou_mais"
 
 # O `Settings` é instanciado no import de `api.core.config`, então as variáveis
@@ -297,10 +298,21 @@ def postgres():
 
     from api.db.main import create_schema
 
-    with PostgresContainer("postgres:18-alpine", driver="psycopg") as container:
-        engine = create_engine(container.get_connection_url())
+    def prepare(url: str):
+        engine = create_engine(url)
         with engine.begin() as conn:
             create_schema(conn)
+        return engine
+
+    # Sem Docker: aponta para um Postgres já rodando (o run.ps1 sobe um local).
+    if url := os.environ.get("TEST_POSTGRES_URL"):
+        engine = prepare(url)
+        yield engine
+        engine.dispose()
+        return
+
+    with PostgresContainer("postgres:18-alpine", driver="psycopg") as container:
+        engine = prepare(container.get_connection_url())
         yield engine
         engine.dispose()
 
@@ -346,6 +358,8 @@ def client(async_database, qstash):
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     app.dependency_overrides[get_sessionmaker] = lambda: sessions
     with JobsClient(app, qstash) as client:
+        # o segredo do aparelho que o app manda: a autoria anônima vem dele, não da matrícula
+        client.headers["X-Followw-Author"] = AUTOR_DE_TESTE
         yield client
         client.portal.call(engine.dispose)
     app.dependency_overrides.clear()
@@ -355,19 +369,27 @@ def client(async_database, qstash):
 def cookies():
     """Monta os cookies de sessão como a própria app os emitiria."""
     # Importado aqui dentro: `api.core.config` lê o ambiente já no import.
+    from datetime import UTC, datetime
+
     from fastapi import Response
 
-    from api.cookies import set_access_cookie, set_refresh_cookie
+    from api.cookies import set_access_cookie, set_profile_cookie, set_refresh_cookie
 
     def _build(
-        *, access: str | None = None, refresh: Credentials | None = None
+        *,
+        access: str | None = None,
+        refresh: Credentials | None = None,
+        profile=None,
+        synced_at: datetime | None = None,
     ) -> dict[str, str]:
         response = Response()
+        login = refresh.registration if refresh else "251000000"
         if access is not None:
-            login = refresh.registration if refresh else "251000000"
             set_access_cookie(response, access, login)
         if refresh is not None:
             set_refresh_cookie(response, refresh)
+        if profile is not None:
+            set_profile_cookie(response, profile, login, synced_at or datetime.now(UTC))
         return {nome: morsel.value for nome, morsel in _carregar(response).items()}
 
     return _build
@@ -452,6 +474,13 @@ def stub_sigaa(monkeypatch):
             list_classroom_members=AsyncMock(return_value=[]),
             get_classroom_statistics=AsyncMock(return_value=()),
             list_grades=AsyncMock(return_value=[]),
+            get_classroom_frequency=AsyncMock(),
+            list_classroom_posts=AsyncMock(return_value=[]),
+            get_classroom_news=AsyncMock(),
+        ),
+        internships=SimpleNamespace(
+            list_internships=AsyncMock(return_value=[]),
+            get_internship=AsyncMock(),
         ),
     )
 
@@ -466,6 +495,7 @@ def stub_sigaa(monkeypatch):
             client.aclose,
             *vars(client.profile).values(),
             *vars(client.classrooms).values(),
+            *vars(client.internships).values(),
         ):
             mock.reset_mock()
 

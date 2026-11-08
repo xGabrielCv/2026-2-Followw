@@ -1,15 +1,17 @@
 import type { Query, QueryClient } from '@tanstack/react-query';
 
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
-import { hashKey, noop } from '@tanstack/react-query';
+import { noop } from '@tanstack/react-query';
 import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import { del, get, set } from 'idb-keyval';
 
 import { PAGES_CACHE_PREFIX, pagesCacheName } from '#/integrations/offline/pages-cache';
-import { recommendationsQueryOptions } from '#/queries/recommendations';
+import { isRecommendationsKey } from '#/queries/recommendations';
 
 // também é o gcTime das queries no navegador, senão a query sai do cache antes de vencer no disco
-export const PERSIST_MAX_AGE = 14 * 24 * 60 * 60 * 1000;
+// o mesmo prazo do login (400 dias): quem volta depois de meses ainda vê os dados salvos
+export const PERSIST_MAX_AGE = 400 * 24 * 60 * 60 * 1000;
+const RESTORE_TIMEOUT_MS = 3_000;
 
 // sem IndexedDB (SSR) não há persistência
 const persister =
@@ -23,7 +25,7 @@ const persister =
 // sem isso, query sem uso (ex.: cardápio de semana antiga) é salva de novo a cada sessão e nunca sai
 export function shouldPersistQuery(query: Query, now = Date.now()) {
     return (
-        query.queryHash !== hashKey(recommendationsQueryOptions.queryKey) &&
+        !isRecommendationsKey(query.queryKey) &&
         query.state.status === 'success' &&
         now - query.state.dataUpdatedAt < PERSIST_MAX_AGE
     );
@@ -42,8 +44,19 @@ export function persistQueryCache(queryClient: QueryClient, onRestored: () => vo
         buster: import.meta.env.VITE_QUERY_CACHE_BUSTER,
         dehydrateOptions: { shouldDehydrateQuery: (query) => shouldPersistQuery(query) }
     });
-    // falha ao restaurar já descarta o cache salvo
-    restoring.catch(noop).finally(onRestored);
+    // falha ao restaurar já descarta o cache salvo; IndexedDB travado (ex.: exclusão pendente
+    // noutra aba) não pode prender o app sem dados: depois do limite, segue pela rede
+    let done = false;
+    const finish = () => {
+        if (done) return;
+        done = true;
+        onRestored();
+    };
+    const timer = setTimeout(finish, RESTORE_TIMEOUT_MS);
+    restoring.catch(noop).finally(() => {
+        clearTimeout(timer);
+        finish();
+    });
     return unsubscribe;
 }
 

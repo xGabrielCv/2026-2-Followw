@@ -1,12 +1,8 @@
-from typing import Annotated, Literal
-from uuid import UUID
+from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
-from pydantic import AfterValidator, BaseModel, Field
 from sigaa_client import ClassroomPost, PostType, StatisticsShare
 
-from api.cache import NoStore
-from api.db.enums import LessonStatus
 from api.errors import SIGAA_ERRORS
 from api.modules.classrooms.frequency import (
     ClassroomFrequencyResult,
@@ -26,34 +22,21 @@ CLASSROOM_ERRORS = {
     **SIGAA_ERRORS,
     404: {"description": "Turma não encontrada entre as turmas do usuário."},
 }
-ClassroomId = Annotated[str, Path(description="Classroom.id ou Classroom.sigaa_id.")]
-
-
-class LessonMark(BaseModel):
-    lesson_id: UUID = Field(description="Lesson.id de uma aula da turma.")
-    # `None` remove a marcação: a aula sem chamada não é uma marcação.
-    status: (
-        Literal[LessonStatus.PRESENTE, LessonStatus.FALTA, LessonStatus.CANCELADA]
-        | None
-    )
-
-
-def _unique_lessons(marks: list[LessonMark]) -> list[LessonMark]:
-    if len({mark.lesson_id for mark in marks}) < len(marks):
-        raise ValueError("Aula repetida.")
-    return marks
+ClassroomId = Annotated[
+    str,
+    Path(
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",
+        description="frontEndIdTurma (o id da lista) ou sigaa_id da turma.",
+    ),
+]
 
 
 @router.get(
     "/{classroom_id}/posts",
     response_model=list[ClassroomPost],
     summary="Consultar posts de uma turma",
-    description="Notícias, tópicos, materiais e agenda de avaliações. Materiais referenciam o tópico por topic_id. Conteúdo de notícias é carregado no detalhe. Cache de 60 minutos nas turmas atuais; posts removidos são preservados.",
-    responses={
-        **CLASSROOM_ERRORS,
-        503: {"description": "Cache em atualização."},
-        504: {"description": "Posts ainda não disponíveis no cache."},
-    },
+    description="Notícias, tópicos, materiais e agenda de avaliações, lidos do SIGAA na hora e sem gravação (podem citar alunos). Materiais referenciam o tópico por topic_id. O texto das notícias vem no detalhe.",
+    responses=CLASSROOM_ERRORS,
 )
 async def get_classroom_posts(
     service: ClassroomPostsServiceDep,
@@ -71,12 +54,10 @@ async def get_classroom_posts(
     "/{classroom_id}/posts/{post_id}",
     response_model=ClassroomPost,
     summary="Consultar um post da turma",
-    description="Use o id retornado na listagem. Notícias trazem texto em Markdown e anexos, salvos sob demanda; no-cache força revalidação. Avaliações não incluem notas individuais.",
+    description="Use o id retornado na listagem. Notícias trazem texto em Markdown e anexos, lidos do SIGAA na hora. Avaliações não incluem notas individuais.",
     responses={
         **CLASSROOM_ERRORS,
         404: {"description": "Turma ou post não encontrado."},
-        503: {"description": "Cache em atualização."},
-        504: {"description": "Post ainda não disponível no cache."},
     },
 )
 async def get_classroom_post(
@@ -97,7 +78,7 @@ async def get_classroom_post(
     "",
     response_model=list[ParticipantClassroom],
     summary="Consultar as turmas do usuário autenticado",
-    description="Cada turma traz a menção do usuário em grade (null até ser lançada ou sincronizada). A menção é atualizada pelo sync do login e de /auth/sigaa/refresh.",
+    description="Lida do SIGAA na hora, sem gravar quem está na turma. As encerradas trazem a menção em grade (null até ser lançada); o navegador guarda a resposta.",
     responses=SIGAA_ERRORS,
 )
 async def get_classrooms(
@@ -118,7 +99,7 @@ async def get_classrooms(
     response_model=list[ClassroomFrequencyResult],
     summary="Consultar frequência de todas as turmas atuais",
     description="Turmas atuais com identificação e a mesma frequência da rota individual. Falha em uma turma retorna erro, sem omiti-la da lista.",
-    responses={**CLASSROOM_ERRORS, 503: {"description": "Cache em atualização."}},
+    responses=CLASSROOM_ERRORS,
 )
 async def get_current_frequencies(
     service: FrequencyServiceDep,
@@ -130,8 +111,8 @@ async def get_current_frequencies(
     "/{classroom_id}/frequency",
     response_model=ClassroomFrequencyView,
     summary="Consultar frequência e andamento de uma turma",
-    description="Aceita Classroom.id (hash) ou sigaa_id numérico. frequency_status indica nao_registrada, parcialmente_registrada ou registrada nas entradas publicadas. lessons traz as aulas da turma (criadas pelo calendário e horário no sync das turmas, com start_time e end_time) já começadas, as publicadas pelo SIGAA fora delas e as com situação do aluno, mais recentes primeiro; totals soma as marcações aos totais do SIGAA.",
-    responses={**CLASSROOM_ERRORS, 503: {"description": "Cache em atualização."}},
+    description="Lida do SIGAA na hora; a situação do aluno não é gravada. frequency_status indica nao_registrada, parcialmente_registrada ou registrada nas entradas publicadas. lessons traz as aulas da turma (previstas pelo calendário e horário, com start_time e end_time) já começadas, as publicadas pelo SIGAA fora delas e as com situação, mais recentes primeiro; upcoming, as previstas que não começaram. As marcações do aluno ficam no navegador, que refaz os totais com elas.",
+    responses=CLASSROOM_ERRORS,
 )
 async def get_classroom_frequency(
     service: FrequencyServiceDep,
@@ -140,32 +121,11 @@ async def get_classroom_frequency(
     return await service.get_frequency(classroom_id)
 
 
-@router.patch(
-    "/{classroom_id}/frequency/lessons",
-    status_code=204,
-    summary="Marcar presença, falta ou aula cancelada",
-    description="Aplica todas as marcações ou nenhuma. Vale enquanto o SIGAA não registra a aula: a chamada publicada substitui a marcação. status null remove a marcação, sem apagar a chamada do SIGAA. Aula repetida ou que ainda não começou retorna 422.",
-    responses={
-        **CLASSROOM_ERRORS,
-        404: {"description": "Turma ou aula não encontrada."},
-        409: {"description": "O SIGAA já registrou a chamada de uma das aulas."},
-    },
-    dependencies=[NoStore],
-)
-async def mark_lessons(
-    service: FrequencyServiceDep,
-    classroom_id: ClassroomId,
-    body: Annotated[list[LessonMark], AfterValidator(_unique_lessons)],
-) -> None:
-    await service.mark_lessons(
-        classroom_id, {mark.lesson_id: mark.status for mark in body}
-    )
-
-
 @router.get(
     "/{classroom_id}/members",
     response_model=ClassroomMembers,
     summary="Consultar docentes e discentes de uma turma do usuário",
+    description="Lida do SIGAA na hora. Só os docentes, que são públicos, ficam no banco.",
     responses=CLASSROOM_ERRORS,
 )
 async def get_classroom_members(
@@ -180,7 +140,7 @@ async def get_classroom_members(
     response_model=list[StatisticsShare],
     summary="Consultar os resultados da própria turma",
     description="Percentuais por situação da turma encerrada, sem agregação com outras turmas. Lista vazia quando não há resultados disponíveis.",
-    responses={**CLASSROOM_ERRORS, 503: {"description": "Cache em atualização."}},
+    responses=CLASSROOM_ERRORS,
 )
 async def get_classroom_statistics(
     service: ClassroomServiceDep,

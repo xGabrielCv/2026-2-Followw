@@ -37,7 +37,7 @@ export function CourseSummary({ course, entrySemester }: CourseSummaryProps) {
             <h2 className="mt-1 text-xl leading-tight font-semibold tracking-tight text-balance">
                 {course.name}
             </h2>
-            <ul className="mt-3 flex flex-col gap-1 text-sm text-muted-foreground lg:flex-row lg:flex-wrap lg:gap-x-6">
+            <ul className="mt-3 flex flex-col gap-1 text-sm text-muted-foreground desk:flex-row desk:flex-wrap desk:gap-x-6">
                 <SummaryItem icon={Clock3}>
                     <span className="font-medium text-primary">
                         {[shift ? titleCase(shift) : 'Turno não informado', curriculum?.modality]

@@ -68,13 +68,13 @@ describe('conta do RU', () => {
         );
     });
 
-    test('o saldo salvo só é refeito depois de 90 minutos', async () => {
+    test('o saldo salvo só é refeito depois de 15 minutos', async () => {
         const { queryKey } = statementQueryOptions(registration);
-        client.setQueryData(queryKey, statement, { updatedAt: Date.now() - 89 * 60_000 });
+        client.setQueryData(queryKey, statement, { updatedAt: Date.now() - 14 * 60_000 });
         await client.query(statementQueryOptions(registration));
         expect(requests).toHaveLength(0);
 
-        client.setQueryData(queryKey, statement, { updatedAt: Date.now() - 91 * 60_000 });
+        client.setQueryData(queryKey, statement, { updatedAt: Date.now() - 16 * 60_000 });
         await client.query(statementQueryOptions(registration));
         expect(requests).toHaveLength(1);
     });
@@ -87,14 +87,14 @@ describe('conta do RU', () => {
         expect(requests).toHaveLength(0);
     });
 
-    test('a carteirinha vencida é refeita depois de 90 minutos', async () => {
+    test('a carteirinha vencida é refeita depois de 15 minutos', async () => {
         const { queryKey } = credentialsQueryOptions(registration);
         const expired = { ...credentials, valid_until: '2020-01-01' };
-        client.setQueryData(queryKey, expired, { updatedAt: Date.now() - 89 * 60_000 });
+        client.setQueryData(queryKey, expired, { updatedAt: Date.now() - 14 * 60_000 });
         await client.query(credentialsQueryOptions(registration));
         expect(requests).toHaveLength(0);
 
-        client.setQueryData(queryKey, expired, { updatedAt: Date.now() - 91 * 60_000 });
+        client.setQueryData(queryKey, expired, { updatedAt: Date.now() - 16 * 60_000 });
         await client.query(credentialsQueryOptions(registration));
         expect(requests).toHaveLength(1);
     });

@@ -4,7 +4,9 @@ import { describe, expect, test } from 'bun:test';
 
 import { Route } from '#/routes/_app/index';
 
-import { fakeQueryClient, runLoader } from '../helpers/route';
+import { fakeQueryClient, runLoader, useBrowserEnvironment } from '../helpers/route';
+
+useBrowserEnvironment();
 
 describe('tela inicial preservada', () => {
     test.each([

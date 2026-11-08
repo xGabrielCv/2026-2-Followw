@@ -5,14 +5,17 @@ import { ErrorCard, SIGAA_DOWN_MESSAGE, StaleDataNotice } from '#/components/Err
 import { LoadingText } from '#/components/LoadingText';
 import { StatisticsChart } from '#/components/StatisticsChart';
 import { Card, CardContent } from '#/components/ui/card';
+import { withMarks } from '#/lib/lesson-marks';
 import {
     classroomFrequencyQueryOptions,
-    classroomStatisticsQueryOptions
+    classroomStatisticsQueryOptions,
+    useLessonMarks
 } from '#/queries/classrooms';
 
 export function ClassroomStatistics({ id }: { id: string }) {
     const statistics = useQuery(classroomStatisticsQueryOptions(id));
     const frequency = useQuery(classroomFrequencyQueryOptions(id));
+    const { marks } = useLessonMarks(id);
 
     return (
         <div className="flex flex-col gap-4">
@@ -39,7 +42,7 @@ export function ClassroomStatistics({ id }: { id: string }) {
                 )}
             </StatisticsSection>
             <StatisticsSection title="Sua frequência" subject="a frequência" query={frequency}>
-                {(data) => <FrequencySummary data={data} />}
+                {(data) => <FrequencySummary data={withMarks(data, marks)} />}
             </StatisticsSection>
         </div>
     );

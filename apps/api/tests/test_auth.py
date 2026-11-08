@@ -1,72 +1,74 @@
-from datetime import UTC, datetime, timedelta
+from datetime import date
 
 import pytest
 from pydantic import SecretStr
 from sigaa_client import Credentials
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
-from api.cookies import ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, decrypt_cookie
-from api.db.models import User
-from api.modules.auth.account import sync_account
-from api.sync.engine import Step
+from api.anonymous import anonymous_key
+from api.cookies import (
+    ACCESS_COOKIE_NAME,
+    PROFILE_COOKIE_NAME,
+    REFRESH_COOKIE_NAME,
+    decrypt_cookie,
+)
+from api.db.models import ActiveUser
+from api.modules.auth.account import periods
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
 LOGIN = {"registration": "251000000", "password": "senha123"}
 
 
-@pytest.mark.parametrize("shadow", [False, True])
-def test_registered_at_marca_o_primeiro_login_e_sobrevive_ao_refresh(
-    client, sigaa, database, shadow
+def test_login_guarda_o_perfil_no_cookie_e_nada_do_aluno_no_banco(
+    client, sigaa, database
 ):
-    old = datetime.now(UTC) - timedelta(days=30)
-    if shadow:
-        with database.begin() as session:
-            session.add(
-                User(
-                    name="Participante",
-                    registration=LOGIN["registration"],
-                    created_at=old,
-                )
-            )
-        with database() as session:
-            assert session.scalar(select(User)).registered_at is None
+    response = client.post("/auth/sigaa", json=LOGIN)
 
-    before = datetime.now(UTC)
-    assert client.post("/auth/sigaa", json=LOGIN).status_code == 200
+    assert response.status_code == 200
+    perfil = decrypt_cookie(PROFILE_COOKIE_NAME, response.cookies[PROFILE_COOKIE_NAME])
+    assert perfil["login"] == "251000000"
+    assert perfil["profile"]["name"] == "NOME DISCENTE"
     with database() as session:
-        user = session.scalar(
-            select(User).where(User.registration == LOGIN["registration"])
+        tabelas = set(inspect(session.get_bind()).get_table_names())
+        # Nenhuma tabela guarda aluno: nem conta, nem vínculo com turma, nem frequência.
+        assert not tabelas & {"users", "classroom_participants", "lesson_attendances"}
+        valores = " ".join(
+            str(row) for row in session.execute(select(ActiveUser)).all()
         )
-        registered = user.registered_at
-        assert before <= registered <= datetime.now(UTC)
-        if shadow:
-            assert user.created_at == old
+    assert "251000000" not in valores
 
-    assert client.post("/auth/sigaa", json=LOGIN).status_code == 200
-    assert client.post("/auth/sigaa/refresh").status_code == 204
-    assert client.get("/me", headers={"Cache-Control": "no-cache"}).status_code == 200
+
+def test_login_conta_o_uso_com_uma_chave_anonima_por_periodo(client, sigaa, database):
+    client.post("/auth/sigaa", json=LOGIN)
+    client.post("/auth/sigaa", json=LOGIN)
+    client.post("/auth/sigaa/refresh")
+
     with database() as session:
-        assert session.scalar(select(User)).registered_at == registered
+        linhas = session.execute(select(ActiveUser.period, ActiveUser.key)).all()
+    dia = date(2026, 9, 22)
+    assert sorted(period for period, _ in linhas) == sorted(periods(dia))
+    # As chaves de dia, semana e mês não se ligam entre si.
+    assert len({key for _, key in linhas}) == 3
+    # a chave vem do segredo do aparelho, não da matrícula
+    assert ("d:2026-09-22", anonymous_key("a" * 64, "active:d:2026-09-22")) in linhas
+    assert (
+        "d:2026-09-22",
+        anonymous_key("251000000", "active:d:2026-09-22"),
+    ) not in linhas
 
 
-def test_registered_at_nao_depende_da_publicacao_do_job(
-    client, sigaa, qstash, database
-):
-    qstash.unavailable = True
+def test_sem_segredo_do_aparelho_o_uso_nao_e_contado(client, sigaa, database):
+    del client.headers["X-Followw-Author"]
     assert client.post("/auth/sigaa", json=LOGIN).status_code == 200
     with database() as session:
-        user = session.scalar(select(User))
-        assert user.registered_at is not None
-        assert user.profile_synced_at is None
+        assert session.scalar(select(ActiveUser)) is None
 
 
-def test_login_rejeitado_nao_registra_o_usuario_sombra(client, sigaa, database):
-    with database.begin() as session:
-        session.add(User(name="Participante", registration=LOGIN["registration"]))
+def test_login_rejeitado_nao_conta_uso(client, sigaa, database):
     sigaa.password = "different"
     assert client.post("/auth/sigaa", json=LOGIN).status_code == 401
     with database() as session:
-        assert session.scalar(select(User)).registered_at is None
+        assert session.scalar(select(ActiveUser)) is None
 
 
 def _expirados(jar) -> set[str]:
@@ -129,7 +131,7 @@ def test_login_guarda_a_sessao_e_as_credenciais(client, sigaa):
 
     assert response.status_code == 200
     assert response.json() == {"message": "Login successful"}
-    # A sessão do cookie é a do login; a do sync da conta já foi encerrada.
+    # A sessão do cookie é a do login, que também leu o perfil.
     assert _payload(response, ACCESS_COOKIE_NAME)["session_token"] == "app14~TOKEN1"
     assert sigaa.valid_tokens == {"app14~TOKEN1"}
     # O refresh guarda a credencial porque a sessão do SIGAA é curta e só o
@@ -185,6 +187,7 @@ def test_logout_encerra_no_sigaa_e_apaga_os_cookies(
     assert _expirados(ler_cookies(response)) == {
         ACCESS_COOKIE_NAME,
         REFRESH_COOKIE_NAME,
+        PROFILE_COOKIE_NAME,
     }
 
 
@@ -227,39 +230,29 @@ def test_logout_com_sigaa_fora_do_ar_ainda_desloga(client, sigaa, cookies, ler_c
     assert ACCESS_COOKIE_NAME in _expirados(ler_cookies(response))
 
 
-def test_refresh_com_access_token_valido_nao_loga_na_requisicao(
+def test_refresh_com_access_token_valido_renova_o_perfil_sem_logar(
     client, sigaa, cookies, qstash
 ):
+    sigaa.valid_tokens.add("app14~VIVO")
     client.cookies.update(cookies(access="app14~VIVO", refresh=CREDENCIAIS))
 
     response = client.post("/auth/sigaa/refresh")
 
     assert response.status_code == 204
-    assert "set-cookie" not in response.headers
-    # Sem nada no cache, o sync da conta sai num job, que loga sozinho e sai.
-    assert [job.steps for job in qstash.jobs()] == [(Step.of(sync_account),)]
-    assert (sigaa.logins, sigaa.logouts) == (1, 1)
-
-
-def test_refresh_com_tudo_em_dia_nao_agenda_nada(client, sigaa, qstash):
-    client.post("/auth/sigaa", json=LOGIN)
-    qstash.published.clear()
-
-    response = client.post("/auth/sigaa/refresh")
-
-    assert response.status_code == 204
+    assert PROFILE_COOKIE_NAME in response.cookies
+    assert sigaa.logins == 0
+    # Nada sai para a fila: não há cache do aluno no servidor para revalidar.
     assert qstash.published == []
 
 
-def test_refresh_sem_access_token_loga_e_agenda_o_sync(client, sigaa, cookies, qstash):
+def test_refresh_sem_access_token_loga_e_renova_o_perfil(client, sigaa, cookies):
     client.cookies.update(cookies(refresh=CREDENCIAIS))
 
     response = client.post("/auth/sigaa/refresh")
 
     assert response.status_code == 204
     assert _payload(response, ACCESS_COOKIE_NAME)["session_token"] == "app14~TOKEN1"
-    [job] = qstash.jobs()
-    assert (job.credentials, job.steps) == (CREDENCIAIS, (Step.of(sync_account),))
+    assert PROFILE_COOKIE_NAME in response.cookies
     assert sigaa.valid_tokens == {"app14~TOKEN1"}
 
 
@@ -274,6 +267,7 @@ def test_refresh_com_senha_trocada_desloga(client, sigaa, ler_cookies):
     assert _expirados(ler_cookies(response)) == {
         ACCESS_COOKIE_NAME,
         REFRESH_COOKIE_NAME,
+        PROFILE_COOKIE_NAME,
     }
 
 

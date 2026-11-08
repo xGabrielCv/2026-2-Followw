@@ -13,6 +13,7 @@ from sigaa_client import Credentials
 
 from api.cookies import (
     ACCESS_COOKIE_NAME,
+    PROFILE_COOKIE_NAME,
     REFRESH_COOKIE_NAME,
     _key,
     clear_cookies,
@@ -185,13 +186,14 @@ def test_secure_so_em_producao(ler_cookies, monkeypatch: pytest.MonkeyPatch):
     assert ler_cookies(response)[ACCESS_COOKIE_NAME]["secure"]
 
 
-def test_clear_cookies_apaga_os_dois(ler_cookies):
+def test_clear_cookies_apaga_sessao_e_perfil(ler_cookies):
     response = Response()
     clear_cookies(response)
 
     assert _cookies(response, ler_cookies) == {
         ACCESS_COOKIE_NAME: "",
         REFRESH_COOKIE_NAME: "",
+        PROFILE_COOKIE_NAME: "",
     }
 
 
@@ -407,9 +409,11 @@ def test_login_nao_devolve_nenhum_segredo_legivel(client, sigaa):
 
     assert response.status_code == 200
     brutos = response.headers.get_list("set-cookie")
+    # O perfil (com IRA e curso) também vai cifrado: o navegador guarda, mas não lê.
     assert {h.split("=", 1)[0] for h in brutos} == {
         ACCESS_COOKIE_NAME,
         REFRESH_COOKIE_NAME,
+        PROFILE_COOKIE_NAME,
     }
     for header in brutos:
         token = header.split("=", 1)[1].split(";", 1)[0]

@@ -1,82 +1,36 @@
-from functools import partial
+from datetime import date
 
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.cache import Freshness
+from api import academic_calendar
+from api.account import Account
+from api.anonymous import anonymous_key
 from api.db.main import Database
-from api.db.models import OwnLink, User
-from api.modules.classrooms.repository import ClassroomRepository
-from api.modules.classrooms.service import (
-    classrooms_freshness,
-    grades_freshness,
-    stale_classroom_tasks,
-    sync_classrooms,
-    sync_grades,
-)
-from api.modules.me.profile import profile_freshness, sync_profile
-from api.modules.me.repository import UserRepository
-from api.sigaa import SigaaConnection
-from api.sync import Context
-from api.sync.engine import Job, Step, Task, run_task
-from api.sync.queue import QStashQueue
+from api.db.models import ActiveUser
 
 
-async def start_account(
-    connection: SigaaConnection, db: Database, queue: QStashQueue
+async def start_account(account: Account, db: Database, author: str | None) -> None:
+    """Confere a senha (logando, se não houver sessão), renova o perfil e conta o uso.
+
+    O uso conta pela chave do aparelho, que não tem relação com a matrícula.
+    """
+    await account.profile(refresh=True)
+    if author is not None:
+        await db.write(lambda session: record_activity(session, author))
+
+
+def periods(day: date) -> list[str]:
+    year, week, _ = day.isocalendar()
+    return [f"d:{day.isoformat()}", f"w:{year}-W{week:02d}", f"m:{day:%Y-%m}"]
+
+
+async def record_activity(
+    session: AsyncSession, author: str, day: date | None = None
 ) -> None:
-    """Confere a senha (logando, se não houver sessão) e agenda o sync do que venceu."""
-    if not connection.authenticated:
-        await connection.client()
-
-    await db.write(
-        lambda session: UserRepository(session).register(connection.registration)
-    )
-    user, links = await db.read(partial(_account, connection.registration))
-    if (
-        _stale_account_tasks(user)
-        or _stale_grades(user)
-        or any(stale_classroom_tasks(l) for l in links)
-    ):
-        job = Job(credentials=connection.credentials, steps=(Step.of(sync_account),))
-        await queue.enqueue(job)
-
-
-async def sync_account(ctx: Context[None]) -> None:
-    """Perfil, turmas e menções na sessão principal; detalhes em jobs por turma."""
-    account = partial(_account, ctx.sync.registration)
-    user, _ = await ctx.sync.db.read(account)
-    for task in _stale_account_tasks(user):
-        await run_task(task, ctx)
-
-    user, links = await ctx.sync.db.read(account)
-    for link in links:
-        for task in stale_classroom_tasks(link):
-            ctx.sync.schedule(task, link)
-    if _stale_grades(user):
-        await run_task(sync_grades, ctx)
-
-
-async def _account(
-    registration: str, session: AsyncSession
-) -> tuple[User | None, list[OwnLink]]:
-    user = await UserRepository(session).get_by_registration(registration)
-    if user is None:
-        return None, []
-    return user, await ClassroomRepository(session).list_by_user_id(user.id)
-
-
-def _stale_grades(user: User | None) -> bool:
-    synced_at = user.grades_synced_at if user else None
-    return grades_freshness(synced_at) is Freshness.STALE
-
-
-def _stale_account_tasks(user: User | None) -> list[Task[None]]:
-    """Perfil antes das turmas: as turmas penduram no usuário."""
-    if user is None:
-        return [sync_profile, sync_classrooms]
-    stale: list[Task[None]] = []
-    if profile_freshness(user.profile_synced_at) is Freshness.STALE:
-        stale.append(sync_profile)
-    if classrooms_freshness(user.classrooms_synced_at) is Freshness.STALE:
-        stale.append(sync_classrooms)
-    return stale
+    """Uma chave por período: conta alunos únicos sem ligar um dia ao outro."""
+    rows = [
+        {"period": period, "key": anonymous_key(author, f"active:{period}")}
+        for period in periods(day or academic_calendar.today())
+    ]
+    await session.execute(insert(ActiveUser).values(rows).on_conflict_do_nothing())

@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Depends
 from pydantic import BaseModel
 
+from api.account import Account
 from api.modules.public_courses.service import (
     COURSES_PAGE_SIZE,
     CoursePage,
@@ -16,7 +17,6 @@ from api.modules.public_professors.service import (
     ProfessorServiceDep,
 )
 from api.modules.public_subjects.service import CatalogSubject, PublicSubjectServiceDep
-from api.sync import Sync
 
 type SearchType = Literal["subjects", "courses", "professors"]
 
@@ -45,10 +45,13 @@ class SearchService:
         q: str,
         types: Collection[SearchType] | None,
         unit: int | str | None,
-        sync: Sync | None,
+        account: Account | None,
+        semester: str | None = None,
     ) -> SearchResult:
         searches: dict[SearchType, Callable[[], Awaitable[Any]]] = {
-            "subjects": lambda: self._subjects.search(q, unit=unit, sync=sync),
+            "subjects": lambda: self._subjects.search(
+                q, unit=unit, semester=semester, account=account
+            ),
             "courses": lambda: self._courses.list_courses(
                 q, unit, 1, COURSES_PAGE_SIZE
             ),

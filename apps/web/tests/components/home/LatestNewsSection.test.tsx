@@ -53,8 +53,7 @@ function clientWith(posts: ClassroomPost[]) {
         defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } }
     });
     client.setQueryData(latestNewsQueryOptions.queryKey, {
-        items: posts.map((post) => ({ classroom, post })),
-        updating: false
+        items: posts.map((post) => ({ classroom, post }))
     });
     return client;
 }
@@ -80,8 +79,7 @@ describe('últimas notícias da home', () => {
                         content: 'Leia **o capítulo 1** e [o aviso](https://unb.br).'
                     }
                 }
-            ],
-            updating: false
+            ]
         });
         const markup = renderSection(client);
         expect(markup).toContain('Últimas notícias');
@@ -97,7 +95,7 @@ describe('últimas notícias da home', () => {
     test('informa que não há notícias mesmo sem turmas atuais', () => {
         expect(renderSection(clientWith([]))).toContain('Nenhuma notícia por enquanto.');
         const client = clientWith([]);
-        client.setQueryData(latestNewsQueryOptions.queryKey, { items: [], updating: false });
+        client.setQueryData(latestNewsQueryOptions.queryKey, { items: [] });
         expect(renderSection(client)).toContain('Nenhuma notícia por enquanto.');
     });
 
@@ -112,8 +110,7 @@ describe('últimas notícias da home', () => {
     test('mostra notícias disponíveis enquanto outras turmas são sincronizadas', () => {
         const client = clientWith([]);
         client.setQueryData(latestNewsQueryOptions.queryKey, {
-            items: [{ classroom, post: news(1) }],
-            updating: true
+            items: [{ classroom, post: news(1) }]
         });
         const markup = renderSection(client);
         expect(markup).toContain('Notícia 1');
@@ -136,7 +133,7 @@ describe('últimas notícias da home', () => {
         expect(markup).toContain('Exibindo os dados salvos');
     });
 
-    test('consulta agregada não abre consultas adicionais por turma ou prévia', () => {
+    test('com as notícias salvas, a home não abre outras consultas', () => {
         const client = clientWith([news(1)]);
         renderWithRouter(
             <QueryClientProvider client={client}>
@@ -147,8 +144,8 @@ describe('últimas notícias da home', () => {
             client
                 .getQueryCache()
                 .getAll()
-                .map((query) => query.queryKey[1])
-        ).toEqual(['/posts/news']);
+                .map((query) => query.queryKey[0])
+        ).toEqual(['latest-news']);
         client.clear();
     });
 

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
     createMemoryHistory,
     createRootRoute,
@@ -10,10 +11,17 @@ import { afterEach, expect, test } from 'bun:test';
 
 import type { AcademicState, FlowSubject } from '#/lib/curriculum/types';
 
+import {
+    type ManualCompletion,
+    ManualCompletionContext
+} from '#/components/curriculum/ManualCompletion';
 import { SubjectDetails } from '#/components/curriculum/SubjectDetails';
 import { Dialog } from '#/components/ui/dialog';
 import { normalizeCurriculum } from '#/lib/curriculum/model';
+import { currentRegularSemester, nextRegularSemester } from '#/lib/offer';
+import { nowInBrasilia } from '#/lib/schedule';
 import { parseRouterSearch, stringifyRouterSearch, validateSearch } from '#/lib/search-params';
+import { offerSemestersQueryOptions } from '#/queries/subjects';
 
 import { curriculum, type RawSubject } from '../../helpers/curriculum';
 import { useDom } from '../../helpers/dom';
@@ -51,15 +59,25 @@ const subject = flowSubject({
     equivalences: [['C']]
 });
 afterEach(() => dom.testing.cleanup());
-async function renderDetails(item = subject, state?: AcademicState, unlocks?: FlowSubject[]) {
+async function renderDetails(
+    item = subject,
+    state?: AcademicState,
+    unlocks?: FlowSubject[],
+    manual: ManualCompletion | null = null,
+    offer: string[] = []
+) {
+    const client = new QueryClient();
+    client.setQueryData(offerSemestersQueryOptions.queryKey, offer);
     const root = createRootRoute({ component: Outlet });
     const flow = createRoute({
         getParentRoute: () => root,
         path: '/cursos/$id',
         component: () => (
-            <Dialog>
-                <SubjectDetails subject={item} state={state} unlocks={unlocks} />
-            </Dialog>
+            <ManualCompletionContext value={manual}>
+                <Dialog>
+                    <SubjectDetails subject={item} state={state} unlocks={unlocks} />
+                </Dialog>
+            </ManualCompletionContext>
         )
     });
     const search = createRoute({
@@ -77,7 +95,11 @@ async function renderDetails(item = subject, state?: AcademicState, unlocks?: Fl
         stringifySearch: stringifyRouterSearch
     });
     await router.load();
-    const page = dom.testing.render(<RouterProvider router={router} />);
+    const page = dom.testing.render(
+        <QueryClientProvider client={client}>
+            <RouterProvider router={router} />
+        </QueryClientProvider>
+    );
     return { ...page, router };
 }
 
@@ -166,12 +188,63 @@ test('omite o estado acadêmico ao consultar uma matéria de outro curso', async
     );
 });
 
-test('visualizar turmas abre a busca pelo código da matéria sem herdar o filtro anterior', async () => {
+test('turmas do semestre atual abre a busca pelo código da matéria sem herdar o filtro anterior', async () => {
     const page = await renderDetails();
-    const link = page.getByRole('link', { name: 'Visualizar turmas' });
-    expect(link.classList.contains('bg-primary')).toBe(true);
+    const link = page.getByRole('link', { name: 'Turmas do semestre atual' });
     dom.testing.fireEvent.click(link, { button: 0 });
     await dom.testing.waitFor(() => expect(page.router.state.location.pathname).toBe('/buscar'));
     expect(page.router.state.location.search).toEqual({ q: 'B', category: 'classrooms' });
-    expect(page.queryByRole('link', { name: 'Visualizar turmas' })).toBeNull();
+    expect(page.queryByRole('link', { name: 'Turmas do semestre atual' })).toBeNull();
+});
+
+test('com a oferta do próximo semestre publicada, leva às turmas dele para montar a grade', async () => {
+    const current = currentRegularSemester(nowInBrasilia().date)!;
+    const next = nextRegularSemester(current);
+    const page = await renderDetails(subject, 'pending', undefined, null, [next, current]);
+    const link = page.getByRole('link', { name: new RegExp(`Planejar ${next}`) });
+    expect(link.classList.contains('bg-primary')).toBe(true);
+    dom.testing.fireEvent.click(link, { button: 0 });
+    await dom.testing.waitFor(() => expect(page.router.state.location.pathname).toBe('/buscar'));
+    expect(page.router.state.location.search).toEqual({
+        q: 'B',
+        category: 'classrooms',
+        semester: next
+    });
+});
+
+test('sem a oferta do próximo semestre, avisa e matéria concluída não oferece planejar', async () => {
+    const pending = await renderDetails(subject, 'pending');
+    expect(pending.container.textContent).toContain('ainda não saiu');
+    dom.testing.cleanup();
+    const current = currentRegularSemester(nowInBrasilia().date)!;
+    const done = await renderDetails(subject, 'completed', undefined, null, [
+        nextRegularSemester(current)
+    ]);
+    expect(done.queryByRole('link', { name: /Planejar/ })).toBeNull();
+});
+const manual = (codes: string[], toggled: string[] = []): ManualCompletion => ({
+    codes: new Set(codes),
+    toggle: async (code) => {
+        toggled.push(code);
+    },
+    pending: false,
+    failed: false
+});
+
+test('permite marcar como concluída a matéria pendente do próprio fluxo', async () => {
+    const toggled: string[] = [];
+    const page = await renderDetails(subject, 'overdue', undefined, manual([], toggled));
+    dom.testing.fireEvent.click(page.getByRole('button', { name: 'Marcar como concluída' }));
+    expect(toggled).toEqual(['B']);
+});
+
+test('marcação manual pode ser desfeita, mas concluída pelo histórico não oferece botão', async () => {
+    const marked = await renderDetails(subject, 'completed', undefined, manual(['B']));
+    expect(marked.getByRole('button', { name: 'Desmarcar conclusão manual' })).toBeDefined();
+    dom.testing.cleanup();
+    const approved = await renderDetails(subject, 'completed', undefined, manual([]));
+    expect(approved.queryByRole('button', { name: /concluída/ })).toBeNull();
+    dom.testing.cleanup();
+    const otherCourse = await renderDetails(subject, 'pending');
+    expect(otherCourse.queryByRole('button', { name: 'Marcar como concluída' })).toBeNull();
 });

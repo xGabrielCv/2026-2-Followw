@@ -1,22 +1,26 @@
-from datetime import UTC, datetime, timedelta
-from typing import Annotated
+"""O perfil do aluno: vem do cookie cifrado do navegador (ou do SIGAA) e nunca vai para o banco."""
 
+from dataclasses import dataclass
+from typing import Annotated
+from uuid import UUID
+
+import sigaa_client
 from fastapi import Depends
 from pydantic import BaseModel, ConfigDict
 from sigaa_client import CurriculumWorkload, UserLevel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.cache import Freshness, freshness
-from api.db.models import User
-from api.modules.me.repository import UserRepository
+from api.account import AccountDep
+from api.db.courses import course_ids
+from api.db.main import DatabaseDep
+from api.db.models import Course, Curriculum
+from api.modules.public_courses.repository import PublicCourseRepository
+from api.modules.recommendations.ranking import CurriculumInfo, select_curriculum
 from api.schemas import CourseRef, UnitRef, course_ref, unit_ref
-from api.sync import Cached, Context, SyncDep
-
-PROFILE_TTL = timedelta(hours=24)
 
 
 class UserProfile(BaseModel):
-    """O perfil como a API devolve: sem curso na tabela, curso e unidade são nulos."""
+    """O perfil como a API devolve: sem curso conhecido, curso e unidade são nulos."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -37,59 +41,74 @@ class UserProfile(BaseModel):
     level: UserLevel
 
 
-def profile_freshness(synced_at: datetime | None) -> Freshness:
-    return freshness(synced_at, PROFILE_TTL)
+@dataclass(frozen=True)
+class Enrollment:
+    """Curso e matriz do aluno pelo catálogo público, a partir do perfil."""
+
+    course: Course | None
+    curriculum: Curriculum | None
+
+    @property
+    def course_id(self) -> int | None:
+        return self.course.id if self.course else None
+
+    @property
+    def curriculum_id(self) -> UUID | None:
+        return self.curriculum.id if self.curriculum else None
 
 
-async def sync_profile(ctx: Context[None]) -> None:
-    profile = await ctx.client.profile.get_profile()
-    await ctx.sync.db.write(
-        lambda session: UserRepository(session).save_profile(
-            profile, datetime.now(UTC), login=ctx.sync.registration
-        )
-    )
+async def enrollment(
+    session: AsyncSession, profile: sigaa_client.UserProfile
+) -> Enrollment:
+    """A matriz pelo semestre de entrada, como o SIGAA não a informa."""
+    pair = (profile.course, profile.unit)
+    shift = profile.shift.value if profile.shift else None
+    course_id = (await course_ids(session, [pair], shift)).get(pair)
+    if course_id is None:
+        return Enrollment(None, None)
+    course = await session.get_one(Course, course_id)
+    curriculum = None
+    if profile.entry_semester is not None:
+        options = [
+            CurriculumInfo.model_validate(c)
+            for c in await PublicCourseRepository(session).list_curricula(course_id)
+        ]
+        selected = select_curriculum(options, profile.entry_semester, course.shift)
+        curriculum = await session.get(Curriculum, selected.id) if selected else None
+    return Enrollment(course, curriculum)
 
 
 class ProfileService:
-    def __init__(self, sync: SyncDep) -> None:
-        self._sync = sync
+    def __init__(self, account: AccountDep, db: DatabaseDep) -> None:
+        self._account = account
+        self._db = db
 
     async def get_profile(self) -> UserProfile:
-        async def load(session: AsyncSession) -> Cached[UserProfile] | None:
-            users = UserRepository(session)
-            user = await users.get_by_registration(self._sync.registration)
-            if user is None or user.profile_synced_at is None:
-                return None
-            return Cached(
-                _to_profile(user),
-                user.profile_synced_at,
-                profile_freshness(user.profile_synced_at),
-            )
-
-        return await self._sync.resolve(sync_profile, None, load)
+        profile = await self._account.profile()
+        return await self._db.write(lambda session: _to_profile(session, profile))
 
 
-def _to_profile(user: User) -> UserProfile:
-    assert user.registration and user.level
+async def _to_profile(
+    session: AsyncSession, profile: sigaa_client.UserProfile
+) -> UserProfile:
+    found = await enrollment(session, profile)
     return UserProfile(
-        name=user.name,
-        registration=user.registration,
-        photo=user.photo,
-        email=user.email,
-        bio=user.bio,
-        unit=unit_ref(user.course.unit) if user.course else None,
-        course=course_ref(user.course),
-        entry_semester=user.entry_semester,
-        integralization=user.integralization,
-        workload=CurriculumWorkload.model_validate(user.workload)
-        if user.workload
+        name=profile.name,
+        registration=profile.registration,
+        photo=profile.photo,
+        email=profile.email,
+        bio=profile.bio,
+        unit=unit_ref(found.course.unit) if found.course else None,
+        course=course_ref(found.course),
+        entry_semester=profile.entry_semester,
+        integralization=profile.integralization,
+        workload=profile.workload,
+        period_max_workload=found.curriculum.period_max_workload
+        if found.curriculum
         else None,
-        period_max_workload=user.curriculum.period_max_workload
-        if user.curriculum
-        else None,
-        ira=user.ira,
-        mp=user.mp,
-        level=UserLevel(user.level.value),
+        ira=profile.ira,
+        mp=profile.mp,
+        level=profile.level,
     )
 
 

@@ -1,11 +1,13 @@
 from uuid import UUID
 
 from sqlalchemy import ColumnElement, exists, func, literal_column, or_, select
+from sqlalchemy.dialects.postgresql import array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload, undefer
 
 from api.db.models import Classroom, ClassroomProfessor, Professor, Subject
 from api.db.search import all_terms, contains_term
+from api.modules.public_subjects.sharing import shared_statistics
 
 
 def _matches_query(q: str, semester: str | None) -> ColumnElement[bool]:
@@ -73,6 +75,7 @@ class SubjectCatalogRepository:
                 Classroom.semester < before,
                 Classroom.statistics.is_not(None),
                 Classroom.statistics != [],
+                shared_statistics(),
             )
             .order_by(Classroom.semester.desc(), Classroom.number)
         )
@@ -95,6 +98,22 @@ class SubjectCatalogRepository:
                 )
             ).all()
         )
+
+    async def reverse_equivalences(self, codes: set[str]) -> dict[str, list[str]]:
+        """Quem cita sozinha uma de `codes` como equivalente: `X ≡ (A)` dá `A -> [X]`."""
+        if not codes:
+            return {}
+        rows = await self._session.execute(
+            select(Subject.code, Subject.equivalences)
+            .where(Subject.equivalent_codes.has_any(array(sorted(codes))))
+            .order_by(Subject.code)
+        )
+        result: dict[str, list[str]] = {}
+        for code, equivalences in rows:
+            for group in equivalences or []:
+                if len(group) == 1 and group[0] in codes and group[0] != code:
+                    result.setdefault(group[0], []).append(code)
+        return result
 
     async def unlocked_subjects(
         self, codes: set[str]
@@ -120,6 +139,16 @@ class SubjectCatalogRepository:
         for req, code, name in rows:
             result.setdefault(req, []).append((code, name))
         return result
+
+    async def offer_semesters(self, limit: int) -> list[str]:
+        return list(
+            await self._session.scalars(
+                select(Classroom.semester)
+                .distinct()
+                .order_by(Classroom.semester.desc())
+                .limit(limit)
+            )
+        )
 
     async def offered_subject_codes(
         self, codes: set[str], semester: str | None

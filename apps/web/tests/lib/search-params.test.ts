@@ -19,17 +19,25 @@ describe('parâmetros da busca', () => {
         }
     );
 
+    test('o semestre fica como texto na URL, sem virar número nem ganhar aspas', () => {
+        const search = { q: 'FGA0302', semester: '2027.1' };
+        expect(stringifyRouterSearch(search)).toBe('?q=FGA0302&semester=2027.1');
+        expect(parseRouterSearch('?semester=2027.1')).toEqual({ semester: '2027.1' });
+    });
+
     test('restaura a query e os filtros tipados da URL', () => {
-        expect(loadSearchParams('?q=calculo&category=courses')).toEqual({
+        expect(loadSearchParams('?q=calculo&category=courses&semester=2027.1')).toEqual({
             q: 'calculo',
-            category: 'courses'
+            category: 'courses',
+            semester: '2027.1'
         });
     });
 
     test('filtros ausentes ou inválidos usam os padrões', () => {
-        expect(loadSearchParams('?category=Eletiva')).toEqual({
+        expect(loadSearchParams('?category=Eletiva&semester=proximo')).toEqual({
             q: '',
-            category: 'all'
+            category: 'all',
+            semester: null
         });
     });
 

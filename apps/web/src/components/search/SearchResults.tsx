@@ -19,10 +19,13 @@ export function SearchResults({
     empty,
     currentPeriod,
     taken,
+    semester,
     onShowCategory
 }: {
     text: string;
     types: SearchType[] | undefined;
+    // semestre das turmas; ausente, o padrão da API
+    semester?: string;
     empty: string;
     currentPeriod: number | null;
     taken: Set<string> | null;
@@ -30,7 +33,7 @@ export function SearchResults({
     onShowCategory?: (category: 'courses' | 'professors') => void;
 }) {
     const client = useQueryClient();
-    const options = searchQueryOptions(text, types);
+    const options = searchQueryOptions(text, types, semester);
     const result = useQuery({ ...options, placeholderData: keepPreviousData });
     // a aba da categoria reaproveita a primeira página já carregada
     const showCategory =
@@ -39,7 +42,7 @@ export function SearchResults({
             const data = client.getQueryData<SearchResult>(options.queryKey)?.[category];
             if (data)
                 client.setQueryData(
-                    searchQueryOptions(text, searchTypes[category]).queryKey,
+                    searchQueryOptions(text, searchTypes[category], semester).queryKey,
                     (old) =>
                         old ?? { subjects: null, courses: null, professors: null, [category]: data }
                 );

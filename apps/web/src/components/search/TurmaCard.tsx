@@ -1,7 +1,9 @@
 import { X } from 'lucide-react';
 
+import type { Rating } from '#/queries/reviews';
 import type { CatalogSubject, SubjectClassroom } from '#/queries/subjects';
 
+import { RatingBadge } from '#/components/community/RatingBadge';
 import { AddToSchedule } from '#/components/schedule/AddToSchedule';
 import { Seats } from '#/components/search/Seats';
 import { TurmaDetails } from '#/components/search/TurmaDetails';
@@ -24,12 +26,15 @@ export interface TurmaProps {
     classroom: SubjectClassroom;
 }
 
+const NO_RATINGS: Record<string, Rating> = {};
+
 export function TurmaCard({
     subject,
     classroom,
+    ratings = NO_RATINGS,
     onOpenDetails
-}: TurmaProps & { onOpenDetails?: () => void }) {
-    const professors = classroom.professors.map(({ name }) => titleCase(name)).join(', ');
+}: TurmaProps & { ratings?: Record<string, Rating>; onOpenDetails?: () => void }) {
+    const professors = classroom.professors;
 
     return (
         <Dialog onOpenChange={(open) => open && onOpenDetails?.()}>
@@ -53,10 +58,22 @@ export function TurmaCard({
                     <span
                         className={cn(
                             'line-clamp-2 text-sm leading-snug',
-                            professors ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                            professors.length > 0
+                                ? 'font-semibold text-foreground'
+                                : 'text-muted-foreground'
                         )}
                     >
-                        {professors || 'Docentes não informados'}
+                        {professors.length > 0
+                            ? professors.map(({ name, siape }, index) => (
+                                  <span key={name}>
+                                      {index > 0 && ', '}
+                                      {titleCase(name)}
+                                      {siape != null && (
+                                          <RatingBadge rating={ratings[siape]} className="ml-1" />
+                                      )}
+                                  </span>
+                              ))
+                            : 'Docentes não informados'}
                     </span>
                 </span>
                 <span className="pointer-events-none relative">

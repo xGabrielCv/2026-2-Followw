@@ -1,21 +1,19 @@
+from collections.abc import Sequence
 from typing import NamedTuple
-from uuid import UUID
 
 from fastapi import HTTPException
+from sigaa_client import Grade, UserLevel
+from sigaa_client import UserProfile as SigaaProfile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
-from api.cache import Freshness
-from api.db.enums import ClassroomStatus, UserLevel
-from api.db.models import OwnLink, User
+from api.academic_calendar import parse_semester
+from api.account import Account
+from api.db.enums import ClassroomStatus
+from api.db.main import Database
 from api.modules.classrooms.repository import ClassroomRepository
-from api.modules.classrooms.service import (
-    ClassroomService,
-    grades_freshness,
-    sync_grades,
-)
-from api.modules.me.profile import profile_freshness, sync_profile
-from api.modules.me.repository import UserRepository
+from api.modules.me.profile import enrollment
+from api.modules.public_subjects.repository import SubjectCatalogRepository
 from api.modules.recommendations.ranking import (
     Component,
     Recommendation,
@@ -23,7 +21,6 @@ from api.modules.recommendations.ranking import (
 )
 from api.modules.recommendations.repository import RecommendationRepository
 from api.schemas import normalize
-from api.sync import Cached, Sync
 
 # Trancamento ou indeferimento não deixa menção pendente: a tentativa não conta.
 _WITHOUT_ATTEMPT = {
@@ -32,136 +29,107 @@ _WITHOUT_ATTEMPT = {
 }
 
 
+class HistoryItem(NamedTuple):
+    """Uma turma do histórico, como o navegador a guardou da lista de turmas."""
+
+    code: str
+    semester: str
+    grade: Grade | None
+    status: ClassroomStatus | None
+
+
 class Ranking(NamedTuple):
     semester: str | None
     items: list[Recommendation]
     curriculum: dict[str, Component]
 
 
-class Student(NamedTuple):
-    user_id: UUID
-    unit_id: int | None
-    curriculum: dict[str, Component]
-
-
 class RecommendationService:
-    def __init__(self, sync: Sync) -> None:
-        self._sync = sync
+    def __init__(self, account: Account, db: Database) -> None:
+        self._account = account
+        self._db = db
 
-    async def recommend(self) -> Ranking:
-        """As matérias da oferta mais recente, ordenadas para o próximo semestre do aluno."""
-        registration = self._sync.registration
+    async def recommend(
+        self,
+        completed: frozenset[str] = frozenset(),
+        history: Sequence[HistoryItem] = (),
+    ) -> Ranking:
+        """As matérias da oferta mais recente, ordenadas para o próximo semestre do aluno.
 
-        async def profile(
-            session: AsyncSession,
-        ) -> Cached[tuple[UserLevel | None, Student | None]] | None:
-            user = await UserRepository(session).get_by_registration(registration)
-            if user is None or user.profile_synced_at is None:
-                return None
-            state = profile_freshness(user.profile_synced_at)
-            student = await _student(session, user)
-            # Sem matriz, só o perfil em dia confirma a ausência.
-            if (
-                student is None
-                and user.level == UserLevel.GRADUACAO
-                and state is Freshness.STALE
-            ):
-                return None
-            return Cached((user.level, student), user.profile_synced_at, state)
-
-        level, student = await self._sync.resolve(sync_profile, None, profile)
-        if level != UserLevel.GRADUACAO:
+        O histórico vem do navegador, que já o tem: o servidor não guarda nem relê as menções.
+        """
+        profile = await self._account.profile()
+        if profile.level != UserLevel.GRADUACAO:
             raise HTTPException(
                 422, "Recomendações disponíveis somente para graduação."
             )
-        if student is None:
-            raise HTTPException(422, "Matriz curricular do aluno não identificada.")
-        await ClassroomService(self._sync).list_links("all")
-        reference, links = await self._sync.db.read(
-            lambda session: _history(session, student.user_id)
+        return await self._db.write(
+            lambda session: _ranking(session, profile, completed, history)
         )
-        if links:
-
-            async def load(session: AsyncSession) -> Cached[bool] | None:
-                current = await ClassroomRepository(session).list_student_links(
-                    student.user_id, reference
-                )
-                user = await session.get(User, student.user_id)
-                if not current:
-                    if user is None or user.classrooms_synced_at is None:
-                        return None
-                    return Cached(True, user.classrooms_synced_at, Freshness.FROZEN)
-                if user is None or user.grades_synced_at is None:
-                    return None
-                return Cached(
-                    True,
-                    user.grades_synced_at,
-                    grades_freshness(user.grades_synced_at),
-                )
-
-            await self._sync.resolve(sync_grades, None, load)
-        items = await self._sync.db.read(
-            lambda session: _rank(session, student, reference)
-        )
-        return Ranking(reference, items, student.curriculum)
 
 
-async def _student(session: AsyncSession, user: User) -> Student | None:
-    """O aluno com a matriz gravada; `None` sem ela."""
-    if user.curriculum_id is None:
-        return None
-    return Student(
-        user.id,
-        user.course.unit_id if user.course else None,
-        await RecommendationRepository(session).components(user.curriculum_id),
+async def _ranking(
+    session: AsyncSession,
+    profile: SigaaProfile,
+    completed: frozenset[str],
+    history: Sequence[HistoryItem],
+) -> Ranking:
+    found = await enrollment(session, profile)
+    if found.curriculum_id is None:
+        raise HTTPException(422, "Matriz curricular do aluno não identificada.")
+    curriculum = await RecommendationRepository(session).components(found.curriculum_id)
+    reference = await ClassroomRepository(session).offer_semester()
+    items = await _rank(
+        session,
+        curriculum,
+        found.course.unit_id if found.course else None,
+        reference,
+        _until(history, reference),
+        completed,
     )
+    return Ranking(reference, items, curriculum)
 
 
-async def _history(
-    session: AsyncSession, user_id: UUID
-) -> tuple[str | None, list[OwnLink]]:
-    """O semestre da oferta e os vínculos de aluno até ele."""
-    repository = ClassroomRepository(session)
-    reference = await repository.offer_semester()
-    return reference, await repository.list_student_links(user_id, reference)
+def _until(history: Sequence[HistoryItem], reference: str | None) -> list[HistoryItem]:
+    limit = parse_semester(reference) if reference else None
+    if limit is None:
+        return []
+    return [
+        item
+        for item in history
+        if (term := parse_semester(item.semester)) and term <= limit
+    ]
 
 
-def _in_progress(link: OwnLink) -> bool:
+def _in_progress(item: HistoryItem) -> bool:
     """Cursando, ou encerrada com a menção ainda por consolidar."""
-    row = link.row
-    return row.status == ClassroomStatus.CURSANDO or (
-        row.status == ClassroomStatus.CONCLUIDO
-        and row.grade is None
-        and not academic_calendar.grades_closed(row.classroom.semester)
+    return item.status == ClassroomStatus.CURSANDO or (
+        item.status == ClassroomStatus.CONCLUIDO
+        and item.grade is None
+        and not academic_calendar.grades_closed(item.semester)
     )
 
 
 async def _rank(
-    session: AsyncSession, student: Student, reference: str | None
+    session: AsyncSession,
+    curriculum: dict[str, Component],
+    unit_id: int | None,
+    reference: str | None,
+    history: list[HistoryItem],
+    manual: frozenset[str] = frozenset(),
 ) -> list[Recommendation]:
-    classrooms = ClassroomRepository(session)
-    links = await classrooms.list_student_links(student.user_id, reference)
-    user = await session.get(User, student.user_id)
-    if links and (user is None or user.grades_synced_at is None):
-        raise HTTPException(
-            503, "Histórico atualizado durante a consulta; tente novamente."
-        )
-    curriculum = student.curriculum
     if not curriculum:
         return []
     completed = {
-        normalize(link.row.classroom.subject_code)
-        for link in links
-        if link.row.grade and link.row.grade.approved
+        normalize(item.code) for item in history if item.grade and item.grade.approved
     }
-    enrolled = {
-        normalize(link.row.classroom.subject_code)
-        for link in links
-        if _in_progress(link)
-    }
+    # As que o aluno marcou como concluídas no fluxo (ex.: código antigo sem equivalência).
+    completed |= {normalize(code) for code in manual}
+    enrolled = {normalize(item.code) for item in history if _in_progress(item)}
     # Fora da matriz é módulo livre: só os componentes dela importam.
     offered = curriculum.keys() & {
-        normalize(code) for code in await classrooms.offered_subject_codes(reference)
+        normalize(code)
+        for code in await ClassroomRepository(session).offered_subject_codes(reference)
     }
     subjects = RecommendationRepository(session)
     catalog = await subjects.catalog(set(curriculum))
@@ -173,16 +141,21 @@ async def _rank(
         for code in group
     }
     catalog.update(await subjects.catalog(requirements - catalog.keys()))
+    # `X ≡ (A)` com X cursada vale A, ainda que A não cite X de volta.
+    reverse = await SubjectCatalogRepository(session).reverse_equivalences(
+        set(curriculum)
+    )
     return rank(
         catalog=catalog,
+        reverse_equivalences=reverse,
         offered=offered & catalog.keys(),
         curriculum=curriculum,
         completed=completed,
         enrolled=enrolled - completed,
         unresolved={
-            normalize(link.row.classroom.subject_code)
-            for link in links
-            if link.row.grade is None and link.row.status not in _WITHOUT_ATTEMPT
+            normalize(item.code)
+            for item in history
+            if item.grade is None and item.status not in _WITHOUT_ATTEMPT
         },
-        unit_id=student.unit_id,
+        unit_id=unit_id,
     )

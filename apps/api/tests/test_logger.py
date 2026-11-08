@@ -43,16 +43,11 @@ def test_login_registra_tarefas_aninhadas_sem_segredos(client, sigaa, caplog):
     )
     assert response.status_code == 200
     logs = records(caplog)
-    tasks = [r for r in logs if r["event"] == "sync.task.completed"]
-    assert {r["task"] for r in tasks} >= {
-        "sync_account",
-        "sync_profile",
-        "sync_classrooms",
-    }
-    assert all(r["duration_ms"] >= 0 for r in tasks)
-    assert len({r["request_id"] for r in tasks}) == 1
-    assert any(r["event"] == "sigaa.connect.completed" for r in logs)
-    assert any(r.get("route") == "/jobs" and r["status_code"] == 204 for r in logs)
+    connects = [r for r in logs if r["event"] == "sigaa.connect.completed"]
+    assert connects and all(r["duration_ms"] >= 0 for r in connects)
+    assert len({r["request_id"] for r in logs if "request_id" in r}) == 1
+    # Sem cache do aluno no servidor, o login não agenda job nenhum.
+    assert not any(r.get("route") == "/jobs" for r in logs)
     output = caplog.text
     for secret in (
         "senha123",

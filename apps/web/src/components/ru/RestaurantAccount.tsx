@@ -9,6 +9,7 @@ import type { Day } from '#/lib/schedule';
 import type { RestaurantCredentials, RestaurantStatement } from '#/queries/restaurant-account';
 
 import { LoadingText } from '#/components/LoadingText';
+import { StatementHistory } from '#/components/ru/StatementHistory';
 import {
     Accordion,
     AccordionContent,
@@ -28,8 +29,10 @@ import {
     DrawerTrigger
 } from '#/components/ui/drawer';
 import { Spinner } from '#/components/ui/spinner';
+import { useDesktop } from '#/lib/media';
 import { useFailureMessage, useOnline } from '#/lib/online';
 import { cardIsExpired, insufficientMealBalance } from '#/lib/restaurant';
+import { statementLines } from '#/lib/restaurant-statement';
 import { nowInBrasilia } from '#/lib/schedule';
 import { cn } from '#/lib/shadcn';
 import { documentRefusal } from '#/queries/documents';
@@ -113,7 +116,7 @@ export function RestaurantAccount({
     );
 
     return (
-        <section className="mt-4 flex flex-col gap-3" aria-label="Minha conta">
+        <section className="mt-4 flex flex-col gap-3 desk:mt-0" aria-label="Minha conta">
             <div className="flex items-center justify-between px-1">
                 <h2 className="text-lg font-extrabold text-foreground">Minha conta</h2>
                 <Button
@@ -225,8 +228,8 @@ export function StatementDetails({
     now?: Day & { time: string };
 }) {
     const insufficient = insufficientMealBalance(statement.balance, statement.group, now);
-    const [first, ...rest] = statement.entries;
-    const entries = first && /^saldo\b/i.test(first.description.trim()) ? rest : statement.entries;
+    const desktop = useDesktop();
+    const history = <StatementHistory lines={statementLines(statement)} today={now.date} />;
     return (
         <>
             <div className="flex items-center justify-between gap-3">
@@ -242,46 +245,23 @@ export function StatementDetails({
                 </p>
                 {action}
             </div>
-            <Accordion className="mt-4 border-t border-border pt-3">
-                <AccordionItem value="statement">
-                    <AccordionTrigger className="mb-2 py-0 text-primary">
-                        Extrato do RU
-                    </AccordionTrigger>
-                    <AccordionContent className="pb-0" keepMounted>
-                        {entries.length === 0 ? (
-                            <p className="mt-3 text-sm text-muted-foreground">
-                                Nenhuma movimentação no extrato.
-                            </p>
-                        ) : (
-                            <ul className="max-h-64 overflow-y-auto">
-                                {entries.map((entry) => (
-                                    <li
-                                        key={`${entry.occurred_at}-${entry.description}-${entry.amount}`}
-                                        className="flex items-baseline gap-2"
-                                    >
-                                        <p className="min-w-0 truncate text-sm font-semibold text-foreground">
-                                            {entry.description.replace(/^grupo\s*\d+\s+/i, '')}
-                                        </p>
-                                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                                            {dateTime.format(new Date(entry.occurred_at))}
-                                        </span>
-                                        <span
-                                            className={cn(
-                                                'ml-auto shrink-0 text-sm font-bold tabular-nums',
-                                                Number(entry.amount) < 0
-                                                    ? 'text-destructive'
-                                                    : 'text-success'
-                                            )}
-                                        >
-                                            {currency.format(Number(entry.amount))}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                    </AccordionContent>
-                </AccordionItem>
-            </Accordion>
+            {desktop ? (
+                <section aria-label="Extrato do RU" className="mt-4 border-t border-border pt-3">
+                    <h3 className="mb-3 text-sm font-medium text-primary">Extrato do RU</h3>
+                    {history}
+                </section>
+            ) : (
+                <Accordion className="mt-4 border-t border-border pt-3">
+                    <AccordionItem value="statement">
+                        <AccordionTrigger className="mb-2 py-0 text-primary">
+                            Extrato do RU
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-0" keepMounted>
+                            {history}
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            )}
         </>
     );
 }

@@ -1,14 +1,11 @@
 import datetime as dt
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
 
-from sigaa_client import FrequencyStatus, Grade, PostType
 from sqlalchemy import (
     ColumnElement,
     DateTime,
     ForeignKey,
-    ForeignKeyConstraint,
     Index,
     SmallInteger,
     Text,
@@ -21,8 +18,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from api.crypto import Encrypted
 from api.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from api.db.enums import ClassroomRole, ClassroomStatus, LessonStatus, UserLevel
 
 type Requirements = list[list[str]]
 
@@ -115,43 +112,6 @@ class CurriculumComponent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     kind: Mapped[str] = mapped_column()
 
 
-class User(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    __tablename__ = "users"
-
-    name: Mapped[str] = mapped_column()
-    registration: Mapped[str | None] = mapped_column(unique=True)
-    # Quem troca de curso segue logando no CAS com a matrícula antiga.
-    old_registration: Mapped[str | None] = mapped_column(unique=True)
-    photo: Mapped[str | None] = mapped_column()
-    email: Mapped[str | None] = mapped_column()
-    bio: Mapped[str | None] = mapped_column(Text)
-    course_id: Mapped[int | None] = mapped_column(ForeignKey("courses.id"))
-    # Matriz estimada no sync do perfil; só zera se o curso mudar.
-    curriculum_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("curricula.id", ondelete="SET NULL")
-    )
-    entry_semester: Mapped[str | None] = mapped_column()
-    integralization: Mapped[int | None] = mapped_column(SmallInteger)
-    workload: Mapped[dict[str, int] | None] = mapped_column(JSONB)
-    ira: Mapped[float | None] = mapped_column()
-    mp: Mapped[float | None] = mapped_column()
-    level: Mapped[UserLevel | None] = mapped_column(_enum(UserLevel, "user_level"))
-    registered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    profile_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    classrooms_synced_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
-    # Do relatório com as menções de todos os semestres; zera com turma nova na lista.
-    grades_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    settings: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
-
-    course: Mapped[Course | None] = relationship(lazy="joined")
-    curriculum: Mapped[Curriculum | None] = relationship(lazy="joined")
-    classroom_links: Mapped[list[ClassroomParticipant]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
-
-
 class Professor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Docente do catálogo (pelo `siape`) ou, sem ele, visto só numa turma."""
 
@@ -222,8 +182,8 @@ class Classroom(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     enrollment_requests: Mapped[int | None] = mapped_column(SmallInteger)
     reenrollment_requests: Mapped[int | None] = mapped_column(SmallInteger)
     subject_code: Mapped[str] = mapped_column(ForeignKey("subjects.code"))
-    members_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    posts_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # `frontEndIdTurma`: o SIGAA abre a turma por ele. Diz só que algum aluno a viu, não quem.
+    front_end_id: Mapped[str | None] = mapped_column(index=True)
     statistics: Mapped[list[dict[str, object]] | None] = mapped_column(
         JSONB, deferred=True
     )
@@ -245,9 +205,6 @@ class Classroom(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         lazy="selectin",
         order_by=Professor.name,
     )
-    participant_links: Mapped[list[ClassroomParticipant]] = relationship(
-        back_populates="classroom", cascade="all, delete-orphan"
-    )
 
 
 class ClassroomProfessor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -262,55 +219,6 @@ class ClassroomProfessor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     professor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("professors.id", ondelete="CASCADE"), index=True
     )
-
-
-class ClassroomParticipant(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    __tablename__ = "classroom_participants"
-    __table_args__ = (
-        UniqueConstraint("user_id", "classroom_id", name="uq_classroom_participant"),
-    )
-
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE")
-    )
-    classroom_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("classrooms.id", ondelete="CASCADE"), index=True
-    )
-    role: Mapped[ClassroomRole] = mapped_column(_enum(ClassroomRole, "classroom_role"))
-    status: Mapped[ClassroomStatus | None] = mapped_column(
-        _enum(ClassroomStatus, "classroom_status")
-    )
-    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    grade: Mapped[Grade | None] = mapped_column(_enum(Grade, "classroom_grade"))
-    # `frontEndIdTurma` visto pelo próprio usuário: só existe nos vínculos que
-    # vieram da lista de turmas dele, não da lista de participantes.
-    front_end_id: Mapped[str | None] = mapped_column()
-    current: Mapped[bool] = mapped_column(default=False)
-    # Aparece na lista de participantes da turma.
-    member: Mapped[bool] = mapped_column(default=False)
-    # O resumo da tela de frequência do SIGAA; as aulas ficam em `lesson_attendances`.
-    frequency_synced_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
-    frequency_status: Mapped[FrequencyStatus | None] = mapped_column(
-        _enum(FrequencyStatus, "frequency_status")
-    )
-
-    user: Mapped[User] = relationship(back_populates="classroom_links")
-    classroom: Mapped[Classroom] = relationship(back_populates="participant_links")
-
-
-@dataclass(frozen=True)
-class OwnLink:
-    """Um vínculo da lista de turmas do próprio usuário: o SIGAA abre a turma pelo `front_end_id`."""
-
-    row: ClassroomParticipant
-    front_end_id: str
-
-    @classmethod
-    def of(cls, row: ClassroomParticipant) -> OwnLink:
-        assert row.front_end_id is not None, "vínculo fora da lista do usuário"
-        return cls(row, row.front_end_id)
 
 
 class Lesson(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -339,58 +247,6 @@ class Lesson(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     scheduled: Mapped[bool] = mapped_column()
 
 
-class LessonAttendance(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    """A situação do aluno na aula: a chamada do SIGAA ou, sem ela, a que ele marcou."""
-
-    __tablename__ = "lesson_attendances"
-    __table_args__ = (
-        UniqueConstraint(
-            "classroom_participant_id", "lesson_id", name="uq_lesson_attendance"
-        ),
-    )
-
-    classroom_participant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("classroom_participants.id", ondelete="CASCADE")
-    )
-    lesson_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("lessons.id", ondelete="CASCADE"), index=True
-    )
-    status: Mapped[LessonStatus] = mapped_column(_enum(LessonStatus, "lesson_status"))
-    marked: Mapped[bool] = mapped_column()
-    # Horas-aula de falta pela chamada do SIGAA; a falta marcada conta a aula toda.
-    absences: Mapped[int | None] = mapped_column(SmallInteger)
-
-
-class ClassroomPosts(Base, UUIDPrimaryKeyMixin, TimestampMixin):
-    __tablename__ = "classroom_posts"
-    __table_args__ = (
-        UniqueConstraint("classroom_id", "source_id", name="uq_classroom_post_source"),
-        ForeignKeyConstraint(
-            ["classroom_id", "topic_id"],
-            ["classroom_posts.classroom_id", "classroom_posts.source_id"],
-        ),
-    )
-
-    classroom_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("classrooms.id", ondelete="CASCADE")
-    )
-    source_id: Mapped[str] = mapped_column()
-    type: Mapped[PostType] = mapped_column(_enum(PostType, "post_type"))
-    sigaa_id: Mapped[str | None] = mapped_column()
-    topic_id: Mapped[str | None] = mapped_column()
-    title: Mapped[str] = mapped_column()
-    published_on: Mapped[dt.date | None] = mapped_column()
-    published_at: Mapped[datetime | None] = mapped_column()
-    starts_on: Mapped[dt.date | None] = mapped_column()
-    ends_on: Mapped[dt.date | None] = mapped_column()
-    starts_at: Mapped[datetime | None] = mapped_column()
-    time_label: Mapped[str | None] = mapped_column()
-    url: Mapped[str | None] = mapped_column()
-    content: Mapped[str | None] = mapped_column(Text)
-    attachments: Mapped[list[dict[str, str]]] = mapped_column(JSONB, default=list)
-    content_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
 class RestaurantMenu(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "restaurant_menus"
     __table_args__ = (
@@ -403,3 +259,192 @@ class RestaurantMenu(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     lunch: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     dinner: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SharedStatistics(Base, TimestampMixin):
+    """Turma cujas estatísticas um aluno liberou nos índices públicos.
+
+    `sharer_key` é um HMAC da matrícula com a turma: deixa o mesmo aluno desfazer, mas não liga
+    duas turmas ao mesmo aluno nem volta à matrícula.
+    """
+
+    __tablename__ = "shared_statistics"
+
+    classroom_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("classrooms.id", ondelete="CASCADE"), primary_key=True
+    )
+    sharer_key: Mapped[str] = mapped_column(primary_key=True)
+
+
+class ClassroomGroup(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Grupo de conversa da turma que qualquer aluno cadastra e edita; não guarda o autor."""
+
+    __tablename__ = "classroom_groups"
+
+    classroom_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("classrooms.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(SmallInteger)
+    platform: Mapped[str] = mapped_column()
+    url: Mapped[str] = mapped_column(Encrypted("groups.url"))
+    # Só no Aprender 3: a chave de inscrição da disciplina.
+    password: Mapped[str | None] = mapped_column(Encrypted("groups.password"))
+
+
+class DemoRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Linha criada pelos dados de demonstração, para apagá-la depois sem tocar nos reais."""
+
+    __tablename__ = "demo_records"
+
+    kind: Mapped[str] = mapped_column()
+    record_id: Mapped[uuid.UUID] = mapped_column()
+
+
+class ProfessorReview(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Avaliação anônima de um docente: nada de quem avaliou é guardado.
+
+    `token_hash` é o hash de um segredo aleatório que só o navegador de quem avaliou tem,
+    para poder editar ou apagar a própria avaliação.
+    """
+
+    __tablename__ = "professor_reviews"
+
+    professor_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("professors.id", ondelete="CASCADE"), index=True
+    )
+    subject_code: Mapped[str | None] = mapped_column()
+    rating: Mapped[int] = mapped_column(SmallInteger)
+    comment: Mapped[str | None] = mapped_column(Encrypted("reviews.comment"))
+    attendance: Mapped[str | None] = mapped_column()
+    token_hash: Mapped[str] = mapped_column()
+
+
+class Material(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Arquivo que um aluno compartilhou numa matéria, sem autor.
+
+    `uploader_key` é um HMAC da matrícula com a matéria: limita os envios por aluno e deixa o
+    próprio aluno apagar, sem ligar arquivos de matérias diferentes nem voltar à matrícula.
+    """
+
+    __tablename__ = "materials"
+    __table_args__ = (
+        Index("ix_materials_subject_semester", "subject_code", "semester"),
+    )
+
+    subject_code: Mapped[str] = mapped_column()
+    semester: Mapped[str] = mapped_column()
+    # Turma e docentes de onde o material veio, para quem é de outra turma saber.
+    classroom_number: Mapped[str | None] = mapped_column()
+    professors: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    title: Mapped[str] = mapped_column(Encrypted("materials.title"))
+    kind: Mapped[str] = mapped_column()
+    filename: Mapped[str] = mapped_column(Encrypted("materials.filename"))
+    mime: Mapped[str] = mapped_column()
+    size: Mapped[int] = mapped_column()
+    sha256: Mapped[str] = mapped_column()
+    storage_key: Mapped[str] = mapped_column(unique=True)
+    uploader_key: Mapped[str] = mapped_column(index=True)
+
+
+class Report(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Denúncia ou pedido de exclusão de um conteúdo da comunidade, para a moderação."""
+
+    __tablename__ = "reports"
+    __table_args__ = (Index("ix_reports_status", "status", "created_at"),)
+
+    target_type: Mapped[str] = mapped_column()
+    target_id: Mapped[uuid.UUID] = mapped_column()
+    reason: Mapped[str] = mapped_column()
+    message: Mapped[str | None] = mapped_column(Encrypted("reports.message"))
+    # pending, accepted (conteúdo apagado) ou rejected.
+    status: Mapped[str] = mapped_column(default="pending")
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Tutorial(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Guia escrito pela comunidade; só aparece depois de aprovado pela moderação."""
+
+    __tablename__ = "tutorials"
+    __table_args__ = (Index("ix_tutorials_status", "status", "category"),)
+
+    title: Mapped[str] = mapped_column(Encrypted("tutorials.title"))
+    summary: Mapped[str] = mapped_column(Encrypted("tutorials.summary"))
+    body: Mapped[str] = mapped_column(Encrypted("tutorials.body"))
+    category: Mapped[str] = mapped_column()
+    # HMAC da matrícula: só limita quantos guias o mesmo aluno deixa esperando aprovação.
+    author_key: Mapped[str] = mapped_column(index=True)
+    # pending, approved ou rejected.
+    status: Mapped[str] = mapped_column(default="pending")
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ForumPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Dúvida ou publicação anônima da comunidade.
+
+    `author_key` é um HMAC da matrícula com a própria conversa: marca as respostas do autor e
+    deixa apagar, sem ligar conversas diferentes ao mesmo aluno.
+    """
+
+    __tablename__ = "forum_posts"
+    __table_args__ = (Index("ix_forum_posts_activity", "last_activity_at"),)
+
+    kind: Mapped[str] = mapped_column()
+    title: Mapped[str] = mapped_column(Encrypted("forum.title"))
+    body: Mapped[str] = mapped_column(Encrypted("forum.body"))
+    campus: Mapped[str | None] = mapped_column()
+    course_id: Mapped[int | None] = mapped_column()
+    subject_code: Mapped[str | None] = mapped_column()
+    author_key: Mapped[str] = mapped_column()
+    reply_count: Mapped[int] = mapped_column(default=0)
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ForumReply(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    __tablename__ = "forum_replies"
+
+    post_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("forum_posts.id", ondelete="CASCADE"), index=True
+    )
+    body: Mapped[str] = mapped_column(Encrypted("forum.reply"))
+    author_key: Mapped[str] = mapped_column()
+
+
+class ActiveUser(Base):
+    """Uso anônimo: uma chave por aluno e período (dia, semana ou mês), sem ligar os períodos."""
+
+    __tablename__ = "active_users"
+
+    # `d:2026-11-08`, `w:2026-W45` ou `m:2026-11`.
+    period: Mapped[str] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(primary_key=True)
+
+
+class SystemFlag(Base, TimestampMixin):
+    """Liga e desliga partes do sistema pelo painel do administrador."""
+
+    __tablename__ = "system_flags"
+
+    key: Mapped[str] = mapped_column(primary_key=True)
+    enabled: Mapped[bool] = mapped_column()
+
+
+class AdminLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """O que o administrador fez, para auditoria."""
+
+    __tablename__ = "admin_log"
+
+    action: Mapped[str] = mapped_column()
+    target_type: Mapped[str | None] = mapped_column()
+    target_id: Mapped[str | None] = mapped_column()
+    detail: Mapped[str | None] = mapped_column(Text)
+
+
+class SystemText(Base, TimestampMixin):
+    """Textos que o administrador muda pelo painel (ex.: o link do bot do Telegram)."""
+
+    __tablename__ = "system_texts"
+
+    key: Mapped[str] = mapped_column(primary_key=True)
+    value: Mapped[str] = mapped_column(Text)

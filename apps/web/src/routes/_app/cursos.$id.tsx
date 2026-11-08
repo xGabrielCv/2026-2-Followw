@@ -1,48 +1,34 @@
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, notFound, rootRouteId } from '@tanstack/react-router';
+import { Link, createFileRoute, notFound, rootRouteId } from '@tanstack/react-router';
+import { ChartColumn } from 'lucide-react';
 
-import type { UserProfile } from '#/queries/me';
-
-import { getCurrentSemester } from '#/calendar';
 import { CourseSummary } from '#/components/curriculum/CourseSummary';
 import { CurriculumView } from '#/components/curriculum/CurriculumView';
 import { Legend } from '#/components/curriculum/Legend';
 import { ErrorCard, ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
+import { buttonVariants } from '#/components/ui/button';
 import { useFlowSearch, validateFlowSearch } from '#/lib/curriculum/navigation';
+import { flowTarget, parseCourseId } from '#/lib/curriculum/target';
 import { titleCase } from '#/lib/profile';
 import { useWidth } from '#/lib/width';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { courseQueryOptions } from '#/queries/courses';
 import { curriculumQueryOptions } from '#/queries/curriculum';
 import { ApiError } from '#/queries/errors';
-import { loadQuery } from '#/queries/load';
+import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
-import { currentCurriculumPeriod } from '#/queries/subjects';
 
 const DESKTOP_MIN_WIDTH = 1024;
-
-/** O curso do aluno usa o ingresso dele; outro curso, a matriz vigente no semestre atual. */
-function flowTarget(user: UserProfile | null | undefined, courseId: number) {
-    const semester = getCurrentSemester()?.semester;
-    const ownCourse = courseId === user?.course?.id;
-    return {
-        ownCourse,
-        loggedIn: Boolean(user),
-        entrySemester: ownCourse ? user?.entry_semester : semester,
-        currentPeriod: ownCourse ? currentCurriculumPeriod(user?.entry_semester, semester) : null
-    };
-}
 
 export const Route = createFileRoute('/_app/cursos/$id')({
     validateSearch: validateFlowSearch,
     staticData: { presentation: 'fullscreen' },
     params: {
         parse: ({ id }) => {
-            const courseId = /^\d+$/.test(id) ? Number(id) : 0;
-            if (!Number.isSafeInteger(courseId) || courseId <= 0)
-                throw notFound({ routeId: rootRouteId });
+            const courseId = parseCourseId(id);
+            if (courseId === null) throw notFound({ routeId: rootRouteId });
             return { id: courseId };
         },
         stringify: ({ id }) => ({ id: String(id) })
@@ -56,9 +42,7 @@ export const Route = createFileRoute('/_app/cursos/$id')({
                 : loadQuery(queryClient, courseQueryOptions(courseId)).catch(noop),
             entrySemester &&
                 loadQuery(queryClient, curriculumQueryOptions(courseId, entrySemester)).catch(noop),
-            loggedIn &&
-                entrySemester &&
-                loadQuery(queryClient, allClassroomsQueryOptions).catch(noop)
+            loggedIn && entrySemester && loadPersonal(queryClient, allClassroomsQueryOptions)
         ]);
         return { courseName: course?.name };
     },
@@ -72,13 +56,13 @@ export const Route = createFileRoute('/_app/cursos/$id')({
         ]
     }),
     pendingComponent: () => (
-        <div className="flex flex-col gap-4 px-4 lg:px-6">
+        <div className="flex flex-col gap-4 px-4 desk:px-6">
             <FlowHeader />
             <LoadingText>Carregando fluxo...</LoadingText>
         </div>
     ),
     errorComponent: (props) => (
-        <div className="flex flex-col gap-4 px-4 lg:px-6">
+        <div className="flex flex-col gap-4 px-4 desk:px-6">
             <FlowHeader />
             <ErrorState {...props} />
         </div>
@@ -86,8 +70,30 @@ export const Route = createFileRoute('/_app/cursos/$id')({
     component: FlowPage
 });
 
-function FlowHeader({ legend = false }: { legend?: boolean }) {
-    return <BackHeader to="/buscar" title="Fluxo acadêmico" actions={legend && <Legend />} />;
+function FlowHeader({ legend = false, stats }: { legend?: boolean; stats?: number }) {
+    return (
+        <BackHeader
+            to="/buscar"
+            title="Fluxo acadêmico"
+            actions={
+                (legend || stats !== undefined) && (
+                    <>
+                        {legend && <Legend />}
+                        {stats !== undefined && (
+                            <Link
+                                to="/cursos/$id/estatisticas"
+                                params={{ id: stats }}
+                                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+                            >
+                                <ChartColumn aria-hidden="true" />
+                                Estatísticas
+                            </Link>
+                        )}
+                    </>
+                )
+            }
+        />
+    );
 }
 
 function FlowPage() {
@@ -102,8 +108,11 @@ function FlowPage() {
     const course = ownCourse ? user?.course : listed.data;
     return (
         <div ref={ref} className="flex min-h-0 flex-1 flex-col">
-            <div className="shrink-0 px-4 pb-5 lg:px-6">
-                <FlowHeader legend={Boolean(desktop && loggedIn && course && entrySemester)} />
+            <div className="shrink-0 px-4 pb-5 desk:px-6">
+                <FlowHeader
+                    legend={Boolean(desktop && loggedIn && course && entrySemester)}
+                    stats={ownCourse && loggedIn && entrySemester ? courseId : undefined}
+                />
                 {course && <CourseSummary course={course} entrySemester={entrySemester} />}
             </div>
             {!ownCourse && listed.isPending ? (

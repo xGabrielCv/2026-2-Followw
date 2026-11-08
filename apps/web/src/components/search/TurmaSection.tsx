@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 
 import type { CatalogSubject } from '#/queries/subjects';
 
+import { useProfessorRatings } from '#/components/community/RatingBadge';
 import { SubjectSummary } from '#/components/search/SubjectSummary';
 import { TurmaCard } from '#/components/search/TurmaCard';
 import {
@@ -61,16 +62,7 @@ export function TurmaSection({
                             </span>
                         </AccordionTrigger>
                         <AccordionContent className="pb-0">
-                            <div className="flex flex-col divide-y divide-border border-t border-border">
-                                {subject.classrooms.map((classroom) => (
-                                    <TurmaCard
-                                        key={`${classroom.semester}-${classroom.number}`}
-                                        subject={subject}
-                                        classroom={classroom}
-                                        onOpenDetails={onOpenDetails}
-                                    />
-                                ))}
-                            </div>
+                            <ClassroomList subject={subject} onOpenDetails={onOpenDetails} />
                             {footer?.(subject)}
                         </AccordionContent>
                     </AccordionItem>
@@ -86,5 +78,31 @@ export function TurmaSection({
                 </Button>
             )}
         </section>
+    );
+}
+
+// só monta ao abrir a matéria: as notas dos docentes vêm numa consulta só
+function ClassroomList({
+    subject,
+    onOpenDetails
+}: {
+    subject: CatalogSubject;
+    onOpenDetails?: () => void;
+}) {
+    const ratings = useProfessorRatings(
+        subject.classrooms.flatMap(({ professors }) => professors.map(({ siape }) => siape))
+    );
+    return (
+        <div className="flex flex-col divide-y divide-border border-t border-border">
+            {subject.classrooms.map((classroom) => (
+                <TurmaCard
+                    key={`${classroom.semester}-${classroom.number}`}
+                    subject={subject}
+                    classroom={classroom}
+                    ratings={ratings}
+                    onOpenDetails={onOpenDetails}
+                />
+            ))}
+        </div>
     );
 }

@@ -63,6 +63,7 @@ const noStatistics: components['schemas']['SubjectStatistics'] = {
 };
 
 let Route: typeof import('#/routes/_app/buscar').Route;
+let offerSemesters: string[] = [];
 
 let testing: typeof import('@testing-library/react/pure');
 let browser: Window;
@@ -206,6 +207,11 @@ describe('página de busca com estado na URL', () => {
             onRequest: async ({ request }) => {
                 const url = new URL(request.url);
                 if (url.pathname.endsWith('/statistics')) return Response.json(noStatistics);
+                if (url.pathname.endsWith('/outcomes'))
+                    return Response.json({ subject: null, professors: [] });
+                // os semestres da oferta não são uma busca
+                if (url.pathname.endsWith('/public/subjects/semesters'))
+                    return Response.json(offerSemesters);
                 requests.push(url);
                 const q = url.searchParams.get('q');
                 const page = Number(url.searchParams.get('page') ?? 1);
@@ -724,7 +730,9 @@ describe('página de busca com estado na URL', () => {
         expect(page.queryByText(/Não foi possível buscar (as|os)/)).toBeNull();
         expect(page.queryByRole('heading', { name: 'Docentes' })).toBeNull();
         expect(page.queryByRole('region', { name: 'Cursos' })).toBeNull();
-        expect(requests.map((url) => url.pathname)).toEqual(['/api/public/search']);
+        expect(
+            requests.map((url) => url.pathname).filter((path) => !path.endsWith('/semesters'))
+        ).toEqual(['/api/public/search']);
     });
 
     test('mostra as matérias em lotes de 25', async () => {
@@ -772,6 +780,11 @@ describe('página de busca com estado na URL', () => {
             onRequest: ({ request }) => {
                 const url = new URL(request.url);
                 if (url.pathname.endsWith('/statistics')) return Response.json(noStatistics);
+                if (url.pathname.endsWith('/outcomes'))
+                    return Response.json({ subject: null, professors: [] });
+                // os semestres da oferta não são uma busca
+                if (url.pathname.endsWith('/public/subjects/semesters'))
+                    return Response.json(offerSemesters);
                 requests.push(url);
                 return Response.json({
                     subjects: [

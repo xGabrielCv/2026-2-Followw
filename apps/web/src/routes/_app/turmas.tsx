@@ -1,25 +1,38 @@
-import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useQueryStates } from 'nuqs';
+import { createParser, createStandardSchemaV1 } from 'nuqs/server';
 
+import { CachedAbsenceBadge } from '#/components/classroom/AbsenceAlert';
 import { ErrorCard, ErrorState, SIGAA_DOWN_MESSAGE } from '#/components/ErrorState';
 import { HeaderBar, HeaderTitle } from '#/components/HeaderBar';
 import { ClassCard } from '#/components/home/ClassCard';
 import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
+import { PlannedSemester } from '#/components/schedule/PlannedSemester';
 import { TabFilter } from '#/components/TabFilter';
 import { Card, CardContent } from '#/components/ui/card';
 import { groupBySemester } from '#/lib/classroom-details';
-import { describeSchedule } from '#/lib/schedule';
+import { currentRegularSemester, nextRegularSemester } from '#/lib/offer';
+import { describeSchedule, nowInBrasilia } from '#/lib/schedule';
 import { allClassroomsQueryOptions, finalGrade } from '#/queries/classrooms';
-import { loadQuery } from '#/queries/load';
+import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 
+const turmasParsers = {
+    // semestre escolhido; o futuro mostra a grade planejada na busca
+    semester: createParser({
+        parse: (value) => (/^\d{4}\.\d$/.test(value) ? value : null),
+        serialize: String
+    })
+};
+
 export const Route = createFileRoute('/_app/turmas')({
+    validateSearch: createStandardSchemaV1(turmasParsers, { partialOutput: true }),
     head: () => ({ meta: [{ title: 'Minhas Turmas | Followw' }] }),
     loader: async ({ context: { queryClient } }) => {
         const user = await loadQuery(queryClient, meQueryOptions);
-        if (user) await loadQuery(queryClient, allClassroomsQueryOptions).catch(noop);
+        if (user) await loadPersonal(queryClient, allClassroomsQueryOptions);
     },
     staticData: {
         header: () => (
@@ -46,24 +59,41 @@ function Classrooms() {
         isLoadingError,
         refetch
     } = useQuery(allClassroomsQueryOptions);
-    const [selected, setSelected] = useState<string>();
+    const [{ semester: selected }, setSearch] = useQueryStates(turmasParsers, {
+        history: 'replace',
+        scroll: false
+    });
 
     const groups = groupBySemester(classrooms ?? []);
-    const [semester, items] = groups.find(([name]) => name === selected) ?? groups[0] ?? [];
+    const current = currentRegularSemester(nowInBrasilia().date);
+    // o próximo semestre, à esquerda, até as turmas dele chegarem do SIGAA
+    const future =
+        current && !groups.some(([name]) => name === nextRegularSemester(current))
+            ? nextRegularSemester(current)
+            : undefined;
+    const options = [...(future ? [future] : []), ...groups.map(([name]) => name)];
+    const planning = future !== undefined && selected === future;
+    const [semester, items] = planning
+        ? [future, undefined]
+        : (groups.find(([name]) => name === selected) ?? groups[0] ?? []);
 
     if (isLoadingError) return <ErrorCard message={SIGAA_DOWN_MESSAGE} onRetry={() => refetch()} />;
 
     return (
         <>
-            {groups.length > 0 && (
+            {options.length > 0 && (
                 <TabFilter
                     label="Escolher semestre"
                     value={semester}
-                    options={groups.map(([name]) => name)}
-                    onChange={setSelected}
+                    options={options}
+                    onChange={(value) =>
+                        void setSearch({ semester: value === groups[0]?.[0] ? null : value })
+                    }
+                    optionClassName={(option) => (option === future ? 'text-primary' : undefined)}
                     className="mb-2"
                 />
             )}
+            {planning && <PlannedSemester semester={future} />}
             <div className="flex flex-col gap-2">
                 {items?.map((classroom) => (
                     <ClassCard
@@ -79,13 +109,16 @@ function Classrooms() {
                         classNumber={classroom.number}
                         grade={finalGrade(classroom)}
                         status={classroom.status === 'pending_enrollment' ? 'pending' : 'normal'}
+                        indicator={
+                            classroom.current ? <CachedAbsenceBadge id={classroom.id} /> : undefined
+                        }
                         onClick={() =>
                             navigate({ to: '/turmas/$id', params: { id: classroom.id } })
                         }
                     />
                 ))}
             </div>
-            {(isPending || classrooms.length === 0) && (
+            {!planning && (isPending || classrooms.length === 0) && (
                 <Card>
                     <CardContent className="text-center text-sm text-muted-foreground">
                         {isPending ? (

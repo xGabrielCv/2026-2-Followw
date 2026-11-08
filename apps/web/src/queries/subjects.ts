@@ -50,6 +50,8 @@ export function searchText(q: string, previous: string | null = null): string | 
 export const subjectsQueryOptions = (query: SubjectsQuery) =>
     api.queryOptions('get', '/public/subjects', { params: { query } });
 
+export const offerSemestersQueryOptions = api.queryOptions('get', '/public/subjects/semesters');
+
 export function approvedCodes(history: Classroom[]): Set<string> {
     return new Set(
         history.filter((c) => APPROVED.has(finalGrade(c) ?? '')).map((c) => c.subject.code)

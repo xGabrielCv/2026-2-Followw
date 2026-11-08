@@ -21,10 +21,27 @@ const components: Components = {
     }
 };
 
-export function Markdown({ children }: { children: string }) {
+// Texto da comunidade: imagem de fora vira só o texto, para nenhum site saber quem leu o guia.
+const communityComponents: Components = {
+    ...components,
+    img: ({ alt }) => <span>{alt ? `[imagem: ${alt}]` : '[imagem]'}</span>
+};
+
+export function Markdown({
+    children,
+    community = false
+}: {
+    children: string;
+    // escrito por alunos (guias): sem imagens externas
+    community?: boolean;
+}) {
     return (
         <div className="markdown text-sm leading-relaxed wrap-break-word text-muted-foreground">
-            <ReactMarkdown skipHtml remarkPlugins={[remarkGfm]} components={components}>
+            <ReactMarkdown
+                skipHtml
+                remarkPlugins={[remarkGfm]}
+                components={community ? communityComponents : components}
+            >
                 {children}
             </ReactMarkdown>
         </div>

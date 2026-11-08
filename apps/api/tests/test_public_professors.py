@@ -111,13 +111,13 @@ async def test_listagem_carrega_apenas_campos_do_resumo(async_database):
     async with async_database.begin() as session:
         session.add(Professor(siape=123, name="MARIA", unit_id=673, disciplines=[]))
     async with async_database() as session:
-        professors, total = await ProfessorRepository(session).list(
-            None, None, None, 1, 20
-        )
+        rows, total = await ProfessorRepository(session).list(None, None, None, 1, 20)
         assert total == 1
-        assert professors[0].unit.name
-        assert "education" in inspect(professors[0]).unloaded
-        assert "disciplines" in inspect(professors[0]).unloaded
+        professor, count, average = rows[0]
+        assert (count, average) == (None, None)
+        assert professor.unit.name
+        assert "education" in inspect(professor).unloaded
+        assert "disciplines" in inspect(professor).unloaded
 
 
 def test_nome_curto_e_paginacao_invalida_retornam_422(client, catalog):

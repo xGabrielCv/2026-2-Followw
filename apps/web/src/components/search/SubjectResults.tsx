@@ -9,14 +9,16 @@ import { subjectsQueryOptions, withClassrooms } from '#/queries/subjects';
 export function SubjectResults({
     unit,
     currentPeriod,
-    taken
+    taken,
+    semester
 }: {
     unit: string;
+    semester?: string;
     currentPeriod: number | null;
     taken: Set<string> | null;
 }) {
     const client = useQueryClient();
-    const options = subjectsQueryOptions({ unit });
+    const options = subjectsQueryOptions(semester ? { unit, semester } : { unit });
     const result = useQuery({ ...options, placeholderData: keepPreviousData });
     const refresh = () => void refreshQuery(client, options).catch(noop);
     return (

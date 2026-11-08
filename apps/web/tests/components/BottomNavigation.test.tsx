@@ -13,7 +13,7 @@ import { BottomNavigation, isDoubleTap } from '#/components/BottomNavigation';
 async function renderNavigation(pathname: string) {
     const rootRoute = createRootRoute({ component: BottomNavigation });
     const routeTree = rootRoute.addChildren(
-        ['/', '/turmas', '/turmas/$id', '/ru', '/buscar', '/perfil'].map((path) =>
+        ['/', '/turmas', '/turmas/$id', '/ru', '/buscar', '/calendario', '/perfil'].map((path) =>
             createRoute({ getParentRoute: () => rootRoute, path })
         )
     );
@@ -44,6 +44,8 @@ describe('BottomNavigation', () => {
             { href: '/turmas', label: 'Turmas', role: undefined, text: '' },
             { href: '/ru', label: 'RU', role: undefined, text: '' },
             { href: '/buscar', label: 'Buscar', role: undefined, text: '' },
+            { href: '/calendario', label: 'Calendário', role: undefined, text: '' },
+            { href: '/mais', label: 'Mais opções', role: undefined, text: '' },
             { href: '/perfil', label: 'Perfil', role: undefined, text: '' }
         ]);
     });
@@ -58,6 +60,10 @@ describe('BottomNavigation', () => {
         ['/ru/', 'RU'],
         ['/buscar', 'Buscar'],
         ['/buscar/', 'Buscar'],
+        ['/calendario', 'Calendário'],
+        ['/mais', 'Mais opções'],
+        ['/grupos', 'Mais opções'],
+        ['/avaliacoes', 'Mais opções'],
         ['/perfil', 'Perfil'],
         ['/perfil/', 'Perfil']
     ])('indica apenas a página atual em %s', async (pathname, label) => {

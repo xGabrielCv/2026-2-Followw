@@ -4,7 +4,9 @@ import { describe, expect, test } from 'bun:test';
 
 import { Route } from '#/routes/_app/buscar';
 
-import { callRoute, fakeQueryClient, runLoader } from '../helpers/route';
+import { callRoute, fakeQueryClient, runLoader, useBrowserEnvironment } from '../helpers/route';
+
+useBrowserEnvironment();
 
 interface User {
     registration: string;
@@ -12,15 +14,32 @@ interface User {
     level?: string;
 }
 
+const HISTORY = [
+    {
+        id: 'A',
+        number: '01',
+        semester: '2025.2',
+        current: false,
+        grade: 'SS',
+        status: 'concluido',
+        professors: [],
+        subject: { code: 'FGA0001', name: 'Cálculo' }
+    }
+];
+
 const loadWith = async (user: User | null, searchStr = '') => {
     const keys: QueryKey[] = [];
     await runLoader(Route, {
         location: { searchStr },
         context: {
-            queryClient: fakeQueryClient((queryKey) => {
-                keys.push(queryKey);
-                return queryKey[1] === '/me' ? user : [];
-            })
+            queryClient: fakeQueryClient(
+                (queryKey) => {
+                    keys.push(queryKey);
+                    return queryKey[1] === '/me' ? user : [];
+                },
+                // as turmas salvas no navegador são o histórico das recomendações
+                (queryKey) => (queryKey[1] === '/classrooms' ? HISTORY : undefined)
+            )
         }
     });
     return keys;
@@ -76,7 +95,10 @@ describe('recomendações somente na busca', () => {
     test('graduação sem texto e filtros carrega recomendações em vez da lista da unidade', async () => {
         const keys = await loadWith(student);
         expect(keys.map((key) => key[1])).toEqual(['/me', '/classrooms', '/public/subjects']);
-        expect(keys[2][2]).toEqual({});
+        // o histórico vai junto: o servidor não guarda as menções
+        expect(keys[2][2]).toEqual({
+            params: { query: { history: ['FGA0001:2025.2:SS:concluido'] } }
+        });
     });
     test('pesquisa usa a busca única em vez das recomendações', async () => {
         const keys = await loadWith(student, '?q=calculo');

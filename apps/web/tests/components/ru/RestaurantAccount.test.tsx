@@ -107,7 +107,7 @@ describe('StatementDetails', () => {
         expect(markup).toContain(`>${label}</p>`);
     });
 
-    test('mostra saldo zero, grupo e extrato com débitos e créditos', () => {
+    test('mostra saldo zero e extrato por dia com débitos, créditos e saldo após cada um', () => {
         const markup = renderToStaticMarkup(
             <StatementDetails
                 statement={{
@@ -133,7 +133,11 @@ describe('StatementDetails', () => {
         expect(markup).toContain('-R$');
         expect(markup).toContain('5,20');
         expect(markup).toContain('20,00');
-        expect(markup).toContain('05/10/2026, 12:00');
+        expect(markup).toContain('seg., 05/10');
+        expect(markup).toContain('12:00');
+        // saldo reconstruído: antes do almoço havia R$ 5,20
+        expect(markup).toMatch(/saldo R\$\s5,20/);
+        expect(markup).toContain('Refeições');
         expect(markup).toMatch(/text-destructive[^>]*>-R\$\s5,20/);
         expect(markup).toMatch(/text-success[^>]*>R\$\s20,00/);
     });

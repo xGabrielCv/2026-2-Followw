@@ -201,6 +201,7 @@ def rank(
     enrolled: set[str],
     unresolved: set[str],
     unit_id: int | None,
+    reverse_equivalences: dict[str, list[str]] | None = None,
 ) -> list[Recommendation]:
     """As ofertadas que o aluno pode cursar, da mais à menos prioritária.
 
@@ -212,6 +213,11 @@ def rank(
         code
         for code, subject in catalog.items()
         if subject.equivalences and satisfies(subject.equivalences, assumed)
+    }
+    done |= {
+        code
+        for code, sources in (reverse_equivalences or {}).items()
+        if any(normalize(source) in assumed for source in sources)
     }
     target = target_period(curriculum, done, enrolled)
     dependents = dependency_graph(

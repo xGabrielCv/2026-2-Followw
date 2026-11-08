@@ -33,7 +33,8 @@ function accountQuery<T, TKey extends ApiKey>(
     });
 }
 
-const STATEMENT_STALE_TIME = 90 * 60_000;
+// o extrato vai ao SIGAA a cada consulta; 15 minutos equilibram frescor e carga
+const STATEMENT_STALE_TIME = 15 * 60_000;
 
 export const statementQueryOptions = (registration: string) =>
     accountQuery(api.queryOptions('get', '/me/ru-statement'), registration);
