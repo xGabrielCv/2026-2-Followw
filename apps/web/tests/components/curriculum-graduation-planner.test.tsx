@@ -97,3 +97,81 @@ test('fluxo completo: nada a planejar', () => {
     expect(page.container.textContent).toContain('disciplinas selecionadas está completo');
     expect(page.getByText('Optativas pendentes no SIGAA')).toBeDefined();
 });
+
+test('mostra as pendências do SIGAA sem que a simulação as altere', () => {
+    const page = dom.testing.render(
+        <GraduationPlanner {...details} model={modelo()} state={pendente} semester="2026.2" />
+    );
+    const antes = page.container.textContent;
+    expect(antes).toContain('240h');
+    expect(antes).toContain('120h');
+    expect(antes).toContain('60h');
+    dom.testing.fireEvent.change(page.getByLabelText('Matérias por semestre'), {
+        target: { value: '3' }
+    });
+    expect(page.getByText('Complementares pendentes no SIGAA').nextSibling?.textContent).toBe(
+        '60h'
+    );
+});
+
+const subject = (code: string, name = `Matéria ${code}`) => ({ code, name, hours: 60 });
+
+test('optativa escolhida entra na projeção e a escolha continua salva ao reabrir', () => {
+    const comOptativa = {
+        ...details,
+        curriculum: {
+            ...details.curriculum,
+            periods: [
+                { period: 1, subjects: [subject('A'), subject('E')] },
+                { period: 2, subjects: [subject('B')] },
+                { period: 3, subjects: [subject('C')] }
+            ],
+            complementary: [subject('OPT1', 'OPTATIVA UM')]
+        }
+    };
+    const render = () =>
+        dom.testing.render(
+            <GraduationPlanner
+                {...comOptativa}
+                model={modelo()}
+                state={pendente}
+                semester="2026.2"
+            />
+        );
+    const first = render();
+    expect(first.container.textContent).toContain('Faltam 4 matérias e 240h');
+    dom.testing.fireEvent.click(first.getByLabelText(/Optativa Um/));
+    expect(first.container.textContent).toContain('Faltam 5 matérias e 300h');
+    first.unmount();
+
+    const reopened = render();
+    expect(reopened.container.textContent).toContain('Faltam 5 matérias e 300h');
+    expect(reopened.getByLabelText(/Optativa Um/)).toHaveProperty('checked', true);
+});
+
+test('a carga escolhida por semestre fica só neste aparelho, separada por conta', () => {
+    const render = (registration: string) =>
+        dom.testing.render(
+            <GraduationPlanner
+                {...details}
+                registration={registration}
+                model={modelo()}
+                state={pendente}
+                semester="2026.2"
+            />
+        );
+    const first = render('251000001');
+    dom.testing.fireEvent.change(first.getByLabelText('Matérias por semestre'), {
+        target: { value: '3' }
+    });
+    first.unmount();
+    expect(render('251000001').getByLabelText('Matérias por semestre')).toHaveProperty(
+        'value',
+        '3'
+    );
+    dom.testing.cleanup();
+    expect(render('251000002').getByLabelText('Matérias por semestre')).toHaveProperty(
+        'value',
+        '5'
+    );
+});
