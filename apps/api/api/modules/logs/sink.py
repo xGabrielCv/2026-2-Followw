@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import math
 import re
 from collections import deque
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,30 @@ SENSITIVE = re.compile(
 PREFIXES = ("sync.", "admin.", "security.")
 MAX_VALUE = 120
 BATCH = 200
+NUMERIC_FIELDS = frozenset(
+    {
+        "status_code",
+        "duration_ms",
+        "attempt",
+        "step_count",
+        "job_count",
+        "failed_count",
+        "skipped_count",
+        "course_count",
+        "error_line",
+    }
+)
+TEXT_FIELDS = {
+    "route": r"/[A-Za-z_/{}/-]{0,119}",
+    "method": r"GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS",
+    "error_type": r"[A-Za-z_][A-Za-z_0-9]{0,79}",
+    "error_file": r"[A-Za-z_][A-Za-z_0-9]*\.py",
+    "error_function": r"[A-Za-z_][A-Za-z_0-9]{0,79}",
+    "source": r"catalog|restaurant",
+    "trigger": r"manual|schedule",
+    "outcome": r"success|unchanged|failed|skipped|cancelled",
+    "task": r"[a-z_][a-z_.]{0,79}",
+}
 
 
 def wanted(level: int, name: str, fields: dict) -> bool:
@@ -35,11 +60,23 @@ def wanted(level: int, name: str, fields: dict) -> bool:
 def clean(fields: dict) -> dict:
     result = {}
     for key, value in fields.items():
-        if SENSITIVE.search(key) or not isinstance(
-            value, str | int | float | bool | None
+        if (
+            (
+                key in NUMERIC_FIELDS
+                and type(value) in (int, float)
+                and math.isfinite(value)
+                and 0 <= value <= 1e12
+            )
+            or key == "reused_session"
+            and type(value) is bool
+            or (
+                key in TEXT_FIELDS
+                and isinstance(value, str)
+                and len(value) <= MAX_VALUE
+                and re.fullmatch(TEXT_FIELDS[key], value)
+            )
         ):
-            continue
-        result[key] = value[:MAX_VALUE] if isinstance(value, str) else value
+            result[key] = value
     return result
 
 

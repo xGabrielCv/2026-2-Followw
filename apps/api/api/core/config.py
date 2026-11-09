@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     )
 
     environment: str = "development"
-    # Libera /demo, que carrega dados fictícios de grupos, avaliações e índices para testes.
+    # Estado inicial opcional da demonstração; o Owner controla a flag pelo painel local.
     demo_data: bool = False
     # Painel do administrador em /admin; sem usuário e hash da senha, desligado.
     # O hash (scrypt) vem de `uv run admin-password`; a senha nunca fica em texto.

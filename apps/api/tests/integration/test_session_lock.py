@@ -92,7 +92,9 @@ async def test_nenhum_lock_fica_preso_no_banco_depois(motores, database):
     await asyncio.sleep(0.1)
     with database() as session:
         locks = session.execute(
-            text("SELECT count(*) FROM pg_locks WHERE locktype = 'advisory'")
+            text(
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
+            )
         ).scalar_one()
     assert locks == 0
 

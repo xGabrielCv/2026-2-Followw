@@ -1,5 +1,6 @@
 """Coletor do catálogo como processo separado: sucesso, falha, tempo limite e fonte ausente."""
 
+import asyncio
 import time
 
 import pytest
@@ -31,6 +32,17 @@ async def test_sucesso_devolve_resumo_e_contagem(script):
     assert len(resultado.content_hash) == 64
 
 
+async def test_coletor_funciona_sem_subprocesso_assincrono_do_loop_windows(
+    script, monkeypatch
+):
+    async def indisponivel(*args, **kwargs):
+        raise NotImplementedError("SelectorEventLoop usado pelo reload do Windows")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", indisponivel)
+    script("print('ok')")
+    assert (await sources.run_catalog(30)).status == "success"
+
+
 async def test_resumo_muda_so_quando_o_arquivo_muda(script, tmp_path):
     script("print('ok')")
     primeiro = await sources.run_catalog(30)
@@ -38,6 +50,15 @@ async def test_resumo_muda_so_quando_o_arquivo_muda(script, tmp_path):
     (tmp_path / "data" / "classrooms.csv").write_text("a,b\n1,2\n", encoding="utf-8")
     diferente = await sources.run_catalog(30)
     assert primeiro.content_hash == igual.content_hash != diferente.content_hash
+
+
+def test_resumo_canonico_ignora_ordem_de_linhas_colunas_e_quebras(script, tmp_path):
+    script("print('ok')")
+    file = tmp_path / "data/classrooms.csv"
+    file.write_bytes(b"a,b\n1,2\n3,4\n")
+    original = sources.catalog_content_hash()
+    file.write_bytes(b"b,a\r\n4,3\r\n2,1\r\n")
+    assert sources.catalog_content_hash() == original
 
 
 async def test_falha_guarda_codigo_e_ultima_linha_sem_credencial(script):

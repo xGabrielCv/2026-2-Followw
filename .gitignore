@@ -17,6 +17,7 @@ node_modules/
 !/README.md
 docs/
 scripts/
+!/packages/sigaa-client/scripts/
 !/scripts/
 /scripts/*
 !/scripts/bootstrap_data.py

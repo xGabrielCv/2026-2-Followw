@@ -256,6 +256,7 @@ async def log(
     detail: str | None = None,
     *,
     actor: Principal | AdminAccount | None = None,
+    content_proof: str | None = None,
 ) -> None:
     session.add(
         AdminLog(
@@ -265,6 +266,7 @@ async def log(
             detail=detail,
             actor_id=actor.id if actor else None,
             actor_role=actor.role if actor else None,
+            content_proof=content_proof,
         )
     )
 
@@ -591,6 +593,12 @@ class AdminService:
         self, kind: ContentType, content_id: uuid.UUID, reason: str | None
     ) -> None:
         async def write(session: AsyncSession) -> None:
+            row = await session.get(_MODELS[kind], content_id)
+            proof = (
+                (getattr(row, "uploader_key", None) or getattr(row, "author_key", None))
+                if row
+                else None
+            )
             if kind == "report":
                 result = await session.execute(
                     delete(Report).where(Report.id == content_id)
@@ -600,7 +608,9 @@ class AdminService:
                 found = await delete_target(session, kind, content_id)
             if not found:
                 raise HTTPException(404, "Conteúdo não encontrado.")
-            await self._log(session, "delete", kind, content_id, reason)
+            await self._log(
+                session, "delete", kind, content_id, reason, content_proof=proof
+            )
 
         await self._db.write(write)
 

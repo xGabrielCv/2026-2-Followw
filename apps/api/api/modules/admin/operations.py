@@ -26,6 +26,7 @@ from api.redis import redis_client
 router = APIRouter(include_in_schema=False)
 Operations = Annotated[Principal, auth.require_permission("operations")]
 Owner = Annotated[Principal, auth.require_permission("owner")]
+_PROCESS = psutil.Process(os.getpid())
 
 
 async def _database(session: AsyncSession) -> dict:
@@ -34,7 +35,7 @@ async def _database(session: AsyncSession) -> dict:
             text(
                 "SELECT (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()) AS connections,"
                 " (SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'active') AS active,"
-                " (SELECT count(*) FROM pg_locks WHERE NOT granted) AS waiting_locks,"
+                " (SELECT count(*) FROM pg_locks l JOIN pg_stat_activity a USING (pid) WHERE NOT l.granted AND a.datname = current_database()) AS waiting_locks,"
                 " (SELECT current_setting('max_connections')::int) AS max_connections,"
                 " pg_database_size(current_database()) AS size_bytes"
             )
@@ -50,7 +51,7 @@ async def _database(session: AsyncSession) -> dict:
 
 
 def _process() -> dict:
-    me = psutil.Process(os.getpid())
+    me = _PROCESS
     children = me.children(recursive=True)
     parent = me.parent()
     # com `--workers`, o pai é o supervisor e este processo é um worker

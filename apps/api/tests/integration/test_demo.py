@@ -1,3 +1,6 @@
+import importlib.util
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr
 from sigaa_client import Classroom as SigaaClassroom
@@ -20,6 +23,13 @@ from api.db.models import (
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
 WHATSAPP = "https://chat.whatsapp.com/Real"
+HEADERS = {"X-Admin-Request": "1"}
+_spec = importlib.util.spec_from_file_location(
+    "demo_admin_fixtures", Path(__file__).with_name("test_admin_security.py")
+)
+_fixtures = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_fixtures)
+owner = _fixtures.owner
 
 
 @pytest.fixture
@@ -57,8 +67,10 @@ def aluno(database, stub_sigaa):
 
 
 @pytest.fixture
-def logado(client, cookies, monkeypatch, tmp_path):
+def logado(owner, cookies, monkeypatch, tmp_path):
+    client = owner["client"]
     monkeypatch.setattr(settings, "demo_data", True)
+    monkeypatch.setattr(settings, "public_url", "http://127.0.0.1:8000")
     monkeypatch.setattr(settings, "materials_dir", str(tmp_path))
     client.cookies.update(cookies(refresh=CREDENCIAIS))
     return client
@@ -67,6 +79,11 @@ def logado(client, cookies, monkeypatch, tmp_path):
 def _count(database, model):
     with database() as session:
         return session.scalar(select(func.count()).select_from(model))
+
+
+def test_aluno_nao_controla_demo_mesmo_com_flag_ligada(logado, aluno):
+    logado.cookies.pop("admin_session", None)
+    assert logado.post("/demo").status_code == 404
 
 
 def test_desligado_responde_404(client, cookies, monkeypatch):
@@ -93,9 +110,12 @@ def test_demo_e_recusado_em_producao_mesmo_com_flag_ligada(
 def test_carrega_dados_das_turmas_do_aluno_e_apaga_so_os_ficticios(
     logado, aluno, database, tmp_path
 ):
-    assert logado.get("/demo").json()["loaded"] is False
+    assert (
+        logado.get("/admin/api/demo", headers=HEADERS).json()["status"]["loaded"]
+        is False
+    )
 
-    status = logado.post("/demo").json()
+    status = logado.post("/admin/api/demo/load", headers=HEADERS).json()["status"]
     assert status["loaded"] is True
     # só a turma sem grupo ganha os de demonstração
     assert status["groups"] == 2
@@ -118,9 +138,16 @@ def test_carrega_dados_das_turmas_do_aluno_e_apaga_so_os_ficticios(
     assert outcomes["professors"][0]["siape"] == 111
 
     # carregar de novo não duplica
-    assert logado.post("/demo").json() == status
+    assert (
+        logado.post("/admin/api/demo/load", headers=HEADERS).json()["status"] == status
+    )
 
-    apagado = logado.delete("/demo").json()
+    apagado = logado.request(
+        "DELETE",
+        "/admin/api/demo",
+        headers=HEADERS,
+        json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+    ).json()["status"]
     assert apagado == {
         "loaded": False,
         "groups": 0,
@@ -153,7 +180,7 @@ def test_notas_em_lote_trazem_a_chamada(logado, aluno):
 def test_limpeza_nao_apaga_resposta_real_em_publicacao_sintetica(
     logado, aluno, database
 ):
-    assert logado.post("/demo").status_code == 200
+    assert logado.post("/admin/api/demo/load", headers=HEADERS).status_code == 200
     with database.begin() as session:
         post_id = session.scalar(
             select(DemoRecord.record_id).where(DemoRecord.kind == "post").limit(1)
@@ -164,7 +191,12 @@ def test_limpeza_nao_apaga_resposta_real_em_publicacao_sintetica(
         session.add(reply)
         session.flush()
         reply_id = reply.id
-    response = logado.delete("/demo")
+    response = logado.request(
+        "DELETE",
+        "/admin/api/demo",
+        headers=HEADERS,
+        json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+    )
     assert response.status_code == 409
     with database() as session:
         assert session.get(ForumPost, post_id) is not None

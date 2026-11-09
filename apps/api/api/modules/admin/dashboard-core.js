@@ -50,14 +50,14 @@ export function openDrawer(...children) {
 }
 export function closeDrawer() { $('#drawer').close(); $('#drawer').replaceChildren(); }
 
-export function confirmation(title, description, { reason = false, label = 'Confirmar' } = {}) {
+export function confirmation(title, description, { reason = false, text = '', label = 'Confirmar' } = {}) {
     return new Promise((resolve) => {
         const dialog = $('#confirmation');
         let answer = null;
-        const input = reason ? el('textarea', { maxlength: 300, rows: 3, placeholder: 'Motivo sem dados pessoais', 'aria-label': 'Motivo' }) : null;
+        const input = reason ? el('textarea', { maxlength: 300, rows: 3, placeholder: 'Motivo sem dados pessoais', 'aria-label': 'Motivo' }) : text ? el('input', { 'aria-label': 'Confirmação textual', placeholder: `Digite ${text}`, autocomplete: 'off' }) : null;
         dialog.replaceChildren(el('h2', {}, title), el('p', { class: 'muted' }, description), input,
             el('div', { class: 'toolbar' }, el('button', { onclick: () => dialog.close() }, 'Cancelar'),
-                el('button', { class: 'primary', onclick: () => { answer = reason ? input.value.trim() : true; dialog.close(); } }, label)));
+                el('button', { class: 'primary', onclick: () => { if (text && input.value.trim() !== text) { notice(`Digite ${text} para confirmar.`, true); return; } answer = reason ? input.value.trim() : true; dialog.close(); } }, label)));
         dialog.addEventListener('close', () => { dialog.replaceChildren(); resolve(answer); }, { once: true });
         dialog.showModal();
     });

@@ -100,15 +100,34 @@ async def save_classroom_professors(
     """Troca os docentes de cada turma: a última fonte a gravar vence."""
     if not professors:
         return
-    await session.execute(
-        delete(ClassroomProfessor).where(
-            ClassroomProfessor.classroom_id.in_(professors)
-        )
+    existing = set(
+        (
+            await session.execute(
+                select(
+                    ClassroomProfessor.classroom_id, ClassroomProfessor.professor_id
+                ).where(ClassroomProfessor.classroom_id.in_(professors))
+            )
+        ).all()
     )
+    wanted = {
+        (classroom_id, item.id)
+        for classroom_id, items in professors.items()
+        for item in items
+    }
+    removed = existing - wanted
+    if removed:
+        from sqlalchemy import tuple_
+
+        await session.execute(
+            delete(ClassroomProfessor).where(
+                tuple_(
+                    ClassroomProfessor.classroom_id, ClassroomProfessor.professor_id
+                ).in_(removed)
+            )
+        )
     rows = [
         {"classroom_id": classroom_id, "professor_id": professor_id}
-        for classroom_id, items in professors.items()
-        for professor_id in dict.fromkeys(item.id for item in items)
+        for classroom_id, professor_id in sorted(wanted - existing)
     ]
     if rows:
         await session.execute(insert(ClassroomProfessor), rows)

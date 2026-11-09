@@ -30,6 +30,8 @@ LOCAL = ROOT / ".local"
 PROFESSORS = LOCAL / "data" / "professors.csv"
 STATE = LOCAL / "update.json"
 API = ROOT / "apps" / "api"
+_institutional_calls = 0
+_calls_measured = False
 
 
 def regular_semesters(today: date) -> tuple[str, str]:
@@ -45,8 +47,21 @@ def regular_semesters(today: date) -> tuple[str, str]:
 
 
 def run(*args: str | Path, cwd: Path = ROOT) -> None:
+    global _institutional_calls, _calls_measured
     print("$", *args, flush=True)
-    subprocess.run([str(arg) for arg in args], cwd=cwd, check=True, env=os.environ)
+    with tempfile.TemporaryDirectory() as directory:
+        counter = Path(directory) / "calls"
+        try:
+            subprocess.run(
+                [str(arg) for arg in args],
+                cwd=cwd,
+                check=True,
+                env={**os.environ, "FOLLOWW_PUBLIC_COUNTER": str(counter)},
+            )
+        finally:
+            if counter.exists():
+                _institutional_calls += int(counter.read_text(encoding="ascii"))
+                _calls_measured = True
 
 
 def collect_offer(semester: str) -> bool:
@@ -62,7 +77,9 @@ def collect_offer(semester: str) -> bool:
                 "--output",
                 output,
             )
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as error:
+            if error.returncode != 3:
+                raise
             # O coletor falha sem nenhuma turma: a oferta ainda não foi publicada.
             print(f"Sem oferta de {semester} no SIGAA.", flush=True)
             return False
@@ -77,12 +94,23 @@ def merge_offer(base: Path, new: Path, semester: str) -> None:
         columns = reader.fieldnames or []
         rows = [row for row in reader if row["semester"] != semester]
     with new.open(encoding="utf-8", newline="") as file:
-        rows += list(csv.DictReader(file))
+        reader = csv.DictReader(file)
+        if reader.fieldnames != columns:
+            raise ValueError("Colunas inesperadas na oferta; catálogo preservado.")
+        collected = list(reader)
+    if not collected or any(row["semester"] != semester for row in collected):
+        raise ValueError("Oferta vazia ou semestre inesperado; catálogo preservado.")
+    keys = [(row["subject_code"], row["number"], row["semester"]) for row in collected]
+    if len(set(keys)) != len(keys):
+        raise ValueError("Turmas repetidas na coleta; catálogo preservado.")
+    rows += collected
     rows.sort(key=lambda row: (row["subject_code"], row["number"], row["semester"]))
-    with base.open("w", encoding="utf-8", newline="") as file:
+    temporary = base.with_suffix(".tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=columns, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
+    temporary.replace(base)
 
 
 def prune_offer(keep: set[str]) -> None:
@@ -107,43 +135,75 @@ def collect_professors() -> None:
     )
 
 
-def load_database(professors: bool) -> None:
+def load_database(professors: bool) -> dict:
     """O seed só cria o que falta e atualiza o que mudou (upsert)."""
-    run("uv", "run", "--no-sync", "--quiet", "db-init", cwd=API)
-    if professors and PROFESSORS.exists():
-        run(
-            "uv",
-            "run",
-            "--no-sync",
-            "--quiet",
-            "db-seed-professors",
-            PROFESSORS,
-            cwd=API,
-        )
+    # O processo normal não precisa de DDL nem da conta de manutenção para atualizar o catálogo.
+    code = (
+        "import asyncio,json; from api.db.seed.run import sync_catalog; print(json.dumps(asyncio.run(sync_catalog("
+        + repr(str(PROFESSORS) if professors and PROFESSORS.exists() else None)
+        + "))))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=API,
+        env=os.environ,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
 
 
 def main() -> None:
+    global _institutional_calls, _calls_measured
+    _institutional_calls, _calls_measured = 0, False
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--offer", action="append", help="AAAA.P; repetível.")
     parser.add_argument("--professors", action="store_true")
+    parser.add_argument("--offers-only", action="store_true")
+    parser.add_argument("--subjects-only", action="store_true")
+    parser.add_argument("--curricula-only", action="store_true")
+    parser.add_argument("--units-only", action="store_true")
     parser.add_argument(
         "--no-load", action="store_true", help="só atualiza os CSVs, sem o banco."
     )
     args = parser.parse_args()
 
-    everything = not args.offer and not args.professors
+    everything = not any(
+        (
+            args.offer,
+            args.professors,
+            args.offers_only,
+            args.subjects_only,
+            args.curricula_only,
+            args.units_only,
+        )
+    )
     current, upcoming = regular_semesters(date.today())
-    offers = args.offer or [current, upcoming]
+    offers = args.offer or (
+        [current, upcoming] if everything or args.offers_only else []
+    )
+    if everything or args.units_only:
+        run(sys.executable, SCRIPTS / "collect_units.py")
     collected = [semester for semester in offers if collect_offer(semester)]
     if everything:
         prune_offer({current, upcoming})
-    if collected:
+    if collected or args.subjects_only:
         # Componentes novos citados pelas turmas; os que já estão no CSV não são refeitos.
-        run(sys.executable, SCRIPTS / "collect_subjects.py")
+        run(
+            sys.executable,
+            SCRIPTS / "collect_subjects.py",
+            *(["--refresh"] if args.subjects_only else []),
+        )
+    if args.curricula_only:
+        run(sys.executable, SCRIPTS / "collect_curricula.py")
     if everything or args.professors:
         collect_professors()
-    if not args.no_load:
-        load_database(professors=everything or args.professors)
+    metrics = (
+        {} if args.no_load else load_database(professors=everything or args.professors)
+    )
+    if _calls_measured:
+        metrics["institutional_calls"] = _institutional_calls
 
     LOCAL.mkdir(exist_ok=True)
     STATE.write_text(
@@ -152,6 +212,7 @@ def main() -> None:
                 "updated_at": datetime.now(UTC).isoformat(timespec="seconds"),
                 "offers": collected,
                 "professors": everything or args.professors,
+                "metrics": metrics,
             }
         ),
         encoding="utf-8",

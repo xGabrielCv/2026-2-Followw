@@ -1,11 +1,16 @@
 """O que cada fonte faz. Lista fechada: a administração escolhe uma delas, nunca um comando."""
 
 import asyncio
+import csv
 import hashlib
 import json
 import os
 import re
+import signal
+import subprocess
 import sys
+import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -51,60 +56,133 @@ def catalog_content_hash() -> tuple[str, int]:
     digest = hashlib.sha256()
     records = 0
     for file in catalog_files():
-        content = file.read_bytes()
+        with file.open(encoding="utf-8", newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        canonical = sorted(
+            json.dumps(row, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            for row in rows
+        )
+        content = "\n".join(canonical).encode("utf-8")
         digest.update(file.name.encode() + b"\0" + hashlib.sha256(content).digest())
         if file.name == "classrooms.csv":
-            records = max(content.count(b"\n") - 1, 0)
+            records = len(rows)
     return digest.hexdigest(), records
 
 
-async def _kill_tree(process: asyncio.subprocess.Process) -> None:
-    if process.returncode is not None:
+async def _kill_tree(process: subprocess.Popen) -> None:
+    if process.poll() is not None:
         return
     if _WINDOWS:
-        killer = await asyncio.create_subprocess_exec(
-            "taskkill",
-            "/PID",
-            str(process.pid),
-            "/T",
-            "/F",
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+        await asyncio.to_thread(
+            subprocess.run,
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            creationflags=_WINDOWS_FLAGS,
         )
-        await killer.wait()
     else:
-        process.kill()
-    await process.wait()
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    await asyncio.to_thread(process.wait)
 
 
-async def run_catalog(timeout: int) -> Outcome:
+async def run_catalog(timeout: int, resource: str = "all") -> Outcome:
     """Roda o coletor público fora do processo da API: não bloqueia pedidos nem trava o loop."""
     if not SCRIPT.exists():
         return Outcome("skipped", error="Script de atualização indisponível aqui.")
-    process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        str(SCRIPT),
-        cwd=ROOT,
-        env={**os.environ, "PYTHONUTF8": "1"},
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        # grupo próprio: o tempo limite encerra o coletor e os filhos, não a API
-        creationflags=_WINDOWS_FLAGS if _WINDOWS else 0,
-        start_new_session=not _WINDOWS,
-    )
-    try:
-        output, _ = await asyncio.wait_for(process.communicate(), timeout)
-    except TimeoutError:
-        await _kill_tree(process)
-        return Outcome("failed", error=f"Excedeu o limite de {timeout} segundos.")
-    except asyncio.CancelledError:
-        await _kill_tree(process)
-        raise
-    if process.returncode != 0:
-        detail = summarize(output.decode("utf-8", "replace"))
-        return Outcome("failed", error=f"Código {process.returncode}: {detail}")
+    started = datetime.now(UTC)
+    arguments = {
+        "all": [],
+        "professors": ["--professors"],
+        "offers": ["--offers-only"],
+        "subjects": ["--subjects-only"],
+        "curricula": ["--curricula-only"],
+        "units": ["--units-only"],
+    }
+    if resource not in arguments:
+        raise ValueError("Recurso de catálogo desconhecido.")
+    # Popen também funciona no SelectorEventLoop que o uvicorn usa com reload no Windows.
+    with tempfile.TemporaryFile() as output:
+        creation = asyncio.create_task(
+            asyncio.to_thread(
+                subprocess.Popen,
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    *arguments[resource],
+                ],
+                cwd=ROOT,
+                env={**os.environ, "PYTHONUTF8": "1"},
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                # grupo próprio: o tempo limite encerra o coletor e os filhos, não a API
+                creationflags=_WINDOWS_FLAGS if _WINDOWS else 0,
+                start_new_session=not _WINDOWS,
+            )
+        )
+        try:
+            process = await asyncio.shield(creation)
+        except asyncio.CancelledError:
+            process = await creation
+            await _kill_tree(process)
+            raise
+        deadline = time.monotonic() + timeout
+        try:
+            while process.poll() is None:
+                if time.monotonic() >= deadline:
+                    await _kill_tree(process)
+                    return Outcome(
+                        "failed", error=f"Excedeu o limite de {timeout} segundos."
+                    )
+                if os.fstat(output.fileno()).st_size > 2 * 1024 * 1024:
+                    await _kill_tree(process)
+                    return Outcome(
+                        "failed", error="Coletor excedeu o limite de saída técnica."
+                    )
+                await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            await _kill_tree(process)
+            raise
+        if process.returncode != 0:
+            return Outcome(
+                "failed", error=f"Código {process.returncode}: falha na coleta pública."
+            )
     content_hash, records = await asyncio.to_thread(catalog_content_hash)
-    return Outcome("success", records=records, content_hash=content_hash)
+    metrics = {}
+    allowed = {
+        "before",
+        "after",
+        "inserted",
+        "changed",
+        "unchanged",
+        "removed",
+        "inactivated",
+        "institutional_calls",
+        "duration_ms",
+        "database_bytes_before",
+        "database_bytes_after",
+        "index_bytes_before",
+        "index_bytes_after",
+    }
+    try:
+        if (
+            MARKER.stat().st_mtime >= started.timestamp()
+            and MARKER.stat().st_size <= 65536
+        ):
+            values = json.loads(MARKER.read_text(encoding="utf-8")).get("metrics", {})
+            metrics = {
+                key: value
+                for key, value in values.items()
+                if key in allowed and type(value) is int and 0 <= value <= 10**15
+            }
+    except OSError, ValueError, TypeError, AttributeError:
+        pass
+    return Outcome(
+        "success", records=records, content_hash=content_hash, metrics=metrics
+    )
 
 
 async def run_restaurant(

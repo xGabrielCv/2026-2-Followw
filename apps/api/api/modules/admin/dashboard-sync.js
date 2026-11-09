@@ -1,6 +1,7 @@
 import { call, confirmation, el, hasPermission, notice, when } from './dashboard-core.js';
 
-const STATUS = { success: 'Atualizado', unchanged: 'Sem mudanças', failed: 'Falhou', skipped: 'Ignorado' };
+const STATUS = { running: 'Executando', success: 'Atualizado', unchanged: 'Sem mudanças', failed: 'Falhou', skipped: 'Ignorado', cancelled: 'Cancelado' };
+const RESOURCES = [['all', 'Rotina do catálogo'], ['offers', 'Turmas públicas'], ['subjects', 'Disciplinas (rever todas)'], ['professors', 'Professores'], ['curricula', 'Currículos'], ['units', 'Unidades']];
 const TRIGGER = { schedule: 'Agendada', manual: 'Manual' };
 const NUMBERS = [
     ['timeout_seconds', 'Tempo limite do catálogo (segundos)', 60, 7200],
@@ -14,9 +15,10 @@ const fmt = (value) => (value === null || value === undefined ? '—' : new Intl
 const date = (iso) => (iso ? when(iso) : '—');
 
 function sourceRow(source, render) {
+    const resource = el('select', { 'aria-label': 'Recurso do catálogo', disabled: source.running }, RESOURCES.map(([value, label]) => el('option', { value }, label)));
     const run = async () => {
         if (!await confirmation(`Sincronizar agora: ${source.label}?`, 'Roda em segundo plano e consulta só fontes públicas. O resultado aparece no histórico.')) return;
-        try { await call(`/sync/${source.key}/run`, { method: 'POST' }); notice('Sincronização iniciada em segundo plano.'); setTimeout(render, 1500); }
+        try { await call(`/sync/${source.key}/run?resource=${source.key === 'catalog' ? resource.value : 'all'}`, { method: 'POST' }); notice('Sincronização iniciada em segundo plano.'); render(); }
         catch (error) { notice(error.message, true); }
     };
     return el('tr', {},
@@ -27,7 +29,8 @@ function sourceRow(source, render) {
         el('td', {}, date(source.last_change_at)),
         el('td', {}, source.enabled ? date(source.next_run_at) : '—'),
         el('td', { class: 'num' }, fmt(source.records)),
-        el('td', {}, hasPermission('operations') ? el('button', { disabled: source.running, onclick: run }, 'Sincronizar agora') : null));
+        el('td', {}, source.key === 'catalog' ? resource : null, hasPermission('operations') ? el('button', { disabled: source.running, onclick: run }, source.key === 'catalog' ? 'Atualizar catálogo agora' : 'Sincronizar agora') : null,
+            source.running ? el('button', { onclick: async () => { if (!await confirmation('Cancelar sincronização?', 'Aguarda o encerramento seguro do coletor. O último catálogo válido é preservado.')) return; try { await call(`/sync/${source.key}/cancel`, { method: 'POST' }); notice('Cancelamento solicitado. Pode levar até 30 segundos.'); render(); } catch(error) { notice(error.message, true); } } }, 'Cancelar execução') : null));
 }
 
 function settingsForm(settings, render) {
@@ -66,13 +69,13 @@ function historyTable(page, state, render) {
     return el('div', { class: 'panel' },
         el('div', { class: 'toolbar' }, el('h3', { class: 'grow' }, 'Histórico'),
             select('source', [['', 'Todas as fontes'], ['catalog', 'Catálogo'], ['restaurant', 'Cardápio do RU']]),
-            select('status', [['', 'Todos os resultados'], ['success', 'Atualizado'], ['unchanged', 'Sem mudanças'], ['failed', 'Falhou'], ['skipped', 'Ignorado']])),
+            select('status', [['', 'Todos os resultados'], ['running', 'Executando'], ['success', 'Atualizado'], ['unchanged', 'Sem mudanças'], ['failed', 'Falhou'], ['skipped', 'Ignorado'], ['cancelled', 'Cancelado']])),
         page.items.length
             ? el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Fonte', 'Origem', 'Resultado', 'Registros', 'Detalhe'].map((label) => el('th', {}, label)))),
                 el('tbody', {}, page.items.map((run) => el('tr', {},
-                    el('td', {}, date(run.started_at)), el('td', {}, run.source === 'catalog' ? 'Catálogo' : 'Cardápio do RU'),
+                    el('td', {}, date(run.started_at)), el('td', {}, run.source === 'catalog' ? `Catálogo · ${RESOURCES.find(([key]) => key === run.resource)?.[1] || 'completo'}` : 'Cardápio do RU'),
                     el('td', {}, TRIGGER[run.trigger] || run.trigger), el('td', {}, STATUS[run.status] || run.status, run.changed ? ' (houve mudança)' : ''),
-                    el('td', { class: 'num' }, fmt(run.records)), el('td', {}, run.error || '')))))
+                    el('td', { class: 'num' }, fmt(run.records)), el('td', {}, run.error || '', Object.keys(run.metrics || {}).length ? el('details', {}, el('summary', {}, 'Medições da carga'), el('p', { class: 'muted' }, `Antes: ${fmt(run.metrics.before)} · Depois: ${fmt(run.metrics.after)} · Inseridos: ${fmt(run.metrics.inserted)} · Alterados: ${fmt(run.metrics.changed)} · Inalterados: ${fmt(run.metrics.unchanged)} · Vínculos removidos: ${fmt(run.metrics.removed)} · Carga: ${fmt(run.metrics.duration_ms)} ms`), el('p', { class: 'muted' }, `Banco: ${fmt(run.metrics.database_bytes_before)} → ${fmt(run.metrics.database_bytes_after)} bytes · Índices: ${fmt(run.metrics.index_bytes_before)} → ${fmt(run.metrics.index_bytes_after)} bytes`)) : null)))))
             : el('p', { class: 'muted' }, 'Nenhuma execução registrada com este filtro.'),
         el('div', { class: 'toolbar' }, el('button', { disabled: state.page <= 1, onclick: () => { state.page -= 1; render(); } }, 'Anterior'),
             el('span', { class: 'muted' }, `Página ${page.page} de ${pages}`),
@@ -80,13 +83,17 @@ function historyTable(page, state, render) {
 }
 
 const historyState = { source: '', status: '', page: 1 };
+let refreshTimer;
 
 export async function syncView(render) {
+    clearTimeout(refreshTimer);
     const query = new URLSearchParams({ page: String(historyState.page), page_size: '15' });
     for (const key of ['source', 'status']) if (historyState[key]) query.set(key, historyState[key]);
     const [overview, history, resources] = await Promise.all([call('/sync'), call(`/sync/history?${query}`), call('/sync/resources')]);
+    if (overview.sources.some((source) => source.running)) refreshTimer = setTimeout(() => { if (location.hash === '#sync') render(); }, 5000);
     return [
         el('div', { class: 'toolbar' }, el('h2', { class: 'grow' }, 'Sincronização e catálogos'), el('button', { onclick: render }, 'Atualizar')),
+        !overview.scheduler_enabled ? el('p', { class: 'muted' }, 'O agendador está desligado na configuração desta execução (por exemplo, -Offline ou -SkipDataUpdate). Os horários abaixo continuam configurados, mas não serão disparados automaticamente. A execução manual continua sujeita ao acesso de rede permitido.') : null,
         el('p', { class: 'muted' }, 'O catálogo e o cardápio são públicos: nada aqui envolve dados de alunos. Se uma fonte falhar, o último dado válido continua sendo servido e uma nova tentativa acontece com espera crescente.'),
         el('div', { class: 'panel' }, el('table', {}, el('thead', {}, el('tr', {}, ['Fonte', 'Situação', 'Última consulta', 'Último sucesso', 'Última mudança real', 'Próxima execução', 'Registros', ''].map((label) => el('th', {}, label)))),
             el('tbody', {}, overview.sources.map((source) => sourceRow(source, render))))),

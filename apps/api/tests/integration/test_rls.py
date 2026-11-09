@@ -16,6 +16,23 @@ AUTOR_A = "1" * 64
 AUTOR_B = "2" * 64
 
 
+def test_turma_real_nao_pode_ser_apagada_pelo_papel_da_aplicacao(database, postgres):
+    from api.db.models import Classroom, Subject
+
+    with database.begin() as session:
+        session.add(Subject(code="TST0001", name="Disciplina sintética"))
+        classroom = Classroom(subject_code="TST0001", number="01", semester="2026.2")
+        session.add(classroom)
+        session.flush()
+        identifier = classroom.id
+    with postgres.begin() as connection:
+        as_app(connection)
+        result = connection.execute(
+            text("DELETE FROM classrooms WHERE id=:id"), {"id": identifier}
+        )
+        assert result.rowcount == 0
+
+
 def as_app(connection, **context):
     """Troca para o papel da aplicação e fixa o contexto da transação, como a API faz."""
     connection.execute(text(f"SET LOCAL ROLE {APP_ROLE}"))
@@ -322,6 +339,7 @@ def test_api_nunca_mostra_chamado_de_outro_nem_nota_interna(client):
         json={
             "category": "bug",
             "title": "Primeiro chamado",
+            "credential": "a" * 64,
             "body": "Texto do primeiro chamado.",
         },
     ).json()
@@ -331,6 +349,7 @@ def test_api_nunca_mostra_chamado_de_outro_nem_nota_interna(client):
         json={
             "category": "bug",
             "title": "Segundo chamado",
+            "credential": "b" * 64,
             "body": "Texto do segundo chamado.",
         },
     ).json()
@@ -354,6 +373,7 @@ def test_injecao_em_texto_fica_inerte_e_a_tabela_continua(client, database):
         json={
             "category": "bug",
             "title": veneno + " titulo",
+            "credential": "c" * 64,
             "body": veneno + " corpo",
         },
     )

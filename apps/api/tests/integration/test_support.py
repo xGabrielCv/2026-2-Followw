@@ -1,9 +1,10 @@
 import importlib.util
 import pathlib
+import secrets
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 # Os testes ficam fora de um pacote: reaproveita as fixtures de cargos do arquivo irmão.
 _spec = importlib.util.spec_from_file_location(
@@ -16,6 +17,7 @@ HEADERS, owner, roles = _fixtures.HEADERS, _fixtures.owner, _fixtures.roles
 
 OUTRO_APARELHO = "b" * 64
 NOVO = {
+    "credential": "9" * 64,
     "category": "bug",
     "title": "O app trava ao abrir a agenda",
     "body": "Ao abrir a agenda do dia a tela fica branca por alguns segundos.",
@@ -23,7 +25,9 @@ NOVO = {
 
 
 def abrir(client, **extra):
-    response = client.post("/support/tickets", json={**NOVO, **extra})
+    response = client.post(
+        "/support/tickets", json={**NOVO, "credential": secrets.token_hex(32), **extra}
+    )
     assert response.status_code == 201, response.text
     data = response.json()
     return data, {"X-Ticket-Key": data["key"]}
@@ -32,6 +36,106 @@ def abrir(client, **extra):
 def como(client, cookies):
     client.cookies.clear()
     client.cookies.update(cookies)
+
+
+def test_chave_do_chamado_e_gerada_no_navegador_e_so_verificador_fica_no_banco(client):
+    credential = "c" * 64
+    response = client.post("/support/tickets", json={**NOVO, "credential": credential})
+    assert response.status_code == 201
+    assert response.json()["key"] == credential
+
+
+def test_recurso_anonimo_vincula_decisao_e_exige_revisor_independente(roles, database):
+    from uuid import UUID
+
+    from api.db.models import AdminLog
+
+    http, cookies, users = roles
+    identifier, decision = uuid4(), uuid4()
+    with database.begin() as session:
+        session.add(
+            AdminLog(
+                id=decision,
+                action="delete",
+                target_type="post",
+                target_id=str(identifier),
+                actor_id=UUID(users["moderator"]["id"]),
+                actor_role="moderator",
+            )
+        )
+    http.cookies.clear()
+    ticket, key = abrir(
+        http,
+        category="moderation_review",
+        related_type="post",
+        related_id=str(identifier),
+    )
+    tid = ticket["id"]
+    assert not http.get(f"/support/tickets/{tid}", headers=key).json()[
+        "appeal_author_proven"
+    ]
+    assert (
+        http.get(
+            f"/support/tickets/{tid}", headers={"X-Ticket-Key": "a" * 43}
+        ).status_code
+        == 404
+    )
+    como(http, cookies["moderator"])
+    detail = http.get(f"/admin/api/tickets/{tid}", headers=HEADERS).json()
+    assert detail["appeal_decision_id"] == str(decision)
+    final = {
+        "body": "Revisão concluída com justificativa pública.",
+        "status": "resolved",
+        "appeal_outcome": "accepted",
+    }
+    assert (
+        http.post(
+            f"/admin/api/tickets/{tid}/reply", headers=HEADERS, json=final
+        ).status_code
+        == 409
+    )
+    assert (
+        http.patch(
+            f"/admin/api/tickets/{tid}", headers=HEADERS, json={"status": "resolved"}
+        ).status_code
+        == 409
+    )
+    como(http, cookies["administrator"])
+    assert (
+        http.post(
+            f"/admin/api/tickets/{tid}/reply", headers=HEADERS, json=final
+        ).status_code
+        == 204
+    )
+    http.cookies.clear()
+    view = http.get(f"/support/tickets/{tid}", headers=key).json()
+    assert view["appeal_outcome"] == "accepted" and view["status"] == "resolved"
+    assert "appeal_decision_id" not in view
+    assert view["messages"][-1]["body"] == final["body"]
+    with database() as session:
+        audit = session.scalar(
+            select(AdminLog.detail).where(AdminLog.action == "appeal.accepted")
+        )
+    assert audit == "resolved"
+    assert final["body"] not in audit
+
+
+def test_recurso_sem_referencia_e_recusado_sem_enumerar_conteudo(client):
+    assert (
+        client.post(
+            "/support/tickets", json={**NOVO, "category": "moderation_review"}
+        ).status_code
+        == 422
+    )
+    ticket, key = abrir(
+        client,
+        category="moderation_review",
+        related_type="post",
+        related_id=str(uuid4()),
+    )
+    assert (
+        client.get(f"/support/tickets/{ticket['id']}", headers=key).status_code == 200
+    )
 
 
 def test_abre_consulta_responde_e_encerra_sem_nenhum_login(client):
@@ -66,6 +170,51 @@ def test_abre_consulta_responde_e_encerra_sem_nenhum_login(client):
     assert reopened["status"] == "open"
 
 
+def test_recurso_repetido_e_recusado_sem_revelar_chamado_anterior(client):
+    body = {
+        **NOVO,
+        "category": "moderation_review",
+        "related_type": "post",
+        "related_id": str(uuid4()),
+    }
+    assert client.post("/support/tickets", json=body).status_code == 201
+    response = client.post("/support/tickets", json=body)
+    assert response.status_code == 409 and "id" not in response.json()
+
+
+def test_credencial_de_conteudo_removido_comprova_posse_sem_identificar_aluno(
+    roles, database
+):
+    from api.anonymous import resource_key
+    from api.db.models import AdminLog
+
+    http, _, _ = roles
+    identifier = uuid4()
+    with database.begin() as session:
+        session.add(
+            AdminLog(
+                action="delete",
+                target_type="post",
+                target_id=str(identifier),
+                content_proof=resource_key("a" * 64),
+            )
+        )
+    http.cookies.clear()
+    ticket, key = abrir(
+        http,
+        category="moderation_review",
+        related_type="post",
+        related_id=str(identifier),
+        author_proof="a" * 64,
+    )
+    assert (
+        http.get(f"/support/tickets/{ticket['id']}", headers=key).json()[
+            "appeal_author_proven"
+        ]
+        is True
+    )
+
+
 def test_terceiros_nao_acessam_nem_enumeram_chamados(client):
     ticket, key = abrir(client)
     wrong = {"X-Ticket-Key": "x" * 43}
@@ -98,7 +247,8 @@ def test_recuperacao_troca_a_chave_e_a_antiga_deixa_de_valer(client):
     ticket, old = abrir(client)
     client.headers.pop("X-Followw-Author")  # outro navegador: sem nada do aparelho
     errado = client.post(
-        "/support/recover", json={"id": ticket["id"], "code": "0000-0000-0000-0000"}
+        "/support/recover",
+        json={"id": ticket["id"], "code": "0000-0000-0000-0000", "new_key": "d" * 64},
     )
     assert errado.status_code == 404
     recovered = client.post(
@@ -106,6 +256,7 @@ def test_recuperacao_troca_a_chave_e_a_antiga_deixa_de_valer(client):
         json={
             "id": ticket["id"],
             "code": ticket["recovery_code"].lower().replace("-", " "),
+            "new_key": "d" * 64,
         },
     )
     assert recovered.status_code == 200
@@ -122,7 +273,12 @@ def test_recuperacao_tem_limite_de_tentativas_por_chamado(client):
     ticket, _ = abrir(client)
     codes = [
         client.post(
-            "/support/recover", json={"id": ticket["id"], "code": "AAAA-BBBB-CCCC-DDDD"}
+            "/support/recover",
+            json={
+                "id": ticket["id"],
+                "code": "AAAA-BBBB-CCCC-DDDD",
+                "new_key": "d" * 64,
+            },
         ).status_code
         for _ in range(8)
     ]

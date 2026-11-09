@@ -60,6 +60,19 @@ async def delete_target(
         return await delete_material(session, target_id)
     model = TARGETS[target_type]
     result = await session.execute(delete(model).where(model.id == target_id))
+    if result.rowcount:
+        from api.modules.community.activity import record_deletion
+
+        await record_deletion(
+            session,
+            {
+                "review": "reviews",
+                "group": "groups",
+                "post": "forum",
+                "reply": "forum",
+                "tutorial": "tutorials",
+            }[target_type],
+        )
     return bool(result.rowcount)
 
 

@@ -258,6 +258,9 @@ class ReviewService:
 
         async def write(session: AsyncSession) -> None:
             await session.delete(await _own(session, review_id, token))
+            from api.modules.community.activity import record_deletion
+
+            await record_deletion(session, "reviews")
 
         await self._db.write(write)
 

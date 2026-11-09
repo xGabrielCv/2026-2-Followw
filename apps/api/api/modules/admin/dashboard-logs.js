@@ -1,6 +1,6 @@
 import { call, el, when } from './dashboard-core.js';
 
-const state = { level: '', event: '', q: '', since: '', page: 1 };
+const state = { level: '', event: '', q: '', since: '', from: '', until: '', status_code: '', order: 'newest', page: 1 };
 const LEVELS = [['', 'Todos os níveis'], ['INFO', 'Informação'], ['WARNING', 'Aviso'], ['ERROR', 'Erro'], ['CRITICAL', 'Crítico']];
 const WINDOWS = [['', 'Todo o período'], ['1', 'Última hora'], ['24', 'Últimas 24 h'], ['168', 'Últimos 7 dias']];
 const fmt = (value) => new Intl.NumberFormat('pt-BR').format(value ?? 0);
@@ -13,6 +13,10 @@ export async function logsView(render) {
     if (state.event) query.set('event', state.event);
     if (state.q) query.set('q', state.q);
     if (state.since) query.set('since', new Date(Date.now() - Number(state.since) * 3600_000).toISOString());
+    if (state.from) query.set('since', new Date(state.from).toISOString());
+    if (state.until) query.set('until', new Date(state.until).toISOString());
+    if (state.status_code) query.set('status_code', state.status_code);
+    query.set('order', state.order);
     const [page, summary] = await Promise.all([call(`/logs?${query}`), call('/logs/summary')]);
     const pages = Math.max(1, Math.ceil(page.total / page.page_size));
     const select = (name, options) => el('select', { 'aria-label': name, onchange: (event) => { state[name] = event.target.value; state.page = 1; render(); } },
@@ -28,10 +32,15 @@ export async function logsView(render) {
             const data = new FormData(event.currentTarget);
             state.q = String(data.get('q') || '').trim();
             state.event = String(data.get('event') || '').trim().toLowerCase();
+            state.from = String(data.get('from') || ''); state.until = String(data.get('until') || ''); state.status_code = String(data.get('status_code') || '');
             state.page = 1;
             render();
         } },
             select('level', LEVELS), select('since', WINDOWS),
+            select('order', [['newest', 'Mais recentes'], ['oldest', 'Mais antigos']]),
+            el('label', {}, 'Início', el('input', { name: 'from', type: 'datetime-local', value: state.from })),
+            el('label', {}, 'Fim', el('input', { name: 'until', type: 'datetime-local', value: state.until })),
+            el('input', { name: 'status_code', type: 'number', min: 100, max: 599, placeholder: 'Status HTTP', 'aria-label': 'Status HTTP', value: state.status_code }),
             el('input', { name: 'event', placeholder: 'Evento (ex.: sync.)', pattern: '[a-z0-9_.]{1,80}', value: state.event, 'aria-label': 'Evento' }),
             el('input', { name: 'q', placeholder: 'Buscar nos campos', maxlength: 64, value: state.q, 'aria-label': 'Buscar' }),
             el('button', { type: 'submit' }, 'Filtrar')),

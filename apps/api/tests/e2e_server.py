@@ -52,6 +52,7 @@ def main():
         f"postgresql+asyncpg://{database}:{app_password}@127.0.0.1:5432/{database}"
     )
     os.environ["MATERIALS_DIR"] = str(root / ".local" / "e2e" / database / "materials")
+    os.environ["PUBLIC_URL"] = "http://127.0.0.1:8011"
     from api.db.main import create_schema
     from api.db.main import maintenance_engine as engine
 
@@ -63,6 +64,24 @@ def main():
 
     asyncio.run(prepare())
     from api.modules.public_restaurant import service as restaurant
+    from api.modules.sync import sources
+    from api.modules.sync.service import Outcome
+
+    async def simulated_catalog(timeout, resource="all"):
+        return Outcome(
+            "success",
+            4,
+            "catalogo-sintetico",
+            metrics={
+                "before": 4,
+                "after": 4,
+                "inserted": 0,
+                "changed": 0,
+                "unchanged": 4,
+            },
+        )
+
+    sources.run_catalog = simulated_catalog
 
     restaurant.UnbBrowser = SimulatedBrowser
     install()

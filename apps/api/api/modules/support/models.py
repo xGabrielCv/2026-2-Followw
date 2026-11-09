@@ -15,6 +15,7 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         Index("ix_tickets_queue", "status", "priority", "updated_at"),
         Index("ix_tickets_author", "author_key", "status"),
+        Index("uq_tickets_appeal_digest", "appeal_digest", unique=True),
     )
 
     # Número mostrado ao aluno; o acesso nunca depende dele.
@@ -34,6 +35,14 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     related_type: Mapped[str | None] = mapped_column()
     related_id: Mapped[uuid.UUID | None] = mapped_column()
+    appeal_decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_log.id")
+    )
+    appeal_author_proven: Mapped[bool] = mapped_column(
+        default=False, server_default="false"
+    )
+    appeal_outcome: Mapped[str | None] = mapped_column()
+    appeal_digest: Mapped[str | None] = mapped_column()
     message_count: Mapped[int] = mapped_column(default=0)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # student ou staff: quem encerrou, para saber se o aluno pode reabrir.

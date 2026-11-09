@@ -244,15 +244,38 @@ async def tutorials(
 
 
 async def decide(session, kind: str, id_: UUID, body: Decision, actor) -> None:
+    proof = None
     if kind == "report":
+        from api.modules.reports.service import TARGETS
+
+        report = await session.get(Report, id_)
+        if report:
+            target = await session.get(TARGETS[report.target_type], report.target_id)
+            proof = (
+                (
+                    getattr(target, "uploader_key", None)
+                    or getattr(target, "author_key", None)
+                )
+                if target
+                else None
+            )
         await resolve(session, id_, body.action == "accept")
     else:
         row = await session.get(Tutorial, id_)
         if row is None:
             raise HTTPException(404, "Guia não encontrado.")
         row.status = "approved" if body.action == "accept" else "rejected"
+        proof = row.author_key
         row.approved_at = datetime.now(UTC) if body.action == "accept" else None
-    await log(session, f"{kind}.{body.action}", kind, id_, body.reason, actor=actor)
+    await log(
+        session,
+        f"{kind}.{body.action}",
+        kind,
+        id_,
+        body.reason,
+        actor=actor,
+        content_proof=proof,
+    )
 
 
 @router.post("/reports/{id_}", status_code=204)

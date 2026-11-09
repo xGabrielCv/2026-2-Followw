@@ -106,5 +106,87 @@ test('aluno abre chamado sem login, o atendimento responde e o aluno vê a respo
     await phone.reload();
     await expect(phone.getByText('Não foi possível abrir este chamado')).toBeVisible();
 
+    const headers = { 'X-Admin-Request': '1' };
+    const target = '40000000-0000-4000-8000-000000000001';
+    const report = await desk.request.post('/api/reports', {
+        data: {
+            target_type: 'post',
+            target_id: target,
+            reason: 'outro',
+            message: 'Conferência sintética da decisão'
+        }
+    });
+    expect(report.status()).toBe(201);
+    const reportId = (await report.json()).id;
+    expect(
+        (
+            await desk.request.post(`/api/admin/api/reports/${reportId}`, {
+                headers,
+                data: { action: 'reject', reason: 'Conteúdo permitido nesta conferência sintética' }
+            })
+        ).status()
+    ).toBe(204);
+    await phone.goto(`/suporte?category=moderation_review&reference=post:${target}`);
+    const appealForm = phone.getByRole('dialog', { name: 'Novo chamado' });
+    await expect(appealForm).toBeVisible();
+    await appealForm.getByLabel('Título', { exact: true }).fill('Recurso da decisão de moderação');
+    await appealForm
+        .getByLabel('Mensagem', { exact: true })
+        .fill('Peço uma segunda análise do contexto desta decisão.');
+    await appealForm.getByRole('button', { name: 'Enviar', exact: true }).click();
+    await phone
+        .getByRole('dialog', { name: /Chamado #\d+ aberto/ })
+        .getByRole('button', { name: 'Já guardei' })
+        .click();
+    await expect(phone.getByText('Recurso aguardando decisão')).toBeVisible();
+    const appealId = phone.url().split('/suporte/')[1];
+    const decision = {
+        body: 'Após segunda análise, acolhemos o pedido de revisão. As medidas cabíveis serão informadas neste chamado.',
+        status: 'resolved',
+        appeal_outcome: 'accepted'
+    };
+    expect(
+        (
+            await desk.request.post(`/api/admin/api/tickets/${appealId}/reply`, {
+                headers,
+                data: decision
+            })
+        ).status()
+    ).toBe(409);
+    expect(
+        (
+            await desk.request.post('/api/admin/api/accounts', {
+                headers,
+                data: { username: 'revisor-sintetico', password, role: 'moderator' }
+            })
+        ).status()
+    ).toBe(201);
+    const reviewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    const review = await reviewer.newPage();
+    await review.goto('/api/admin');
+    await review.getByLabel('Pseudônimo', { exact: true }).fill('revisor-sintetico');
+    await review.getByLabel('Senha', { exact: true }).fill(password);
+    await review.getByRole('button', { name: 'Continuar', exact: true }).click();
+    await review.getByText('Configurar sem QR', { exact: true }).click();
+    const reviewerSecret = (await review.locator('#qr-area code').textContent())!;
+    await review.getByLabel('Código do autenticador ou recuperação').fill(totp(reviewerSecret));
+    await review.getByRole('button', { name: 'Confirmar autenticador' }).click();
+    await review.getByRole('button', { name: 'Guardei os códigos' }).click();
+    await review.getByRole('button', { name: 'Chamados de suporte', exact: true }).click();
+    await review.getByRole('row', { name: /Recurso da decisão de moderação/ }).click();
+    const appealDrawer = review.getByRole('dialog', { name: 'Detalhes' });
+    await expect(appealDrawer).toContainText('Autoria não comprovada');
+    await appealDrawer.getByLabel('Mensagem', { exact: true }).fill(decision.body);
+    await appealDrawer.getByLabel('Decisão do recurso').selectOption('accepted');
+    await appealDrawer.getByLabel('Estado depois da resposta').selectOption('resolved');
+    await appealDrawer.getByRole('button', { name: 'Responder ao aluno' }).click();
+    await expect(review.locator('#notice')).toContainText('Resposta enviada');
+    await phone.reload();
+    await expect(phone.getByText('Recurso aceito', { exact: true })).toBeVisible();
+    await expect(phone.getByText(decision.body, { exact: true })).toBeVisible();
+    await stranger.goto(`/suporte/${appealId}`);
+    await expect(stranger.getByText('não tem a chave deste chamado')).toBeVisible();
+    await reviewer.close();
+
     expect(failures).toEqual([]);
 });

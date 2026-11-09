@@ -38,6 +38,7 @@ def como(client, cookies):
 @pytest.fixture
 def catalogo(database, monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "demo_data", True)
+    monkeypatch.setattr(settings, "public_url", "http://127.0.0.1:8000")
     monkeypatch.setattr(settings, "materials_dir", str(tmp_path))
     with database.begin() as session:
         session.add_all(
@@ -87,7 +88,12 @@ def test_so_o_owner_acessa(roles, catalogo, cargo, esperado):
         esperado,
         404,
     }
-    assert client.delete("/admin/api/demo", headers=HEADERS).status_code in {
+    assert client.request(
+        "DELETE",
+        "/admin/api/demo",
+        headers=HEADERS,
+        json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+    ).status_code in {
         esperado,
         404,
     }
@@ -108,13 +114,21 @@ def test_desligado_ou_em_producao_nada_carrega(roles, catalogo, monkeypatch, dat
     como(client, cookies["owner"])
     monkeypatch.setattr(settings, "demo_data", False)
     visao = client.get("/admin/api/demo", headers=HEADERS).json()
-    assert visao["available"] is False and "DEMO_DATA" in visao["reason"]
-    assert client.post("/admin/api/demo/load", headers=HEADERS).status_code == 404
+    assert visao["available"] is True and visao["enabled"] is False
+    assert client.post("/admin/api/demo/load", headers=HEADERS).status_code == 409
     monkeypatch.setattr(settings, "demo_data", True)
     monkeypatch.setattr(settings, "environment", "production")
     assert client.get("/admin/api/demo", headers=HEADERS).json()["available"] is False
     assert client.post("/admin/api/demo/load", headers=HEADERS).status_code == 404
-    assert client.delete("/admin/api/demo", headers=HEADERS).status_code == 404
+    assert (
+        client.request(
+            "DELETE",
+            "/admin/api/demo",
+            headers=HEADERS,
+            json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+        ).status_code
+        == 404
+    )
     assert contar(database, DemoRecord) == 0
 
 
@@ -136,7 +150,12 @@ def test_carregar_marca_tudo_e_limpar_preserva_o_real(roles, catalogo, database)
         client.post("/admin/api/demo/load", headers=HEADERS).json()["status"] == status
     )
 
-    limpo = client.delete("/admin/api/demo", headers=HEADERS).json()["status"]
+    limpo = client.request(
+        "DELETE",
+        "/admin/api/demo",
+        headers=HEADERS,
+        json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+    ).json()["status"]
     assert limpo["loaded"] is False
     assert contar(database, DemoRecord) == 0
     depois = {m: contar(database, m) for m in antes}
@@ -151,7 +170,12 @@ def test_acoes_ficam_na_auditoria(roles, catalogo, database):
     client, cookies, _ = roles
     como(client, cookies["owner"])
     client.post("/admin/api/demo/load", headers=HEADERS)
-    client.delete("/admin/api/demo", headers=HEADERS)
+    client.request(
+        "DELETE",
+        "/admin/api/demo",
+        headers=HEADERS,
+        json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+    )
     with database() as sessao:
         acoes = set(sessao.scalars(select(AdminLog.action)))
     assert {"demo.load", "demo.clear"} <= acoes
@@ -161,6 +185,7 @@ def test_catalogo_vazio_e_recusado_sem_criar_nada(roles, monkeypatch, database):
     client, cookies, _ = roles
     como(client, cookies["owner"])
     monkeypatch.setattr(settings, "demo_data", True)
+    monkeypatch.setattr(settings, "public_url", "http://127.0.0.1:8000")
     assert client.post("/admin/api/demo/load", headers=HEADERS).status_code == 409
     assert contar(database, DemoRecord) == 0
 
@@ -169,3 +194,117 @@ def test_interface_e_servida(roles, catalogo):
     client, _, _ = roles
     client.cookies.clear()
     assert "demoView" in client.get("/admin/assets/dashboard-demo.js").text
+
+
+def test_limpeza_preserva_grupo_real_adicionado_a_turma_sintetica(
+    roles, catalogo, database
+):
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    assert client.post("/admin/api/demo/load", headers=HEADERS).status_code == 200
+    with database.begin() as session:
+        classroom_id = session.scalar(
+            select(DemoRecord.record_id).where(DemoRecord.kind == "classroom").limit(1)
+        )
+        group = ClassroomGroup(
+            classroom_id=classroom_id, position=0, platform="whatsapp", url=REAL_URL
+        )
+        session.add(group)
+        session.flush()
+        identifier = group.id
+    response = client.request(
+        "DELETE",
+        "/admin/api/demo",
+        headers=HEADERS,
+        json={"confirmation": "LIMPAR DEMONSTRAÇÃO"},
+    )
+    assert response.status_code == 409
+    with database() as session:
+        assert session.get(ClassroomGroup, identifier).url == REAL_URL
+
+
+def test_previa_e_recarga_transacional_preservam_conteudo_real(
+    roles, catalogo, database
+):
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    preview = client.get("/admin/api/demo/preview", headers=HEADERS)
+    assert preview.status_code == 200 and preview.json()["eligible_classrooms"] == 2
+    original = contar(database, ForumPost)
+    first = client.post("/admin/api/demo/load", headers=HEADERS).json()["status"]
+    assert (
+        client.post(
+            "/admin/api/demo/reload", headers=HEADERS, json={"confirmation": "errado"}
+        ).status_code
+        == 422
+    )
+    next_view = client.post(
+        "/admin/api/demo/reload",
+        headers=HEADERS,
+        json={"confirmation": "RECARREGAR DEMONSTRAÇÃO"},
+    )
+    assert next_view.status_code == 200, next_view.text
+    assert next_view.json()["status"]["posts"] == first["posts"]
+    assert contar(database, ForumPost) == original + first["posts"]
+
+
+def test_falha_de_carga_reverte_banco_e_remove_so_arquivos_novos(
+    roles, catalogo, monkeypatch, database, tmp_path
+):
+    from api.modules.admin import demo
+
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    original = demo._load
+
+    async def falhar(session, *args):
+        await original(session, *args)
+        raise RuntimeError("Falha sintetica depois da carga")
+
+    monkeypatch.setattr(demo, "_load", falhar)
+    with pytest.raises(RuntimeError, match="Falha sintetica"):
+        client.post("/admin/api/demo/load", headers=HEADERS)
+    assert contar(database, DemoRecord) == 0
+    assert not [file for file in tmp_path.rglob("*") if file.is_file()]
+
+
+def test_owner_ativa_sem_editar_env_e_desativa_sem_apagar(roles, catalogo, monkeypatch):
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    monkeypatch.setattr(settings, "demo_data", False)
+    monkeypatch.setattr(settings, "public_url", "http://127.0.0.1:8000")
+    view = client.get("/admin/api/demo", headers=HEADERS).json()
+    assert view["available"] is True
+    assert view["enabled"] is False
+    assert client.post("/admin/api/demo/load", headers=HEADERS).status_code == 409
+    response = client.put(
+        "/admin/api/demo/settings", json={"enabled": True}, headers=HEADERS
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["enabled"] is True
+    loaded = client.post("/admin/api/demo/load", headers=HEADERS)
+    assert loaded.status_code == 200, loaded.text
+    response = client.put(
+        "/admin/api/demo/settings", json={"enabled": False}, headers=HEADERS
+    )
+    assert response.json()["enabled"] is False
+    assert response.json()["status"] == loaded.json()["status"]
+
+
+def test_ativacao_por_http_nao_libera_producao_ou_origem_remota(
+    roles, catalogo, monkeypatch
+):
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    for environment, public_url in (
+        ("production", "http://127.0.0.1:8000"),
+        ("development", "https://followw.app"),
+    ):
+        monkeypatch.setattr(settings, "environment", environment)
+        monkeypatch.setattr(settings, "public_url", public_url)
+        assert (
+            client.put(
+                "/admin/api/demo/settings", json={"enabled": True}, headers=HEADERS
+            ).status_code
+            == 404
+        )

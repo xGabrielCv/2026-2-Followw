@@ -194,6 +194,7 @@ def test_recursos_da_comunidade_mostram_so_agregados(roles, agendador):
         "reviews",
         "tutorials",
         "reports",
+        "groups",
     }
     for item in itens:
         assert set(item) == {
@@ -242,3 +243,46 @@ def test_arquivo_da_interface_e_servido_e_registrado(roles, agendador):
     assert "javascript" in resposta.headers["content-type"]
     assert "syncView" in resposta.text
     assert "dashboard-sync.js" in client.get("/admin/assets/dashboard.js").text
+
+
+def test_falha_da_auditoria_nao_inicia_coleta(roles, agendador, monkeypatch):
+    from api.modules.admin import service, sync
+
+    async def falhar(*args, **kwargs):
+        raise RuntimeError("auditoria indisponivel")
+
+    monkeypatch.setattr(service, "log", falhar)
+    monkeypatch.setattr(sync, "log", falhar)
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    with pytest.raises(RuntimeError, match="auditoria indisponivel"):
+        client.post("/admin/api/sync/catalog/run", headers=HEADERS)
+    assert agendador.chamadas == 0
+
+
+async def test_marca_de_exclusao_e_agregada_e_nao_amplia_escopo_rls(async_database):
+    from sqlalchemy import text
+
+    from api.db.context import apply_context, use_context
+    from api.modules.community.activity import record_deletion
+
+    with use_context(scope="community_write"):
+        async with async_database() as session, session.begin():
+            await apply_context(session)
+            await record_deletion(session, "forum")
+            assert (
+                await session.scalar(text("SELECT current_setting('app.scope')"))
+                == "community_write"
+            )
+            await session.execute(
+                text("SELECT followw_record_public_activity('segredo')")
+            )
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT key, value FROM system_texts WHERE key LIKE 'activity.%'"
+                    )
+                )
+            ).all()
+            assert len(rows) == 1 and rows[0][0] == "activity.forum"
+            assert rows[0][1][14:19] == "00:00"

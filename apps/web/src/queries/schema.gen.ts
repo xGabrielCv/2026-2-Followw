@@ -735,7 +735,7 @@ export interface paths {
         };
         /**
          * Consultar até cinco notícias recentes das turmas atuais
-         * @description Retorna imediatamente as notícias disponíveis no banco, com IDs e o conteúdo já salvo. Listas vencidas são sincronizadas num job por turma, sem bloquear a resposta; o conteúdo de cada notícia segue sob demanda pelo detalhe da postagem. updating indica listas pendentes. A identidade é o par turma e ID do post.
+         * @description Consulta as postagens das turmas atuais no SIGAA, em sequência e sem persistência no servidor. O navegador pode reutilizar seu cache local cifrado. O detalhe da notícia é consultado sob demanda; a identidade é o par turma e ID da postagem.
          */
         get: operations["get_latest_news_posts_news_get"];
         put?: never;
@@ -834,25 +834,6 @@ export interface paths {
         post?: never;
         /** Apagar a própria avaliação */
         delete: operations["delete_review_reviews__review_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/demo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Ver se os dados de demonstração estão carregados */
-        get: operations["get_demo_demo_get"];
-        put?: never;
-        /** Carregar grupos, avaliações e índices fictícios das turmas do aluno */
-        post: operations["load_demo_demo_post"];
-        /** Apagar os dados de demonstração */
-        delete: operations["clear_demo_demo_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1516,32 +1497,6 @@ export interface components {
             published_on?: string | null;
             /** Starts On */
             starts_on?: string | null;
-        };
-        /** DemoStatus */
-        DemoStatus: {
-            /** Loaded */
-            loaded: boolean;
-            /** Groups */
-            groups: number;
-            /** Reviews */
-            reviews: number;
-            /** Classrooms */
-            classrooms: number;
-            /**
-             * Materials
-             * @default 0
-             */
-            materials: number;
-            /**
-             * Posts
-             * @default 0
-             */
-            posts: number;
-            /**
-             * Tutorials
-             * @default 0
-             */
-            tutorials: number;
         };
         /**
          * FrequencyStatus
@@ -2270,6 +2225,8 @@ export interface components {
         ReasonCode: "required" | "target_period" | "overdue" | "same_unit" | "chain_length" | "chain_width" | "hours";
         /** RecoverInput */
         RecoverInput: {
+            /** New Key */
+            new_key: string;
             /**
              * Id
              * Format: uuid
@@ -2651,6 +2608,8 @@ export interface components {
         };
         /** TicketInput */
         TicketInput: {
+            /** Credential */
+            credential: string;
             /**
              * Category
              * @enum {string}
@@ -2664,6 +2623,8 @@ export interface components {
             related_type?: ("review" | "group" | "material" | "post" | "reply" | "tutorial") | null;
             /** Related Id */
             related_id?: string | null;
+            /** Author Proof */
+            author_proof?: string | null;
         };
         /** TicketView */
         TicketView: {
@@ -2702,6 +2663,13 @@ export interface components {
             can_reopen: boolean;
             /** Messages */
             messages: components["schemas"]["MessageView"][];
+            /** Appeal Outcome */
+            appeal_outcome?: ("accepted" | "rejected") | null;
+            /**
+             * Appeal Author Proven
+             * @default false
+             */
+            appeal_author_proven: boolean;
         };
         /** TutorialDetails */
         TutorialDetails: {
@@ -4846,141 +4814,6 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
-            };
-        };
-    };
-    get_demo_demo_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DemoStatus"];
-                };
-            };
-            /** @description Credenciais ausentes ou inválidas. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Dados de demonstração desligados. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description SIGAA indisponível. */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    load_demo_demo_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
-                "Cache-Control"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DemoStatus"];
-                };
-            };
-            /** @description Credenciais ausentes ou inválidas. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Dados de demonstração desligados. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description SIGAA indisponível. */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    clear_demo_demo_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DemoStatus"];
-                };
-            };
-            /** @description Credenciais ausentes ou inválidas. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Dados de demonstração desligados. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description SIGAA indisponível. */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
         };
     };

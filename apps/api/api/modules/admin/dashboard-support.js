@@ -15,6 +15,7 @@ async function open(id, render) {
     const ticket = await call(`/tickets/${id}`);
     const field = el('textarea', { rows: 4, maxlength: 4000, 'aria-label': 'Mensagem', placeholder: 'Resposta ao aluno ou nota interna' });
     const status = el('select', { 'aria-label': 'Estado depois da resposta' }, ['answered', 'waiting_student', 'resolved', 'closed'].map((value) => el('option', { value }, STATUS[value])));
+    const outcome = el('select', { 'aria-label': 'Decisão do recurso' }, [['', 'Análise em andamento'], ['accepted', 'Recurso aceito'], ['rejected', 'Recurso não acolhido']].map(([value, label]) => el('option', { value }, label)));
     const send = async (path, body, message) => {
         if (field.value.trim().length < 5) return notice('Escreva ao menos 5 caracteres.', true);
         try { await call(`/tickets/${id}${path}`, { method: 'POST', body: JSON.stringify(body) }); notice(message); closeDrawer(); render(); }
@@ -28,6 +29,7 @@ async function open(id, render) {
         el('h2', {}, `#${ticket.number} · ${ticket.title}`),
         el('p', { class: 'muted' }, `${CATEGORY[ticket.category] || ticket.category} · aberto em ${when(ticket.created_at)}`
             + (ticket.related_type ? ` · refere-se a ${ticket.related_type} ${ticket.related_id}` : '')),
+        ticket.category === 'moderation_review' ? el('p', { class: 'muted' }, `${ticket.appeal_author_proven ? 'Posse de credencial de autoria comprovada.' : 'Autoria não comprovada; pedido de revisão permitido.'} ${ticket.appeal_decision_id ? `Decisão vinculada: ${ticket.appeal_decision_id}. Outro integrante deve concluir o recurso da própria decisão.` : 'Sem decisão vinculada automaticamente; conferir a referência.'}`) : null,
         el('div', { class: 'toolbar' },
             el('label', {}, 'Prioridade', el('select', { onchange: (event) => change({ priority: event.target.value }) },
                 Object.entries(PRIORITY).map(([value, text]) => el('option', { value, selected: ticket.priority === value }, text)))),
@@ -40,7 +42,8 @@ async function open(id, render) {
             el('p', { class: 'pre' }, m.body))))),
         field,
         el('div', { class: 'toolbar' }, status,
-            el('button', { class: 'primary', onclick: () => send('/reply', { body: field.value.trim(), status: status.value }, 'Resposta enviada ao aluno.') }, 'Responder ao aluno'),
+            ticket.category === 'moderation_review' ? outcome : null,
+            el('button', { class: 'primary', onclick: () => send('/reply', { body: field.value.trim(), status: status.value, appeal_outcome: outcome.value || null }, 'Resposta enviada ao aluno.') }, 'Responder ao aluno'),
             el('button', { onclick: () => send('/note', { body: field.value.trim() }, 'Nota interna salva.') }, 'Salvar nota interna'),
             el('button', { onclick: () => change({ status: 'in_review' }) }, 'Marcar em análise')));
 }

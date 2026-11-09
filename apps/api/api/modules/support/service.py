@@ -10,6 +10,7 @@ from typing import Annotated, Literal
 from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.cookies import derive_key
@@ -79,11 +80,15 @@ def _normalize_code(code: str) -> str:
 
 
 class TicketInput(BaseModel):
+    credential: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
     category: Category
     title: Title
     body: Body
     related_type: RelatedType | None = None
     related_id: uuid.UUID | None = None
+    author_proof: (
+        Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")] | None
+    ) = None
 
 
 class TicketCreated(BaseModel):
@@ -99,6 +104,7 @@ class MessageInput(BaseModel):
 
 
 class RecoverInput(BaseModel):
+    new_key: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
     id: uuid.UUID
     code: Annotated[str, StringConstraints(min_length=16, max_length=24)]
 
@@ -125,6 +131,8 @@ class TicketView(BaseModel):
     message_count: int
     can_reopen: bool
     messages: list[MessageView]
+    appeal_outcome: Literal["accepted", "rejected"] | None = None
+    appeal_author_proven: bool = False
 
 
 def can_reopen(ticket: Ticket) -> bool:
@@ -160,6 +168,8 @@ def _view(ticket: Ticket, messages: list[TicketMessage]) -> TicketView:
             MessageView(id=m.id, sender=m.sender, body=m.body, created_at=m.created_at)
             for m in messages
         ],
+        appeal_outcome=ticket.appeal_outcome,
+        appeal_author_proven=ticket.appeal_author_proven,
     )
 
 
@@ -179,7 +189,23 @@ class SupportService:
 
     async def create(self, body: TicketInput) -> TicketCreated:
         reject_personal_data(body.title, body.body)
-        key = secrets.token_urlsafe(32)
+        decision, proven, digest = None, False, None
+        if body.category == "moderation_review":
+            if not body.related_type or not body.related_id:
+                raise HTTPException(
+                    422,
+                    "Informe o tipo e a referência pública do conteúdo para solicitar revisão.",
+                )
+            from api.modules.support.appeals import reference
+
+            decision, proven = await reference(
+                self._db, body.related_type, body.related_id, body.author_proof
+            )
+            digest = _hash(
+                f"{datetime.now(UTC).date()}:{body.related_type}:{body.related_id}:{body.title.casefold()}:{body.body.casefold()}",
+                "appeal-dedup",
+            )
+        key = body.credential
         code = _recovery_code()
 
         async def write(session: AsyncSession) -> TicketCreated:
@@ -190,6 +216,9 @@ class SupportService:
                 title=body.title,
                 related_type=body.related_type,
                 related_id=body.related_id,
+                appeal_decision_id=decision,
+                appeal_author_proven=proven,
+                appeal_digest=digest,
                 message_count=1,
             )
             session.add(ticket)
@@ -205,7 +234,15 @@ class SupportService:
 
         # o banco só deixa criar neste escopo e ler o chamado recém-criado, pela própria chave
         with use_context(scope="ticket_create", ticket_hash=_hash(key, "secret")):
-            return await self._db.write(write)
+            try:
+                return await self._db.write(write)
+            except IntegrityError:
+                if digest:
+                    raise HTTPException(
+                        409,
+                        "Uma solicitação de revisão com o mesmo texto e referência já foi recebida hoje.",
+                    ) from None
+                raise
 
     async def get(self, ticket_id: uuid.UUID, key: str) -> TicketView:
         async def read(session: AsyncSession) -> TicketView:
@@ -283,7 +320,7 @@ class SupportService:
                 )
             ):
                 raise HTTPException(404, "Chamado ou código inválido.")
-            key = secrets.token_urlsafe(32)
+            key = body.new_key
             ticket.secret_hash = _hash(key, "secret")  # a chave antiga deixa de valer
             return KeyGranted(key=key)
 

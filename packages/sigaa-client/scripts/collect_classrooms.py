@@ -1,6 +1,7 @@
 """Coleta as turmas de graduação do semestre, unidade a unidade."""
 
 import asyncio
+import sys
 from collections.abc import Iterable, Sequence
 
 from _collect import (
@@ -28,6 +29,10 @@ COLUMNS = (
 PROFESSOR_SEPARATOR = "; "
 
 
+class OfferUnavailable(RuntimeError):
+    pass
+
+
 async def collect_classrooms(
     semester: str | None = None, only: list[str] | None = None, workers: int = 2
 ) -> list[dict[str, object]]:
@@ -46,7 +51,7 @@ async def collect_classrooms(
     )
     rows = classroom_rows(found_by_unit.values())
     if not rows:
-        raise RuntimeError("Nenhuma turma encontrada; nada foi salvo.")
+        raise OfferUnavailable("Nenhuma turma encontrada; nada foi salvo.")
 
     empty = sum(1 for found in found_by_unit.values() if not found)
     print(f"Unidades sem turmas: {empty} de {len(units)}.")
@@ -85,7 +90,11 @@ def classroom_rows(
 
 def main():
     args = parse_args(__doc__, OUTPUT)
-    rows = asyncio.run(collect_classrooms(args.semester, args.unit, args.workers))
+    try:
+        rows = asyncio.run(collect_classrooms(args.semester, args.unit, args.workers))
+    except OfferUnavailable:
+        print("Oferta não publicada; catálogo preservado.", flush=True)
+        sys.exit(3)
     write_csv((args.output, COLUMNS, rows))
     print(f"Salvo em {args.output}: {len(rows)} turmas.")
 

@@ -4,6 +4,7 @@ import hashlib
 import random
 import uuid
 from collections.abc import Callable
+from functools import partial
 from io import BytesIO
 
 from PIL import Image, ImageDraw
@@ -11,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
+from api.db.main import after_rollback
 from api.db.models import (
     Classroom,
     ForumPost,
@@ -132,6 +134,7 @@ async def community(
             data = _demo_file(title, mime, index * 10 + offset)
             key = uuid.uuid4().hex
             await storage.save(key, data)
+            after_rollback(session, partial(storage.delete, key))
             material = Material(
                 subject_code=classroom.subject_code,
                 semester=semester

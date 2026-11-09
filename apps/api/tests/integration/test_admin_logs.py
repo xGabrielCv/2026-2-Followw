@@ -51,8 +51,33 @@ def test_campos_sensiveis_e_complexos_nunca_passam():
             "texto": "a" * 500,
         }
     )
-    assert set(limpo) == {"route", "status_code", "texto"}
-    assert len(limpo["texto"]) == 120
+    assert set(limpo) == {"route", "status_code"}
+
+
+def test_lista_fechada_recusa_dados_disfarcados_de_metadados():
+    assert (
+        clean(
+            {
+                "message": "251000000",
+                "route": "/me?password=senha",
+                "error_type": "a@b.com",
+                "source": "https://example.com",
+                "duration_ms": float("nan"),
+            }
+        )
+        == {}
+    )
+    assert clean(
+        {
+            "route": "/public/subjects/{code}",
+            "error_type": "TimeoutError",
+            "duration_ms": 12.5,
+        }
+    ) == {
+        "route": "/public/subjects/{code}",
+        "error_type": "TimeoutError",
+        "duration_ms": 12.5,
+    }
 
 
 def test_fila_cheia_descarta_o_mais_antigo_sem_levantar_erro():

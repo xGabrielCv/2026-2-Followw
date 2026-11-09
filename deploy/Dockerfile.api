@@ -7,10 +7,12 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY apps/api ./apps/api
 COPY packages ./packages
+COPY scripts/update_data.py ./scripts/update_data.py
 # Só o necessário para rodar: sem grupos de desenvolvimento, versões travadas pelo uv.lock.
 RUN uv sync --locked --no-dev --package api
 
 FROM python:3.14-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12 /uv /usr/local/bin/uv
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PATH="/app/.venv/bin:$PATH"
 # Usuário sem privilégios; os materiais cifrados ficam num volume dele.
 RUN useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin followw \
@@ -23,4 +25,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/public/config/version', timeout=4).status == 200 else 1)"
 # O encerramento (SIGTERM) deixa as requisições em andamento terminarem.
-CMD ["sh", "-c", "exec uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY} --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --no-server-header"]
+CMD ["sh", "-c", "exec uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY} --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20 --no-server-header --no-access-log"]

@@ -6,6 +6,48 @@ from api.crypto import decrypt, encrypt
 
 
 def apply_updates(connection: Connection) -> None:
+    connection.execute(
+        text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_digest TEXT")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS metrics JSONB NOT NULL DEFAULT '{}'::jsonb"
+        )
+    )
+    connection.execute(
+        text("ALTER TABLE admin_log ADD COLUMN IF NOT EXISTS content_proof TEXT")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_decision_id UUID REFERENCES admin_log(id)"
+        )
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_author_proven BOOLEAN NOT NULL DEFAULT false"
+        )
+    )
+    connection.execute(
+        text("ALTER TABLE tickets ADD COLUMN IF NOT EXISTS appeal_outcome TEXT")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE sync_state ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT false"
+        )
+    )
+    connection.execute(
+        text("ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS owner TEXT")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE sync_runs ADD COLUMN IF NOT EXISTS resource TEXT NOT NULL DEFAULT 'all'"
+        )
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE classrooms ADD COLUMN IF NOT EXISTS offer_active BOOLEAN NOT NULL DEFAULT true"
+        )
+    )
     # O resumo do conteúdo (sincronização) teve outro nome: renomeia só se o banco ainda tiver o antigo.
     connection.execute(
         text(

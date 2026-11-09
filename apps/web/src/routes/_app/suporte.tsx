@@ -20,6 +20,7 @@ import {
 import { Input } from '#/components/ui/input';
 import { Label } from '#/components/ui/label';
 import { Textarea } from '#/components/ui/textarea';
+import { keyFor, newKey } from '#/lib/author';
 import { useOnline } from '#/lib/online';
 import {
     hasPersonalData,
@@ -29,7 +30,7 @@ import {
     TICKET_STATUS_LABELS,
     type TicketCategory
 } from '#/lib/support';
-import { supportParsers } from '#/lib/support-reference';
+import { parseSupportReference, supportParsers } from '#/lib/support-reference';
 import { apiMessage } from '#/queries/community';
 import {
     rememberTicket,
@@ -163,10 +164,16 @@ function NewTicketDialog({
     const [category, setCategory] = useState<TicketCategory>(initialCategory);
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
+    const [appealReference, setAppealReference] = useState(reference ?? '');
     const online = useOnline();
     const create = useCreateTicket();
     const personal = hasPersonalData(title, body);
-    const valid = title.trim().length >= 5 && body.trim().length >= 5 && !personal;
+    const parsedReference = parseSupportReference(reference ?? appealReference);
+    const valid =
+        title.trim().length >= 5 &&
+        body.trim().length >= 5 &&
+        !personal &&
+        (category !== 'moderation_review' || !!parsedReference);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -190,9 +197,27 @@ function NewTicketDialog({
                         create.mutate(
                             {
                                 body: {
+                                    credential: newKey(),
                                     category,
                                     title: title.trim(),
-                                    body: `${reference ? `Referência pública: ${reference}\n\n` : ''}${body.trim()}`
+                                    body: `${reference ? `Referência pública: ${reference}\n\n` : ''}${body.trim()}`,
+                                    ...(parsedReference
+                                        ? {
+                                              related_type: parsedReference.type,
+                                              related_id: parsedReference.id,
+                                              author_proof:
+                                                  category === 'moderation_review' &&
+                                                  (parsedReference.type === 'post' ||
+                                                      parsedReference.type === 'reply' ||
+                                                      parsedReference.type === 'material' ||
+                                                      parsedReference.type === 'tutorial')
+                                                      ? keyFor(
+                                                            parsedReference.type,
+                                                            parsedReference.id
+                                                        )
+                                                      : undefined
+                                          }
+                                        : {})
                                 }
                             },
                             {
@@ -214,6 +239,23 @@ function NewTicketDialog({
                         );
                     }}
                 >
+                    {category === 'moderation_review' && (
+                        <div className="flex flex-col gap-2">
+                            <Label htmlFor="appeal-reference">Referência pública do conteúdo</Label>
+                            <Input
+                                id="appeal-reference"
+                                value={reference ?? appealReference}
+                                readOnly={!!reference}
+                                onChange={(event) => setAppealReference(event.target.value)}
+                                placeholder="post:identificador do conteúdo"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Use review, group, material, post, reply ou tutorial, seguido de
+                                dois-pontos e do identificador UUID. A revisão é permitida sem
+                                comprovar autoria. A decisão e a resposta ficam neste chamado.
+                            </p>
+                        </div>
+                    )}
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium">Assunto</span>
                         <TabFilter

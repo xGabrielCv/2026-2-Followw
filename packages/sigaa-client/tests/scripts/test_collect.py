@@ -28,6 +28,27 @@ GAMA = Unit(id=673, name="GAMA")
 CEILANDIA = Unit(id=518, name="CEILANDIA")
 
 
+def test_unidades_preservam_sigla_e_referencias_ausentes_na_lista(monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    script = importlib.import_module("collect_units")
+    previous = [{"id": "673", "code": "FCTE", "name": "ANTIGO"}, {"id": "518", "code": "FCE", "name": "CEILANDIA"}]
+    rows = script.merge_units(previous, [Unit(id=673, name="GAMA ATUALIZADO"), Unit(id=999, name="NOVA")])
+    assert rows == [{"id": "518", "code": "FCE", "name": "CEILANDIA"}, {"id": 673, "code": "FCTE", "name": "GAMA ATUALIZADO"}, {"id": 999, "code": "", "name": "NOVA"}]
+    with pytest.raises(ValueError):
+        script.merge_units(previous, [])
+
+
+async def test_contagem_institucional_grava_so_total_sem_endereco(monkeypatch, tmp_path):
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    helpers = importlib.import_module("_collect")
+    target = tmp_path / "calls"
+    monkeypatch.setenv("FOLLOWW_PUBLIC_COUNTER", str(target))
+    monkeypatch.setattr(helpers, "_requests", 0)
+    await helpers._count_request(SimpleNamespace(url="https://fonte-sintetica.invalid"))
+    helpers._save_request_count()
+    assert target.read_text() == "1"
+
+
 def test_csv_de_docentes_usa_unidade_e_omite_url(monkeypatch):
     monkeypatch.syspath_prepend(str(SCRIPTS))
     script = importlib.import_module("collect_professors")

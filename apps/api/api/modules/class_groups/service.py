@@ -221,6 +221,9 @@ class GroupService:
                 for position, group in enumerate(body.groups)
             )
             await session.flush()
+            from api.modules.community.activity import record_deletion
+
+            await record_deletion(session, "groups")
             return await _groups(session, classroom, name)
 
         return await self._db.write(write)

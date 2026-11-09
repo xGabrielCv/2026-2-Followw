@@ -18,7 +18,6 @@ from api.modules.auth.router import router as auth_router
 from api.modules.class_groups.router import router as class_groups_router
 from api.modules.classrooms.router import router as classrooms_router
 from api.modules.community.router import router as community_router
-from api.modules.demo.router import router as demo_router
 from api.modules.forum.router import router as forum_router
 from api.modules.internships.router import router as internships_router
 from api.modules.logs.sink import get_sink
@@ -43,6 +42,7 @@ from api.security import BodyTooLarge, SecurityMiddleware
 # desativa logs "HTTP Request: ..." que o httpx emite pra cada chamada ao SIGAA
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").disabled = True
 
 tags_metadata = [
     {
@@ -303,7 +303,6 @@ app.include_router(internships_router, prefix="/internships", tags=["Internships
 app.include_router(posts_router, prefix="/posts", tags=["Posts"])
 app.include_router(class_groups_router, prefix="/groups", tags=["Groups"])
 app.include_router(reviews_router, prefix="/reviews", tags=["Reviews"])
-app.include_router(demo_router, prefix="/demo", tags=["Demo"])
 app.include_router(materials_router, prefix="/materials", tags=["Materials"])
 app.include_router(forum_router, prefix="/forum", tags=["Forum"])
 app.include_router(tutorials_router, prefix="/tutorials", tags=["Tutorials"])

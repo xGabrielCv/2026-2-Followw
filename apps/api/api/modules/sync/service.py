@@ -1,7 +1,7 @@
 """Estado, concessão e histórico da sincronização; toda gravação é atômica no PostgreSQL."""
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
@@ -22,6 +22,7 @@ class Outcome:
     records: int | None = None
     content_hash: str | None = None
     error: str | None = None
+    metrics: dict[str, int] = field(default_factory=dict)
 
 
 async def load_settings(session: AsyncSession) -> SyncSettings:
@@ -95,6 +96,7 @@ async def claim(
     lease: timedelta,
     *,
     force: bool,
+    resource: str = "all",
 ) -> bool:
     """Um único processo ganha: o UPDATE condicional é o que decide, não uma leitura anterior."""
     conditions = [
@@ -106,10 +108,38 @@ async def claim(
     result = await session.execute(
         update(SyncState)
         .where(*conditions)
-        .values(lease_until=now + lease, lease_owner=owner, last_attempt_at=now)
+        .values(
+            lease_until=now + lease,
+            lease_owner=owner,
+            last_attempt_at=now,
+            cancel_requested=False,
+        )
         .returning(SyncState.source)
     )
-    return result.first() is not None
+    won = result.first() is not None
+    if won:
+        await session.execute(
+            update(SyncRun)
+            .where(SyncRun.source == source, SyncRun.status == "running")
+            .values(
+                status="failed",
+                finished_at=now,
+                error="Concessão expirada; execução anterior interrompida.",
+            )
+        )
+        session.add(
+            SyncRun(
+                id=uuid.uuid4(),
+                source=source,
+                trigger="manual" if force else "schedule",
+                status="running",
+                started_at=now,
+                changed=False,
+                owner=owner,
+                resource=resource,
+            )
+        )
+    return won
 
 
 async def finish(
@@ -131,31 +161,55 @@ async def finish(
         and outcome.content_hash is not None
         and outcome.content_hash != state.content_hash
     )
+    if (
+        outcome.status == "success"
+        and {"inserted", "changed", "removed"} <= outcome.metrics.keys()
+    ):
+        changed = any(
+            outcome.metrics[key] for key in ("inserted", "changed", "removed")
+        )
     status = outcome.status
     if outcome.status == "success" and not changed:
         status = "unchanged"
-    session.add(
-        SyncRun(
+    run = await session.scalar(
+        select(SyncRun)
+        .where(
+            SyncRun.source == source,
+            SyncRun.owner == owner,
+            SyncRun.status == "running",
+        )
+        .order_by(SyncRun.started_at.desc())
+        .limit(1)
+    )
+    if run is None:
+        run = SyncRun(
             id=uuid.uuid4(),
             source=source,
             trigger=trigger,
-            status=status,
             started_at=started_at,
-            finished_at=now,
-            changed=changed,
-            records=outcome.records,
-            error=outcome.error,
+            owner=owner,
         )
+        session.add(run)
+    run.status, run.finished_at, run.changed, run.records, run.error = (
+        status,
+        now,
+        changed,
+        outcome.records,
+        outcome.error,
     )
+    run.metrics = outcome.metrics
     if mine:
         times = settings.times_for(source)
         state.lease_until = None
         state.lease_owner = None
+        state.cancel_requested = False
         state.last_status = status
         if status in {"success", "unchanged"}:
             state.last_success_at = now
             state.consecutive_failures = 0
             state.records = outcome.records
+            if outcome.content_hash is not None:
+                state.content_hash = outcome.content_hash
             if changed:
                 state.last_change_at = now
                 state.content_hash = outcome.content_hash
@@ -170,7 +224,7 @@ async def finish(
                 next_run(now, times),
                 now + backoff(state.consecutive_failures, settings),
             )
-        elif status == "skipped" and trigger != "manual":
+        elif status in {"skipped", "cancelled"}:
             state.next_run_at = next_run(now, times)
     await session.flush()
     # Só as últimas execuções ficam (sem texto livre ou dados pessoais).

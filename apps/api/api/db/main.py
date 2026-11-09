@@ -48,6 +48,13 @@ def after_commit(session: AsyncSession, action: Callable[[], Awaitable[None]]) -
     session.info.setdefault("after_commit", []).append(action)
 
 
+def after_rollback(
+    session: AsyncSession, action: Callable[[], Awaitable[None]]
+) -> None:
+    """Compensa somente recursos externos criados pela tentativa que não confirmou."""
+    session.info.setdefault("after_rollback", []).append(action)
+
+
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
     return async_session
 
@@ -73,9 +80,33 @@ class Database:
         while True:
             try:
                 async with self._sessionmaker() as session:
-                    await apply_context(session)
-                    result = await write(session)
-                    await session.commit()
+                    committing = False
+                    try:
+                        await apply_context(session)
+                        result = await write(session)
+                        committing = True
+                        await session.commit()
+                    except BaseException as failure:
+                        await session.rollback()
+                        actions = session.info.pop("after_rollback", [])
+                        # Perda de conexão durante COMMIT tem resultado incerto: preservar arquivos é mais seguro.
+                        if committing and not isinstance(failure, IntegrityError):
+                            actions = []
+                            event(
+                                "storage.cleanup_deferred",
+                                level=30,
+                                error_type=type(failure).__name__,
+                            )
+                        for action in actions:
+                            try:
+                                await asyncio.shield(action())
+                            except Exception as error:  # noqa: BLE001 — compensação não substitui a falha original
+                                event(
+                                    "storage.cleanup_failed",
+                                    error_type=type(error).__name__,
+                                )
+                        raise
+                    session.info.pop("after_rollback", None)
                     for action in session.info.pop("after_commit", []):
                         try:
                             await action()
@@ -111,10 +142,15 @@ def create_schema(conn: Connection) -> None:
 
 
 async def create_tables() -> None:
-    async with maintenance_engine.begin() as conn:
-        await conn.run_sync(create_schema)
+    await update_schema()
     async with maintenance_session.begin() as session:
         await seed_database(session)
+
+
+async def update_schema() -> None:
+    """Atualiza esquema e políticas sem coletar fontes nem recarregar o catálogo."""
+    async with maintenance_engine.begin() as conn:
+        await conn.run_sync(create_schema)
 
 
 def db_init() -> None:

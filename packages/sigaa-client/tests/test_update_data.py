@@ -1,6 +1,9 @@
 import importlib.util
+import subprocess
 from datetime import date
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 _spec = importlib.util.spec_from_file_location(
@@ -58,3 +61,21 @@ def test_poda_deixa_so_o_semestre_atual_e_o_proximo(tmp_path, monkeypatch):
         "2026.2",
         "2027.1",
     ]
+
+
+def test_falha_de_coleta_nao_e_tratada_como_oferta_ausente(monkeypatch):
+    def falhar(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, ["coletor"])
+
+    monkeypatch.setattr(update_data, "run", falhar)
+    with pytest.raises(subprocess.CalledProcessError):
+        update_data.collect_offer("2026.2")
+
+
+def test_resposta_vazia_nao_substitui_ultimo_csv_valido(tmp_path):
+    base = _csv(tmp_path / "base.csv", "FGA0001,01,2026.2,,,10,5,")
+    new = _csv(tmp_path / "new.csv")
+    before = base.read_bytes()
+    with pytest.raises(ValueError):
+        update_data.merge_offer(base, new, "2026.2")
+    assert base.read_bytes() == before

@@ -36,6 +36,21 @@ _TICKET_EXISTS = "EXISTS (SELECT 1 FROM tickets t WHERE t.id = {table}.ticket_id
 # (tabela, comando, USING, WITH CHECK)
 _POLICIES: list[tuple[str, str, str | None, str | None]] = [
     (
+        "demo_records",
+        "ALL",
+        "current_setting('app.scope', true) IN ('demo', 'admin')",
+        "current_setting('app.scope', true) IN ('demo', 'admin')",
+    ),
+    ("classrooms", "SELECT", "true", None),
+    ("classrooms", "INSERT", None, "true"),
+    ("classrooms", "UPDATE", "true", "true"),
+    (
+        "classrooms",
+        "DELETE",
+        "current_setting('app.scope', true) = 'demo' AND EXISTS (SELECT 1 FROM demo_records d WHERE d.kind = 'classroom' AND d.record_id = classrooms.id)",
+        None,
+    ),
+    (
         "community_upload_budgets",
         "ALL",
         "current_setting('app.scope', true) = 'upload_budget'",
@@ -162,3 +177,28 @@ def secure(
             clauses += f" WITH CHECK ({check})"
         connection.execute(text(f"CREATE POLICY {name} ON {table} {clauses}"))
     install_functions(connection, role)
+    # Função estreita: a comunidade só consegue avançar o horário agregado de seis recursos conhecidos.
+    connection.execute(
+        text("""
+        CREATE OR REPLACE FUNCTION public.followw_record_public_activity(resource text)
+        RETURNS void LANGUAGE sql SECURITY DEFINER
+        SET search_path = pg_catalog, public SET app.scope = 'admin'
+        AS $$
+            INSERT INTO public.system_texts(key, value, created_at, updated_at)
+            SELECT 'activity.' || resource, to_char(date_trunc('hour', now() AT TIME ZONE 'UTC'), 'YYYY-MM-DD"T"HH24:MI:SS"+00:00"'), now(), now()
+            WHERE resource IN ('forum', 'materials', 'reviews', 'groups', 'tutorials', 'reports')
+            ON CONFLICT (key) DO UPDATE SET value=excluded.value, updated_at=now()
+            WHERE public.system_texts.value < excluded.value
+        $$
+    """)
+    )
+    connection.execute(
+        text(
+            "REVOKE ALL ON FUNCTION public.followw_record_public_activity(text) FROM PUBLIC"
+        )
+    )
+    connection.execute(
+        text(
+            f"GRANT EXECUTE ON FUNCTION public.followw_record_public_activity(text) TO {role}"
+        )
+    )

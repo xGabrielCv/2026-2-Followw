@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, Index, Integer
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from api.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -23,6 +24,9 @@ class SyncState(Base, TimestampMixin):
     last_status: Mapped[str | None] = mapped_column()
     records: Mapped[int | None] = mapped_column(Integer)
     content_hash: Mapped[str | None] = mapped_column()
+    cancel_requested: Mapped[bool] = mapped_column(
+        default=False, server_default="false"
+    )
 
 
 class SyncRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -39,3 +43,6 @@ class SyncRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     changed: Mapped[bool] = mapped_column(default=False)
     records: Mapped[int | None] = mapped_column(Integer)
     error: Mapped[str | None] = mapped_column()
+    owner: Mapped[str | None] = mapped_column()
+    resource: Mapped[str] = mapped_column(default="all", server_default="all")
+    metrics: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="{}")

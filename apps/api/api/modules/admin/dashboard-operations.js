@@ -41,7 +41,7 @@ export async function operationsView(render) {
         el('div', { class: 'grid g2' },
             el('div', { class: 'panel' }, el('h3', {}, 'PostgreSQL'),
                 el('table', {}, el('tbody', {},
-                    row('Conexões (ativas / total / máximo)', `${fmt(db.active)} / ${fmt(db.connections)} / ${fmt(db.max_connections)}`),
+                    row('Conexões (ativas visíveis / total / máximo)', `${fmt(db.active)} / ${fmt(db.connections)} / ${fmt(db.max_connections)}`),
                     row('Locks esperando', fmt(db.waiting_locks)),
                     row('Tamanho do banco', bytes(db.size_bytes)),
                     row('Pool deste processo (em uso / ociosas / tamanho)', pool.size === undefined ? 'sem dados' : `${fmt(pool.in_use)} / ${fmt(pool.idle)} / ${fmt(pool.size)}`)))),

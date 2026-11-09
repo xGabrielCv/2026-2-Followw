@@ -89,6 +89,23 @@ function TicketThread({ id, secret }: { id: string; secret: string }) {
                 </p>
             </header>
             <ol className="flex flex-col gap-3" aria-label="Mensagens">
+                {ticket.category === 'moderation_review' && (
+                    <li className="rounded-2xl bg-card p-4 text-sm">
+                        <p>
+                            {ticket.appeal_outcome === 'accepted'
+                                ? 'Recurso aceito'
+                                : ticket.appeal_outcome === 'rejected'
+                                  ? 'Recurso não acolhido'
+                                  : 'Recurso aguardando decisão'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {ticket.appeal_author_proven
+                                ? 'Credencial de autoria comprovada.'
+                                : 'Autoria não comprovada. Isso não impede a revisão.'}{' '}
+                            Consulte a resposta da equipe para as medidas adotadas.
+                        </p>
+                    </li>
+                )}
                 {ticket.messages.map((message) => (
                     <li
                         key={message.id}

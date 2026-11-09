@@ -3,6 +3,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 import type { components } from '#/queries/schema.gen';
 
+import { newKey } from '#/lib/author';
 import { STORAGE_KEYS, storedValue } from '#/lib/local-storage';
 import { initializeLocalVault } from '#/lib/local-vault';
 import { api } from '#/queries/api';
@@ -95,6 +96,8 @@ export function useTicketAction(id: string, key: string, action: 'messages' | 'c
 }
 
 export async function recoverTicketKey(id: string, code: string): Promise<string | null> {
-    const { data } = await apiClient.POST('/support/recover', { body: { id, code } });
+    const { data } = await apiClient.POST('/support/recover', {
+        body: { id, code, new_key: newKey() }
+    });
     return data?.key ?? null;
 }

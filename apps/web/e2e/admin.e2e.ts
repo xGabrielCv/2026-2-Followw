@@ -67,6 +67,90 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
     await expect(page.locator('#main')).toContainText('Pedidos agora');
     await expect(page.locator('#main')).toContainText('Modo de manutenção');
     await expect(page.locator('#main')).toContainText('Não existe botão de reiniciar');
+    await page.getByRole('button', { name: 'Sincronização e catálogos', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Sincronização e catálogos' })).toBeVisible();
+    await page.locator('input[name="restaurant_time"]').fill('05:30');
+    await page.getByRole('button', { name: 'Salvar configuração', exact: true }).click();
+    await page
+        .locator('#confirmation')
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(page.locator('#notice')).toContainText('Configuração salva');
+    expect(
+        (await (await page.request.get('/api/admin/api/sync')).json()).settings.restaurant_time
+    ).toBe('05:30');
+    await page.screenshot({ path: `${artifacts}/admin-sync-desktop.png`, fullPage: true });
+    await page.getByRole('combobox', { name: 'Recurso do catálogo' }).selectOption('professors');
+    await page.getByRole('button', { name: 'Atualizar catálogo agora' }).click();
+    await page
+        .locator('#confirmation')
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(page.locator('#notice')).toContainText('Sincronização iniciada');
+    await expect
+        .poll(async () =>
+            (await page.request.get('/api/admin/api/sync/history'))
+                .json()
+                .then((data) =>
+                    data.items.some(
+                        (run: { resource: string; status: string }) =>
+                            run.resource === 'professors' && run.status === 'success'
+                    )
+                )
+        )
+        .toBe(true);
+    await page.getByRole('button', { name: 'Registros técnicos', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Registros técnicos' })).toBeVisible();
+    await page.screenshot({ path: `${artifacts}/admin-logs-desktop.png`, fullPage: true });
+    await expect(page.locator('#main')).not.toContainText('Não foi possível carregar');
+    await page.getByRole('button', { name: 'Dados de demonstração', exact: true }).click();
+    await expect(
+        page.getByRole('button', { name: 'Ativar demonstração', exact: true })
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Ativar demonstração', exact: true }).click();
+    await page
+        .locator('#confirmation')
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(
+        page.getByRole('button', { name: 'Carregar demonstração', exact: true })
+    ).toBeEnabled();
+    await page.getByRole('button', { name: 'Carregar demonstração', exact: true }).click();
+    await page
+        .locator('#confirmation')
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(page.locator('#main')).toContainText('Há dados de demonstração carregados.');
+    await page.getByRole('button', { name: 'Ver prévia', exact: true }).click();
+    await expect(
+        page.getByRole('heading', { name: 'Prévia da demonstração', exact: true })
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Recarregar demonstração', exact: true }).click();
+    await page
+        .getByRole('textbox', { name: 'Confirmação textual' })
+        .fill('RECARREGAR DEMONSTRAÇÃO');
+    await page
+        .locator('#confirmation')
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(page.locator('#notice')).toContainText('Demonstração recarregada');
+    await page.getByRole('button', { name: 'Limpar demonstração', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Confirmação textual' }).fill('LIMPAR DEMONSTRAÇÃO');
+    await page
+        .locator('#confirmation')
+        .getByRole('button', { name: 'Confirmar', exact: true })
+        .click();
+    await expect(page.locator('#main')).toContainText('Nenhum dado de demonstração carregado.');
+    expect(
+        (await page.request.get('/api/forum/40000000-0000-4000-8000-000000000001')).status()
+    ).toBe(200);
+    await page.setViewportSize({ width: 320, height: 740 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+    );
+    await page.screenshot({ path: `${artifacts}/admin-demo-320.png`, fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.screenshot({ path: `${artifacts}/admin-operations.png`, fullPage: true });
     await page.getByRole('button', { name: 'Equipe e permissões', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Equipe administrativa' })).toBeVisible();

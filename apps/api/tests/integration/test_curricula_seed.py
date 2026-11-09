@@ -219,7 +219,12 @@ async def test_dataset_completo_pode_ser_semeado_duas_vezes(async_database):
         await seed_units(session)
         await seed_courses(session)
         await seed_curricula(session)
+        identifiers_before = set(await session.scalars(select(CurriculumComponent.id)))
         await seed_curricula(session)
+        assert (
+            set(await session.scalars(select(CurriculumComponent.id)))
+            == identifiers_before
+        )
     async with async_database() as session:
         saved = (await session.scalars(select(Curriculum))).all()
         assert len(saved) == len(read_curricula())

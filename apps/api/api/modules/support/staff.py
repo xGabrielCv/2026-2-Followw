@@ -53,6 +53,9 @@ class StaffTicket(BaseModel):
     message_count: int
     created_at: datetime
     updated_at: datetime
+    appeal_decision_id: uuid.UUID | None = None
+    appeal_author_proven: bool = False
+    appeal_outcome: Literal["accepted", "rejected"] | None = None
 
 
 class StaffDetail(StaffTicket):
@@ -70,6 +73,7 @@ class StaffReply(BaseModel):
     body: Body
     # estado depois da resposta
     status: Literal["answered", "waiting_student", "resolved", "closed"] = "answered"
+    appeal_outcome: Literal["accepted", "rejected"] | None = None
 
 
 class StaffNote(BaseModel):
@@ -99,6 +103,9 @@ def _ticket(row: Ticket, names: dict[uuid.UUID, str]) -> StaffTicket:
         message_count=row.message_count,
         created_at=row.created_at,
         updated_at=row.updated_at,
+        appeal_decision_id=row.appeal_decision_id,
+        appeal_author_proven=row.appeal_author_proven,
+        appeal_outcome=row.appeal_outcome,
     )
 
 
@@ -234,6 +241,25 @@ class StaffService:
         self, actor: Principal, ticket_id: uuid.UUID, body: StaffReply
     ) -> None:
         async def change(session: AsyncSession, ticket: Ticket) -> None:
+            if ticket.category == "moderation_review" and (
+                body.appeal_outcome or body.status in {"resolved", "closed"}
+            ):
+                from api.modules.support.appeals import require_independent_reviewer
+
+                if not body.appeal_outcome:
+                    raise HTTPException(
+                        422, "Informe o resultado do recurso antes de encerrar."
+                    )
+                await require_independent_reviewer(session, ticket, actor)
+                ticket.appeal_outcome = body.appeal_outcome
+                await log(
+                    session,
+                    "appeal." + body.appeal_outcome,
+                    "ticket",
+                    ticket.id,
+                    body.status,
+                    actor=actor,
+                )
             session.add(
                 TicketMessage(
                     ticket_id=ticket.id,
@@ -270,6 +296,14 @@ class StaffService:
         self, actor: Principal, ticket_id: uuid.UUID, body: StaffChange
     ) -> None:
         async def apply(session: AsyncSession, ticket: Ticket) -> None:
+            if (
+                ticket.category == "moderation_review"
+                and body.status in {"resolved", "closed"}
+                and not ticket.appeal_outcome
+            ):
+                raise HTTPException(
+                    409, "Responda ao recurso com uma decisão antes de encerrar."
+                )
             details = []
             if body.status and body.status != ticket.status:
                 _set_status(ticket, body.status)

@@ -344,3 +344,53 @@ async def test_manual_na_primeira_vez_nao_deixa_o_agendador_repetir_em_seguida(
     assert (await estado(async_database)).next_run_at > datetime.now(UTC)
     assert "catalog" not in await s.tick()
     assert fonte.chamadas == 1
+
+
+async def test_mesmos_dados_nao_marcam_mudanca_mesmo_com_resumo_novo(async_database):
+    fonte = Fonte(
+        Outcome(
+            "success",
+            7,
+            "resumo-canonico",
+            metrics={"inserted": 0, "changed": 0, "removed": 0},
+        )
+    )
+    scheduler = agendador(async_database, fonte)
+    assert await scheduler.trigger("catalog") == "started"
+    await aguardar(scheduler)
+    state = await estado(async_database)
+    assert state.last_status == "unchanged"
+    assert state.last_change_at is None
+    assert state.content_hash == "resumo-canonico"
+
+
+async def test_tarefa_e_registrada_antes_da_resposta_e_cancelamento_preserva_catalogo(
+    async_database,
+):
+    fonte = Fonte(Outcome("success", 1, "m"))
+    fonte.espera = asyncio.Event()
+    s = agendador(async_database, fonte)
+    assert await s.trigger("catalog") == "started"
+    runs = await execucoes(async_database)
+    assert len(runs) == 1 and runs[0].status == "running"
+    assert await s.cancel("catalog")
+    await aguardar(s)
+    runs = await execucoes(async_database)
+    assert len(runs) == 1 and runs[0].status == "cancelled"
+    state = await estado(async_database)
+    assert state.lease_until is None
+    assert state.last_success_at is None
+    assert not await s.cancel("catalog")
+
+
+async def test_cancelamento_coordenado_entre_workers(async_database):
+    fonte = Fonte(Outcome("success", 1, "m"))
+    fonte.espera = asyncio.Event()
+    s = agendador(async_database, fonte)
+    outro = agendador(async_database, fonte)
+    await configurar(async_database, catalog_enabled=False, restaurant_enabled=False)
+    assert await s.trigger("catalog") == "started"
+    assert await outro.cancel("catalog")
+    await s.tick()
+    await aguardar(s)
+    assert (await execucoes(async_database))[0].status == "cancelled"

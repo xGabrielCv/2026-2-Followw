@@ -3,6 +3,15 @@ import importlib
 import api
 
 
+def test_comando_api_nao_habilita_log_bruto_de_ip_e_url(monkeypatch):
+    options = []
+    monkeypatch.setattr(
+        api.uvicorn, "run", lambda *args, **kwargs: options.append(kwargs)
+    )
+    _entrada()()
+    assert options[0].get("access_log") is False
+
+
 def _entrada():
     # `api.main` vira o módulo da aplicação depois de importado; recarrega para pegar a função do comando
     return importlib.reload(api).main

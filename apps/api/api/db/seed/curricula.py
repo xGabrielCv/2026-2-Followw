@@ -161,14 +161,33 @@ async def seed_curricula(
                 for code in codes
             )
     # Matrizes fora do CSV ficam inativas, com os componentes, pois usuários ainda as usam.
-    await session.execute(
-        delete(CurriculumComponent).where(
-            CurriculumComponent.curriculum_id.in_(identifiers)
+    existing = list(
+        await session.scalars(
+            select(CurriculumComponent).where(
+                CurriculumComponent.curriculum_id.in_(identifiers)
+            )
         )
     )
+
+    def component_key(row):
+        return tuple(
+            row[field] if isinstance(row, dict) else getattr(row, field)
+            for field in ("curriculum_id", "subject_code", "period", "kind")
+        )
+
+    wanted = {component_key(row): row for row in components}
+    saved_keys = {component_key(row) for row in existing}
+    removed = [row.id for row in existing if component_key(row) not in wanted]
+    if removed:
+        await session.execute(
+            delete(CurriculumComponent).where(CurriculumComponent.id.in_(removed))
+        )
     await session.execute(
-        update(Curriculum).where(Curriculum.id.not_in(identifiers)).values(active=False)
+        update(Curriculum)
+        .where(Curriculum.id.not_in(identifiers), Curriculum.active.is_(True))
+        .values(active=False)
     )
+    components = [row for key, row in wanted.items() if key not in saved_keys]
     for start in range(0, len(components), 1000):
         await session.execute(
             insert(CurriculumComponent), components[start : start + 1000]

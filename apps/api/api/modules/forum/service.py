@@ -401,6 +401,9 @@ class ForumService:
             if post is None or not owns(post.author_key, author, _scope(post_id)):
                 raise HTTPException(404, "Publicação não encontrada.")
             await session.delete(post)
+            from api.modules.community.activity import record_deletion
+
+            await record_deletion(session, "forum")
 
         await self._db.write(write)
 
@@ -416,6 +419,9 @@ class ForumService:
             ):
                 raise HTTPException(404, "Resposta não encontrada.")
             await session.delete(reply)
+            from api.modules.community.activity import record_deletion
+
+            await record_deletion(session, "forum")
 
         await self._db.write(write)
 

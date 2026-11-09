@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,7 @@ from api.core.config import settings
 from api.db.main import DatabaseDep
 from api.modules.admin import auth
 from api.modules.logs.models import AppEvent
-from api.modules.logs.sink import get_sink
+from api.modules.logs.sink import clean, get_sink
 
 router = APIRouter(dependencies=[auth.require_permission("audit")])
 Level = Literal["INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -55,7 +55,13 @@ async def list_events(
     until: datetime | None = None,
     page: int = Query(1, ge=1, le=2000),
     page_size: int = Query(25, ge=1, le=100),
+    status_code: int | None = Query(None, ge=100, le=599),
+    order: Literal["newest", "oldest"] = "newest",
 ) -> EventPage:
+    if any(value is not None and value.tzinfo is None for value in (since, until)):
+        raise HTTPException(422, "Informe datas com fuso horário.")
+    if since and until and since > until:
+        raise HTTPException(422, "O início deve ser anterior ao fim do intervalo.")
     conditions = []
     if level:
         conditions.append(AppEvent.level == level)
@@ -73,12 +79,17 @@ async def list_events(
         conditions.append(AppEvent.at >= since)
     if until:
         conditions.append(AppEvent.at <= until)
+    if status_code:
+        conditions.append(AppEvent.fields["status_code"].as_integer() == status_code)
 
     async def read(session: AsyncSession) -> EventPage:
         rows = await session.scalars(
             select(AppEvent)
             .where(*conditions)
-            .order_by(AppEvent.at.desc(), AppEvent.id)
+            .order_by(
+                AppEvent.at.asc() if order == "oldest" else AppEvent.at.desc(),
+                AppEvent.id,
+            )
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -92,7 +103,7 @@ async def list_events(
                     at=row.at,
                     level=row.level,
                     event=row.event,
-                    fields=row.fields,
+                    fields=clean(row.fields),
                 )
                 for row in rows
             ],

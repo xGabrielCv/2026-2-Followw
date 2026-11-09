@@ -3,7 +3,7 @@ import uuid
 from pathlib import Path
 
 from sigaa_client import lookup_key
-from sqlalchemy import delete, func, or_, select, tuple_
+from sqlalchemy import select, tuple_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.models import Classroom, Subject
@@ -18,7 +18,7 @@ from api.logger import event
 CLASSROOMS_CSV = DATA_DIR / "classrooms.csv"
 KEY = ("subject_code", "number", "semester")
 # Horário e sala das gravadas são do sync, que replaneja as aulas.
-FIELDS = ("vacancies", "occupied")
+FIELDS = ("vacancies", "occupied", "offer_active")
 _LOOKUP_BATCH = 1000
 
 type ClassroomKey = tuple[str, str, str]
@@ -43,6 +43,7 @@ def read_classrooms(
             room=row["room"].strip() or None,
             vacancies=int(row["vacancies"]) if row["vacancies"] else None,
             occupied=int(row["occupied"]) if row["occupied"] else None,
+            offer_active=True,
         )
         names[_key(classroom)] = [
             name.strip() for name in row["professors"].split(";") if name.strip()
@@ -93,21 +94,14 @@ async def seed_classrooms(session: AsyncSession, path: Path = CLASSROOMS_CSV) ->
 
 
 async def prune_public_classrooms(session: AsyncSession, oldest: str) -> None:
-    """Apaga as turmas da oferta de semestres que saíram do CSV, sem aluno nem estatística.
-
-    As que algum aluno abriu (e as com estatística, que alimentam os índices) ficam.
-    """
+    """Encerra ofertas antigas sem apagar turmas, estatísticas ou referências comunitárias."""
     result = await session.execute(
-        delete(Classroom)
+        update(Classroom)
         .where(
             Classroom.semester < oldest,
-            Classroom.front_end_id.is_(None),
-            or_(
-                Classroom.statistics.is_(None),
-                func.jsonb_typeof(Classroom.statistics) != "array",
-                Classroom.statistics == [],
-            ),
+            Classroom.offer_active.is_(True),
         )
+        .values(offer_active=False)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount:

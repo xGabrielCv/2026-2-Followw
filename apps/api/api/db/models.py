@@ -179,6 +179,7 @@ class Classroom(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     sigaa_id: Mapped[int | None] = mapped_column()
     number: Mapped[str] = mapped_column()
     semester: Mapped[str] = mapped_column()
+    offer_active: Mapped[bool] = mapped_column(default=True, server_default="true")
     schedule: Mapped[str | None] = mapped_column()
     room: Mapped[str | None] = mapped_column()
     # Vagas e ocupação vêm da busca pública, pelo seed.
@@ -445,6 +446,7 @@ class AdminLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """O que o administrador fez, para auditoria."""
 
     __tablename__ = "admin_log"
+    content_proof: Mapped[str | None] = mapped_column(Encrypted("admin.content.proof"))
 
     action: Mapped[str] = mapped_column()
     target_type: Mapped[str | None] = mapped_column()

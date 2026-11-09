@@ -2,7 +2,9 @@
 
 import argparse
 import asyncio
+import atexit
 import csv
+import os
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from pathlib import Path
@@ -16,6 +18,32 @@ ATTEMPTS = 3
 RETRY_DELAY = 2
 UNIT_DELAY = 0.5
 TIMEOUT = 45
+_requests = 0
+
+
+async def _count_request(_request):
+    global _requests
+    _requests += 1
+
+
+def _counted_client() -> SigaaPublicClient:
+    client = SigaaPublicClient(timeout=TIMEOUT)
+    transport = getattr(client, "_http", None)
+    if isinstance(transport, httpx.AsyncClient):
+        transport.event_hooks["request"].append(_count_request)
+    return client
+
+
+def _save_request_count():
+    path = os.environ.get("FOLLOWW_PUBLIC_COUNTER")
+    if path:
+        try:
+            Path(path).write_text(str(_requests), encoding="ascii")
+        except OSError:
+            pass
+
+
+atexit.register(_save_request_count)
 PROGRESS_EVERY = 50
 NETWORK_ERRORS = (SigaaError, httpx.HTTPError)
 
@@ -77,7 +105,7 @@ async def run_pool[I, T](
     results: dict[int, T] = {}
 
     async def worker() -> None:
-        async with SigaaPublicClient(timeout=TIMEOUT) as client:
+        async with _counted_client() as client:
             for index, item in queue:
                 results[index] = await work(client, item)
                 if label and (
@@ -106,7 +134,7 @@ async def load_units(
     list_units: Callable[[SigaaPublicClient], Awaitable[list[Unit]]] = _classroom_units,
 ) -> list[Unit]:
     """As unidades de `list_units` (padrão: turmas); `only` filtra por id ou nome exato."""
-    async with SigaaPublicClient(timeout=TIMEOUT) as client:
+    async with _counted_client() as client:
         units = await list_units(client)
     if not units:
         raise RuntimeError("O SIGAA não retornou unidades.")

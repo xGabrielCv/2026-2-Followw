@@ -144,6 +144,7 @@ class SubjectCatalogRepository:
         return list(
             await self._session.scalars(
                 select(Classroom.semester)
+                .where(Classroom.offer_active.is_(True))
                 .distinct()
                 .order_by(Classroom.semester.desc())
                 .limit(limit)

@@ -335,6 +335,9 @@ class MaterialService:
             ):
                 raise HTTPException(404, "Material não encontrado.")
             await session.delete(material)
+            from api.modules.community.activity import record_deletion
+
+            await record_deletion(session, "materials")
             return material.storage_key
 
         storage_key = await self._db.write(write)
@@ -348,6 +351,9 @@ async def delete_material(session: AsyncSession, material_id: uuid.UUID) -> bool
         return False
     after_commit(session, partial(material_storage().delete, material.storage_key))
     await session.execute(delete(Material).where(Material.id == material_id))
+    from api.modules.community.activity import record_deletion
+
+    await record_deletion(session, "materials")
     return True
 
 

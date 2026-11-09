@@ -9,5 +9,6 @@ def main():
         "api.main:app",
         host=os.environ.get("API_HOST", "127.0.0.1"),
         port=8000,
+        access_log=False,
         reload=os.environ.get("ENVIRONMENT") != "production",
     )

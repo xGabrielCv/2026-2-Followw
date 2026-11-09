@@ -1,21 +1,13 @@
-"""Dados fictícios para testar o app localmente: grupos, avaliações e índices de reprovação.
-
-Só existe com `DEMO_DATA` ligado (o `run.ps1` liga; produção nunca). Cada linha criada fica em
-`demo_records`, então apagar remove só o que veio daqui, sem tocar nos dados reais.
-"""
+"""Namespace sintético controlado exclusivamente pelo Owner no painel local."""
 
 import random
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.account import Account
-from api.core.config import settings
-from api.db.context import set_context
 from api.db.main import DatabaseDep
 from api.db.models import (
     Classroom,
@@ -30,7 +22,6 @@ from api.db.models import (
     SharedStatistics,
     Tutorial,
 )
-from api.modules.classrooms.service import ClassroomService
 from api.modules.demo.community import community as _community
 from api.modules.materials.service import delete_material
 
@@ -59,12 +50,6 @@ class DemoStatus(BaseModel):
     materials: int = 0
     posts: int = 0
     tutorials: int = 0
-
-
-async def require_demo() -> None:
-    if not settings.demo_data or settings.environment == "production":
-        raise HTTPException(404, "Dados de demonstração desligados.")
-    set_context(scope="demo")
 
 
 def _statistics(rng: random.Random) -> list[dict[str, object]]:
@@ -101,20 +86,6 @@ class DemoService:
             )
 
         return await self._db.read(load)
-
-    async def load(self, account: Account) -> DemoStatus:
-        current_status = await self.status()
-        if current_status.loaded:
-            return current_status
-        # As turmas do aluno vêm do SIGAA; o banco não sabe quem cursa o quê.
-        turmas = await ClassroomService(account, self._db).list_turmas("all")
-        everything = [turma.row.id for turma in turmas]
-        current = [turma.row.id for turma in turmas if turma.current]
-        await self._db.write(lambda session: _load(session, everything, current))
-        return await self.status()
-
-    async def clear(self) -> None:
-        await self._db.write(_clear)
 
 
 async def _load(
@@ -212,14 +183,44 @@ async def _load(
     await session.flush()
 
 
-async def _clear(session: AsyncSession) -> None:
-    await session.execute(text("SELECT pg_advisory_xact_lock(865942120)"))
+async def clear_records(session: AsyncSession, *, lock: bool = True):
     rows = (await session.execute(select(DemoRecord.kind, DemoRecord.record_id))).all()
+    classrooms = [record_id for kind, record_id in rows if kind == "classroom"]
+    if classrooms:
+        if lock:
+            await session.execute(
+                select(Classroom.id)
+                .where(Classroom.id.in_(classrooms))
+                .with_for_update()
+            )
+        groups = [record_id for kind, record_id in rows if kind == "group"]
+        real_group = await session.scalar(
+            select(ClassroomGroup.id)
+            .where(
+                ClassroomGroup.classroom_id.in_(classrooms),
+                ClassroomGroup.id.not_in(groups),
+            )
+            .limit(1)
+        )
+        real_statistics = await session.scalar(
+            select(SharedStatistics.classroom_id)
+            .where(
+                SharedStatistics.classroom_id.in_(classrooms),
+                SharedStatistics.sharer_key != "demo",
+            )
+            .limit(1)
+        )
+        if real_group or real_statistics:
+            raise HTTPException(
+                409,
+                "Uma turma sintética possui conteúdo real. A limpeza foi recusada para preservá-lo.",
+            )
     posts = [record_id for kind, record_id in rows if kind == "post"]
     if posts:
-        await session.execute(
-            select(ForumPost.id).where(ForumPost.id.in_(posts)).with_for_update()
-        )
+        if lock:
+            await session.execute(
+                select(ForumPost.id).where(ForumPost.id.in_(posts)).with_for_update()
+            )
         replies = [record_id for kind, record_id in rows if kind == "reply"]
         real_reply = await session.scalar(
             select(ForumReply.id)
@@ -234,6 +235,12 @@ async def _clear(session: AsyncSession) -> None:
                 409,
                 "Uma publicação de demonstração recebeu respostas reais. Revise essas respostas antes de limpar a demonstração.",
             )
+    return rows
+
+
+async def _clear(session: AsyncSession) -> None:
+    await session.execute(text("SELECT pg_advisory_xact_lock(865942120)"))
+    rows = await clear_records(session)
     tables = {
         "group": ClassroomGroup,
         "review": ProfessorReview,
@@ -248,6 +255,3 @@ async def _clear(session: AsyncSession) -> None:
         if kind == "material":
             await delete_material(session, record_id)
     await session.execute(delete(DemoRecord))
-
-
-DemoServiceDep = Annotated[DemoService, Depends()]

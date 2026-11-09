@@ -119,6 +119,14 @@ Update-Path
 
 # Uma segunda execução não reinstala dependências nem abre outra aba da instância ativa.
 if (-not ($Check -or $Test -or $Reseed -or $Update -or $CollectOffer) -and (Test-Port $WebPort) -and (Test-Port $ApiPort)) {
+    # Código atualizado pode precisar de tabelas/colunas novas mesmo com a instância ativa.
+    if (Test-Command uv) {
+        $previousMaintenanceUrl = $env:DATABASE_MAINTENANCE_URL
+        try {
+            $env:DATABASE_MAINTENANCE_URL = $DatabaseUrl
+            Invoke-Checked uv @('run', '--no-sync', 'python', '-c', 'import asyncio; from api.db.main import update_schema; asyncio.run(update_schema())') $ApiDir
+        } finally { $env:DATABASE_MAINTENANCE_URL = $previousMaintenanceUrl }
+    } else { Fail 'uv indisponível: não foi possível conferir o esquema da instância ativa.' }
     Ok "Instância já em execução: http://localhost:$WebPort"
     exit 0
 }
@@ -298,7 +306,7 @@ if (-not $adminReady) {
 $env:DATABASE_URL = $DatabaseUrl
 $env:DATABASE_MAINTENANCE_URL = $DatabaseUrl
 $env:JOB_QUEUE = 'local'
-# Libera em Perfil > Conta os dados de demonstração; nunca fica ligado em produção.
+# Estado inicial opcional da demonstração; o controle fica somente no painel do Owner local.
 $env:DEMO_DATA = if ($Demo) { '1' } else { '0' }
 $env:PUBLIC_URL = "http://127.0.0.1:$ApiPort"
 # O proxy /api do front (vite.config.ts) segue a porta da API.
@@ -374,7 +382,7 @@ $api = $null
 $web = $null
 try {
     $api = Start-Process -FilePath 'uv' -WorkingDirectory $ApiDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Local 'api.out.log') -RedirectStandardError (Join-Path $Local 'api.err.log') -ArgumentList @(
-        'run', '--no-sync', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', $ApiPort,
+        'run', '--no-sync', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', $ApiPort, '--no-access-log',
         # O front recarrega sozinho; a API também, para nunca rodar código antigo.
         '--reload', '--reload-dir', 'api', '--reload-dir', '..\..\packages'
     )

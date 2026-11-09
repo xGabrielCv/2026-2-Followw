@@ -8,12 +8,16 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.core.config import settings as runtime_settings
 from api.db.main import DatabaseDep
 from api.db.models import (
+    ClassroomGroup,
     ForumPost,
+    ForumReply,
     Material,
     ProfessorReview,
     Report,
+    SystemText,
     Tutorial,
 )
 from api.modules.admin import auth
@@ -25,6 +29,7 @@ from api.modules.sync.scheduler import get_scheduler
 
 router = APIRouter()
 Source = Literal["catalog", "restaurant"]
+Resource = Literal["all", "professors", "offers", "subjects", "curricula", "units"]
 
 
 class SourceState(BaseModel):
@@ -52,6 +57,8 @@ class RunView(BaseModel):
     changed: bool
     records: int | None
     error: str | None
+    resource: str = "all"
+    metrics: dict[str, int] = {}
 
 
 class Overview(BaseModel):
@@ -59,6 +66,7 @@ class Overview(BaseModel):
     settings: SyncSettings
     sources: list[SourceState]
     history: list[RunView]
+    scheduler_enabled: bool
 
 
 class Activity(BaseModel):
@@ -99,6 +107,8 @@ def _run_view(row: SyncRun) -> RunView:
         changed=row.changed,
         records=row.records,
         error=row.error,
+        resource=row.resource,
+        metrics=row.metrics,
     )
 
 
@@ -121,6 +131,9 @@ async def overview(db: DatabaseDep) -> Overview:
                 for key in SOURCES
             ],
             history=[_run_view(row) for row in runs],
+            scheduler_enabled=runtime_settings.sync_scheduler_enabled
+            if runtime_settings.sync_scheduler_enabled is not None
+            else runtime_settings.environment != "testing",
         )
 
     return await db.read(read)
@@ -130,7 +143,8 @@ async def overview(db: DatabaseDep) -> Overview:
 async def history(
     db: DatabaseDep,
     source: Source | None = None,
-    status: Literal["success", "unchanged", "failed", "skipped"] | None = None,
+    status: Literal["running", "success", "unchanged", "failed", "skipped", "cancelled"]
+    | None = None,
     page: int = Query(1, ge=1, le=1000),
     page_size: int = Query(25, ge=1, le=100),
 ) -> dict:
@@ -181,11 +195,15 @@ async def update_settings(
     status_code=202,
     dependencies=[auth.require_permission("operations")],
 )
-async def run_now(source: Source, request: Request, db: DatabaseDep) -> dict[str, str]:
+async def run_now(
+    source: Source, request: Request, db: DatabaseDep, resource: Resource = "all"
+) -> dict[str, str]:
     """Começa em segundo plano e responde na hora; o resultado aparece no histórico."""
     if source not in SOURCES:
         raise HTTPException(404, "Fonte desconhecida.")
-    outcome = await get_scheduler().trigger(source)
+    if source != "catalog" and resource != "all":
+        raise HTTPException(422, "O RU não possui esse recurso de catálogo.")
+    outcome = await get_scheduler().trigger(source, resource, actor=request.state.admin)
     if outcome == "busy":
         raise HTTPException(409, "Esta fonte já está sincronizando.")
     if outcome == "cooldown":
@@ -193,17 +211,19 @@ async def run_now(source: Source, request: Request, db: DatabaseDep) -> dict[str
             429, "Aguarde um pouco antes de sincronizar esta fonte de novo."
         )
 
-    async def audit(session: AsyncSession) -> None:
-        await log(
-            session,
-            "sync.run",
-            target_type="sync",
-            target_id=source,
-            actor=request.state.admin,
-        )
-
-    await db.write(audit)
     return {"status": "started", "source": source}
+
+
+@router.post(
+    "/{source}/cancel",
+    status_code=202,
+    dependencies=[auth.require_permission("operations")],
+)
+async def cancel(source: Source, request: Request, db: DatabaseDep) -> dict:
+    if not await get_scheduler().cancel(source, actor=request.state.admin):
+        raise HTTPException(409, "Não há execução ativa para cancelar.")
+
+    return {"status": "cancelling", "source": source}
 
 
 @router.get("/resources", dependencies=[auth.require_permission("operations")])
@@ -217,14 +237,27 @@ async def resources(db: DatabaseDep) -> list[Activity]:
         ("reviews", "Avaliações de docentes", ProfessorReview),
         ("tutorials", "Guias", Tutorial),
         ("reports", "Denúncias", Report),
+        ("groups", "Grupos de turmas", ClassroomGroup),
     )
 
     async def read(session: AsyncSession) -> list[Activity]:
         items = []
         for key, label, model in models:
-            last = await session.scalar(select(func.max(model.created_at)))
+            last = await session.scalar(select(func.max(model.updated_at)))
+            deletion = await session.get(SystemText, f"activity.{key}")
+            if deletion:
+                try:
+                    deleted_at = datetime.fromisoformat(deletion.value)
+                    if deleted_at.tzinfo:
+                        last = max(last, deleted_at) if last else deleted_at
+                except ValueError:
+                    pass
+            if key == "forum":
+                reply_at = await session.scalar(select(func.max(ForumReply.updated_at)))
+                if reply_at:
+                    last = max(last, reply_at) if last else reply_at
             recent = await session.scalar(
-                select(func.count()).select_from(model).where(model.created_at >= since)
+                select(func.count()).select_from(model).where(model.updated_at >= since)
             )
             total = await session.scalar(select(func.count()).select_from(model))
             items.append(

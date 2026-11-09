@@ -7,7 +7,6 @@ import { GitHubLink } from '#/components/GitHubLink';
 import { HeaderBar, HeaderTitle } from '#/components/HeaderBar';
 import { ListCard } from '#/components/ListCard';
 import { BackupSetting } from '#/components/profile/BackupSetting';
-import { DemoDataSetting } from '#/components/profile/DemoDataSetting';
 import { DocumentDownloads } from '#/components/profile/DocumentDownloads';
 import { EditProfile } from '#/components/profile/EditProfile';
 import { InstallPromptCard } from '#/components/profile/InstallPromptCard';
@@ -130,7 +129,6 @@ function AccountSection({
                 <DocumentDownloads />
                 <ShareStatisticsSetting />
                 <LayoutModeSetting />
-                <DemoDataSetting />
                 <BackupSetting registration={registration} />
                 <div className="-mx-3">
                     <Link

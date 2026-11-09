@@ -187,7 +187,7 @@ async def test_seed_vincula_docentes_ao_catalogo_e_preserva_turma_sem_nomes(
     assert professors == 3
 
 
-async def test_seed_apaga_turmas_publicas_antigas_mas_guarda_historico_e_estatisticas(
+async def test_seed_inativa_turmas_antigas_sem_apagar_historico_ou_referencias(
     async_database, tmp_path
 ):
     async with async_database.begin() as session:
@@ -219,8 +219,15 @@ async def test_seed_apaga_turmas_publicas_antigas_mas_guarda_historico_e_estatis
             )
         ).all()
     assert kept == [
+        ("2025.2", "01"),
         ("2025.2", "02"),
         ("2025.2", "03"),
         ("2026.2", "01"),
         ("2027.1", "01"),
     ]
+    async with async_database() as session:
+        assert not await session.scalar(
+            select(Classroom.offer_active).where(
+                Classroom.semester == "2025.2", Classroom.number == "01"
+            )
+        )
