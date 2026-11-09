@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import type { MaterialItem } from '#/queries/community';
 
@@ -41,7 +41,14 @@ export function MaterialPreview({
                         denúncia ou abra um chamado no suporte.
                     </DialogDescription>
                 </DialogHeader>
-                <Link to="/suporte" search={{ category: 'material_problem', reference: `material:${item.id}` }} className="text-xs font-semibold text-primary underline" onClick={() => onOpenChange(false)}>Relatar problema neste arquivo</Link>
+                <Link
+                    to="/suporte"
+                    search={{ category: 'material_problem', reference: `material:${item.id}` }}
+                    className="text-xs font-semibold text-primary underline"
+                    onClick={() => onOpenChange(false)}
+                >
+                    Relatar problema neste arquivo
+                </Link>
                 {open && (
                     <PreviewContent
                         key={attempt}

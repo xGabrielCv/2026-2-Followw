@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Copy, KeyRound, LifeBuoy, Plus, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
 import { useQueryStates } from 'nuqs';
 import { createStandardSchemaV1 } from 'nuqs/server';
+import { useState } from 'react';
 
 import { BackHeader } from '#/components/HeaderBar';
 import { TabFilter } from '#/components/TabFilter';
@@ -21,7 +21,6 @@ import { Input } from '#/components/ui/input';
 import { Label } from '#/components/ui/label';
 import { Textarea } from '#/components/ui/textarea';
 import { useOnline } from '#/lib/online';
-import { supportParsers } from '#/lib/support-reference';
 import {
     hasPersonalData,
     OPEN_STATUSES,
@@ -30,6 +29,7 @@ import {
     TICKET_STATUS_LABELS,
     type TicketCategory
 } from '#/lib/support';
+import { supportParsers } from '#/lib/support-reference';
 import { apiMessage } from '#/queries/community';
 import {
     rememberTicket,
@@ -53,7 +53,10 @@ function SupportPage() {
     const navigate = useNavigate();
     const tickets = useOwnTickets();
     const [creating, setCreating] = useState(false);
-    const [{ category, reference }, setReference] = useQueryStates(supportParsers, { history: 'replace', scroll: false });
+    const [{ category, reference }, setReference] = useQueryStates(supportParsers, {
+        history: 'replace',
+        scroll: false
+    });
     const [recovering, setRecovering] = useState(false);
     const [created, setCreated] = useState<{ id: string; number: number; code: string } | null>(
         null
@@ -96,7 +99,7 @@ function SupportPage() {
             <NewTicketDialog
                 key={reference ?? 'novo'}
                 open={creating || Boolean(reference)}
-                onOpenChange={open => {
+                onOpenChange={(open) => {
                     setCreating(open);
                     if (!open) void setReference({ reference: null, category: null });
                 }}
@@ -174,14 +177,24 @@ function NewTicketDialog({
                         Não informe matrícula, CPF, e-mail ou senha.
                     </DialogDescription>
                 </DialogHeader>
-                {reference && <p className="text-xs wrap-anywhere text-muted-foreground">Referência pública: {reference}. Informe o problema sem dados pessoais.</p>}
+                {reference && (
+                    <p className="text-xs wrap-anywhere text-muted-foreground">
+                        Referência pública: {reference}. Informe o problema sem dados pessoais.
+                    </p>
+                )}
                 <form
                     className="flex flex-col gap-3"
                     onSubmit={(event) => {
                         event.preventDefault();
                         if (!valid || create.isPending) return;
                         create.mutate(
-                            { body: { category, title: title.trim(), body: `${reference ? `Referência pública: ${reference}\n\n` : ''}${body.trim()}` } },
+                            {
+                                body: {
+                                    category,
+                                    title: title.trim(),
+                                    body: `${reference ? `Referência pública: ${reference}\n\n` : ''}${body.trim()}`
+                                }
+                            },
                             {
                                 onSuccess: (data) => {
                                     rememberTicket({

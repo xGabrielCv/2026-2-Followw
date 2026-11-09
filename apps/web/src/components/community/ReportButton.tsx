@@ -1,5 +1,5 @@
-import { Flag } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
+import { Flag } from 'lucide-react';
 import { useState } from 'react';
 
 import type { ReportReason, ReportTarget } from '#/queries/community';
@@ -71,7 +71,20 @@ export function ReportButton({ target, id, what, className }: ReportButtonProps)
                         </DialogDescription>
                     </DialogHeader>
                     {open && <ReportForm target={target} id={id} onDone={() => setOpen(false)} />}
-                    <Link to="/suporte" search={{ category: target === 'material' ? 'material_problem' : target === 'review' ? 'review_question' : 'moderation_review', reference: `${target}:${id}` }} className="text-xs font-semibold text-primary underline" onClick={() => setOpen(false)}>
+                    <Link
+                        to="/suporte"
+                        search={{
+                            category:
+                                target === 'material'
+                                    ? 'material_problem'
+                                    : target === 'review'
+                                      ? 'review_question'
+                                      : 'moderation_review',
+                            reference: `${target}:${id}`
+                        }}
+                        className="text-xs font-semibold text-primary underline"
+                        onClick={() => setOpen(false)}
+                    >
                         Pedir ajuda ou revisão pelo suporte
                     </Link>
                 </DialogContent>

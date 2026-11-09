@@ -17,7 +17,7 @@ test('planejamento inclui optativa, respeita carga e restaura preferências loca
     await expect(page.getByRole('list', { name: 'Semestres simulados' })).toContainText('FGA0001');
     const simulated = page.getByRole('list', { name: 'Semestres simulados' });
     const rows = await simulated.locator(':scope > li').allTextContents();
-    expect(rows.every(text => Number(/(\d+)h/.exec(text)?.[1]) <= 120)).toBe(true);
+    expect(rows.every((text) => Number(/(\d+)h/.exec(text)?.[1]) <= 120)).toBe(true);
     await page.reload();
     await ready(page);
     await expect(page.getByLabel('Matérias por semestre', { exact: true })).toHaveValue('4');
