@@ -1,0 +1,134 @@
+# Produção (VPS com Docker). Nada é publicado agora: este arquivo prepara a implantação futura.
+#   cp deploy/production.env.example deploy/production.env   # e preencha com segredos próprios
+#   docker compose -f deploy/compose.production.yml --env-file deploy/production.env up -d --build
+#
+# Redes: `internal` (sem saída para a internet) liga banco, API, front e proxy. A API também entra em
+# `egress` (só saída, para consultar SIGAA e UnB); o proxy entra em `edge` (portas 80/443).
+# O PostgreSQL não publica porta alguma e só existe em `internal`.
+name: followw
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  read_only: true
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  db:
+    <<: *hardening
+    image: postgres:18
+    read_only: false # o PostgreSQL grava em volume e em /var/run
+    cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: followw
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d followw"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 1g
+    cpus: 1.0
+    stop_grace_period: 30s
+
+  # Roda uma vez por atualização: cria/atualiza tabelas, o papel restrito e as políticas RLS,
+  # com a conta de manutenção. A API nunca recebe esta conta.
+  migrate:
+    image: followw-api
+    build: { context: .., dockerfile: deploy/Dockerfile.api }
+    user: "10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    command: ["db-init"]
+    environment: &app-env
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+asyncpg://followw_app:${APP_DB_PASSWORD:?defina APP_DB_PASSWORD}@db:5432/followw
+      DATABASE_MAINTENANCE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/followw
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?defina JWT_SECRET_KEY}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?defina DATA_ENCRYPTION_KEY}
+      DATA_ENCRYPTION_KEY_ID: ${DATA_ENCRYPTION_KEY_ID:-initial}
+      CORS_ORIGINS: '["https://${PUBLIC_HOST:?defina PUBLIC_HOST}"]'
+      PUBLIC_URL: https://${PUBLIC_HOST}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      RATE_LIMIT_SECRET_KEY: ${RATE_LIMIT_SECRET_KEY:-}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-8}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-4}
+    networks: [internal]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+    tmpfs: ["/tmp"]
+
+  api:
+    <<: *hardening
+    image: followw-api
+    environment:
+      <<: *app-env
+      # a API NÃO conhece a conta de manutenção (sem bypass de RLS)
+      DATABASE_MAINTENANCE_URL: ""
+      WEB_CONCURRENCY: ${API_WORKERS:-2}
+    user: "10001"
+    volumes:
+      - materials:/data/materials
+    tmpfs: ["/tmp"]
+    networks: [internal, egress]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    mem_limit: 1g
+    cpus: 1.5
+    stop_grace_period: 30s
+
+  web:
+    <<: *hardening
+    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    image: followw-web
+    networks: [internal]
+    depends_on:
+      api: { condition: service_healthy }
+    tmpfs: ["/tmp"]
+    mem_limit: 512m
+    cpus: 1.0
+
+  proxy:
+    <<: *hardening
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?defina PUBLIC_HOST}
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:-0.0.0.0/0 ::/0}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      internal:
+        # o front (SSR) fala com a API pelo endereço público: aqui ele resolve para o próprio proxy
+        aliases: ["${PUBLIC_HOST}"]
+      edge: {}
+    depends_on: [web, api]
+    mem_limit: 256m
+    cpus: 0.5
+
+networks:
+  internal:
+    internal: true # sem rota para fora: banco, API e front não falam com a internet
+  egress: {} # só a API usa: saída para o SIGAA e a UnB
+  edge: {}
+
+volumes:
+  pgdata:
+  materials:
+  caddy_data:
+  caddy_config:

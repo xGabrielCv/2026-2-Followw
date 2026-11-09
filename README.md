@@ -44,7 +44,9 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 * 🍽️ Cardápio do RU por campus e refeição, com opções vegetarianas, para consultar e compartilhar;
 * 🔎 busca de matérias, cursos e docentes, com horários, vagas, requisitos e perfis;
 * 🧭 fluxo de cada curso por semestre, com carga horária, pré e correquisitos;
-* 🤝 leitura de grupos, avaliações, materiais, dúvidas, posts e guias aprovados, sem conta.
+* 🤝 leitura de grupos, avaliações, materiais, dúvidas, posts e guias aprovados, sem conta;
+* 🛟 **suporte anônimo**: abra um chamado sem login e sem se identificar (a chave fica só no seu aparelho; um
+  código de recuperação opcional abre o chamado em outro).
 
 Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias continuam públicas.
 
@@ -52,7 +54,10 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 
 * 📅 **agenda do dia**, com a aula em andamento, a próxima e quanto falta para cada uma;
 * 🏫 turmas, notas e postagens, com **frequência** e aviso quando as faltas chegam perto dos 25%;
-* 🧪 **simulador de grades** para comparar várias grades do próximo semestre;
+* 🧪 **simulador de grades**: compare várias grades e deixe o app **sugerir combinações sem choque**, com dias e
+  turnos bloqueados, menos janelas, menos dias no campus e explicação de cada escolha;
+* 🎓 **planejar a formatura**: projeção dos semestres que faltam no fluxo obrigatório (pré e correquisitos,
+  carga por semestre, "e se eu reprovar em..."). É estimativa, não confirma integralização;
 * 🧠 **recomendações** de matérias pelo seu fluxo;
 * 📊 **estatísticas comparadas**: você, seu curso e a UnB, calculado no seu aparelho;
 * 💼 **estágios** do mural do SIGAA, com filtros por curso e bolsa;
@@ -85,10 +90,17 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 | Configurações, calendário, presenças marcadas, grades | 📱 só no seu aparelho, com backup em arquivo |
 | Avaliações, grupos, materiais, posts, guias | ☁️ na nuvem, **sem nome nem matrícula** e cifrados (AES-256-GCM) |
 | Índices de aprovação das turmas | ☁️ só se você liberar, e só a porcentagem da turma |
+| Chamados de suporte | ☁️ texto cifrado; só um verificador da chave (nunca a chave), sem matrícula, nome ou e-mail |
 
 A autoria anônima vem de um segredo aleatório do aparelho — nunca da matrícula — e não associamos nome ou matrícula às publicações. O conteúdo compartilhado é público e a moderação
 pode decifrá-lo; não publique informações pessoais no texto ou nos arquivos. Cookies de sessão e perfil são cifrados; cache, preferências e backups locais ainda não têm
 criptografia própria. O app explica tudo isso em **Perfil › Uso de dados**.
+
+No banco, a API conecta com um papel PostgreSQL restrito (`followw_app`, sem bypass) e **Row-Level Security**
+protege chamados, contas e sessões administrativas e o log de auditoria (que só aceita inserção). Cada
+consulta externa a fontes públicas (SIGAA, RU) passa por cache, *single-flight* e *circuit breaker*, para
+que milhares de alunos não virem milhares de consultas idênticas. Dados privados continuam indo ao SIGAA a
+cada pedido: o servidor não os guarda.
 
 ---
 
@@ -132,12 +144,32 @@ consultam os serviços oficiais da UnB; `-Offline` usa somente o que já existe 
 Guarde uma cópia segura das chaves, do banco e dos materiais se precisar restaurar a instância.
 A documentação interna de desenvolvimento e os backups locais não são publicados.
 
+### 🐳 Produção (preparada, ainda não testada em contêiner)
+
+A pasta `deploy/` traz Dockerfiles (API e front), um Compose de produção (banco só em rede interna, usuários sem
+privilégio, limites de recursos, HTTPS pelo Caddy), modelo de variáveis **sem segredos** e scripts de backup e
+restauração. **Nada disso foi executado em Docker até agora** (só validado estaticamente): valide em um ambiente
+com Docker antes de publicar uma instância, e guarde a `DATA_ENCRYPTION_KEY` fora do servidor.
+
 Para outra plataforma, use Python 3.14+, uv, Node, Bun e PostgreSQL 18: copie `.env.example` para
 `apps/api/.env`, defina chaves aleatórias próprias, rode `uv sync --all-packages --all-groups --locked`,
 `uv run --no-sync python scripts/bootstrap_data.py`, `uv run --no-sync db-init` e
 `uv run --no-sync api` a partir de `apps/api`. Em outro terminal: `cd apps/web; bun install --frozen-lockfile; bun dev`.
 O exemplo é de desenvolvimento. Hospedagem pública precisa de HTTPS, proxy de `/api` para a API,
 configuração de produção e cópias de segurança; o script local só escuta no próprio computador.
+
+---
+
+## 🧪 Testes e carga
+
+```powershell
+.\run.ps1 -Test                      # API, bibliotecas, tipos, lint e testes do front
+cd apps\web; bun run e2e             # Playwright (admin com MFA e chamado do aluno ao atendimento)
+cd apps\api; uv run --no-sync python loadtest/run.py --workers 4 --levels 100,250,500 --seconds 20
+```
+
+O teste de carga usa banco sintético e **simula** o SIGAA e a UnB com a saída de rede bloqueada: nunca é apontado
+para os sistemas reais.
 
 ---
 

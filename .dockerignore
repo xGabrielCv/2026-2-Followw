@@ -1,0 +1,27 @@
+# O contexto de build leva só o código. Nada de segredos, dados ou documentação interna.
+**/.env
+**/.env.*
+**/*.env
+.git
+.local
+.venv
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+apps/web/.output
+apps/web/.nitro
+apps/web/.tanstack
+apps/web/e2e
+apps/web/tests
+apps/api/tests
+apps/api/loadtest
+packages/*/tests
+packages/sigaa-client/data
+docs
+docs-interno
+deploy/production.env
+*.log
+*.dump
+*.md
+!README.md

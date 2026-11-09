@@ -1,0 +1,30 @@
+# HTTPS automático (Let's Encrypt) para ${PUBLIC_HOST}. O proxy é o único serviço exposto.
+{$PUBLIC_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# O painel do administrador exige MFA, mas convém restringir por origem: ADMIN_ALLOWED_IPS aceita
+	# uma lista de IPs/CIDRs (ex.: "203.0.113.7 198.51.100.0/24"). Fora da lista, o painel "não existe".
+	@admin_blocked {
+		path /api/admin /api/admin/*
+		not remote_ip {$ADMIN_ALLOWED_IPS}
+	}
+	respond @admin_blocked 404
+
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+
+	request_body {
+		max_size 25MB
+	}
+}

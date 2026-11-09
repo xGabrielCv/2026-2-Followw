@@ -1,0 +1,21 @@
+# Front do Followw (TanStack Start). Contexto de build: a raiz do repositório.
+#   docker build -f deploy/Dockerfile.web -t followw-web .
+FROM oven/bun:1 AS build
+WORKDIR /app/apps/web
+COPY apps/web/package.json apps/web/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY apps/web ./
+# Segredos nunca entram aqui: só variáveis públicas (VITE_*), se houver, por --build-arg.
+ARG VITE_POSTHOG_KEY=""
+ENV VITE_POSTHOG_KEY=$VITE_POSTHOG_KEY
+RUN bun run build
+
+FROM node:24-slim
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+WORKDIR /app
+COPY --from=build --chown=node:node /app/apps/web/.output ./.output
+USER node
+EXPOSE 3000
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \
+    CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+CMD ["node", ".output/server/index.mjs"]
