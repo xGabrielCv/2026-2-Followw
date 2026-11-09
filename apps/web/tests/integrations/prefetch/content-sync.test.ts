@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, test } from 'bun:test';
 
-import { invalidateChanged } from '#/integrations/prefetch/ContentSync';
+import { invalidateChanged, sharedAcrossTabs } from '#/integrations/prefetch/ContentSync';
 
 const key = (path: string) => ['get', path, {}];
 
@@ -23,5 +23,19 @@ describe('checagem de atualizações da nuvem', () => {
         client.setQueryData(key('/forum'), {});
         expect(invalidateChanged(client, { forum: 'b' }, { forum: 'b' })).toEqual([]);
         expect(client.getQueryState(key('/forum'))?.isInvalidated).toBe(false);
+    });
+});
+
+describe('compartilhamento entre abas', () => {
+    test('sem Web Locks utilizáveis cada aba confere sozinha, sem quebrar', () => {
+        const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+        for (const locks of [null, undefined, {}]) {
+            Object.defineProperty(globalThis, 'navigator', {
+                value: { locks },
+                configurable: true
+            });
+            expect(sharedAcrossTabs()).toBe(false);
+        }
+        if (original) Object.defineProperty(globalThis, 'navigator', original);
     });
 });

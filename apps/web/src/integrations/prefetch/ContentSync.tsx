@@ -44,10 +44,10 @@ export function invalidateChanged(
 const LEADER_LOCK = 'followw-content-sync';
 const CHANNEL = 'followw-content-version';
 
-/** Sem Web Locks ou BroadcastChannel cada aba confere por conta própria, como antes. */
-const sharedAcrossTabs = () =>
+/** Sem Web Locks ou BroadcastChannel (ou com `navigator.locks` vazio) cada aba confere por conta própria. */
+export const sharedAcrossTabs = () =>
     typeof navigator !== 'undefined' &&
-    'locks' in navigator &&
+    typeof navigator.locks?.request === 'function' &&
     typeof BroadcastChannel !== 'undefined';
 
 /**
