@@ -332,3 +332,15 @@ async def test_marca_recente_do_script_evita_repetir_na_subida(
     marca.write_text('{"updated_at": "2020-01-01T00:00:00+00:00"}', encoding="utf-8")
     await alterar(async_database, next_run_at=None)
     assert "catalog" in await agendador(async_database, fonte).tick()
+
+
+async def test_manual_na_primeira_vez_nao_deixa_o_agendador_repetir_em_seguida(
+    async_database,
+):
+    fonte = Fonte(Outcome("success", 1, "m"))
+    s = agendador(async_database, fonte)
+    assert await s.trigger("catalog") == "started"
+    await aguardar(s)
+    assert (await estado(async_database)).next_run_at > datetime.now(UTC)
+    assert "catalog" not in await s.tick()
+    assert fonte.chamadas == 1

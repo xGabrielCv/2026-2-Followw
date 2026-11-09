@@ -159,7 +159,9 @@ async def finish(
             if changed:
                 state.last_change_at = now
                 state.fingerprint = outcome.fingerprint
-            if trigger != "manual":
+            # Manual não adianta o horário seguinte, mas não deixa um vencimento antigo repetir a rodada.
+            overdue = state.next_run_at is None or state.next_run_at <= now
+            if trigger != "manual" or overdue:
                 state.next_run_at = next_run(now, times)
         elif status == "failed" and trigger != "manual":
             # Falha mantém o último dado válido e tenta de novo com espera crescente.
