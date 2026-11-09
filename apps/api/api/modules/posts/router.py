@@ -13,7 +13,7 @@ router = APIRouter()
     "/news",
     response_model=LatestNewsFeed,
     summary="Consultar até cinco notícias recentes das turmas atuais",
-    description="Retorna imediatamente as notícias disponíveis no banco, com IDs e o conteúdo já salvo. Listas vencidas são sincronizadas num job por turma, sem bloquear a resposta; o conteúdo de cada notícia segue sob demanda pelo detalhe da postagem. updating indica listas pendentes. A identidade é o par turma e ID do post.",
+    description="Consulta as postagens das turmas atuais no SIGAA, em sequência e sem persistência no servidor. O navegador pode reutilizar seu cache local cifrado. O detalhe da notícia é consultado sob demanda; a identidade é o par turma e ID da postagem.",
     responses=SIGAA_ERRORS,
 )
 async def get_latest_news(service: ClassroomPostsServiceDep) -> LatestNewsFeed:

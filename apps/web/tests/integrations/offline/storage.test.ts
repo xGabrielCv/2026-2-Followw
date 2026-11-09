@@ -79,7 +79,7 @@ describe('cache de páginas offline', () => {
         expect(cached()).toEqual(['/', '/login', '/ru', '/turmas']);
     });
 
-    test('baixa só as páginas que faltam e apaga caches de builds antigos', async () => {
+    test('falha parcial preserva o cache anterior até completar a nova versão', async () => {
         const home = new Response('home');
         stores.set('followw-pages-antigo', new FakeCache());
         stores.set('outro-cache', new FakeCache());
@@ -90,10 +90,30 @@ describe('cache de páginas offline', () => {
 
         await warmPages(true);
 
-        expect([...stores.keys()].toSorted()).toEqual([current, 'outro-cache'].toSorted());
+        expect([...stores.keys()].toSorted()).toEqual(
+            [current, 'outro-cache', 'followw-pages-antigo'].toSorted()
+        );
         expect(stores.get(current)?.entries.get('/')).toBe(home);
         // falha de rede numa página não impede as outras
         expect(cached()).toEqual(['/', '/ru']);
+    });
+
+    test('duas solicitações simultâneas compartilham o aquecimento', async () => {
+        let calls = 0;
+        const gate = Promise.withResolvers<void>();
+        Object.defineProperty(globalThis, 'fetch', {
+            configurable: true,
+            value: async () => {
+                calls++;
+                await gate.promise;
+                return new Response('shell público');
+            }
+        });
+        const first = warmPages(true);
+        const second = warmPages(true);
+        gate.resolve();
+        await Promise.all([first, second]);
+        expect(calls).toBe(4);
     });
 
     test('o cache de páginas é versionado por build', () => {

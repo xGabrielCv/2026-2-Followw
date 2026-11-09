@@ -97,7 +97,7 @@ function WeekStrip({
                         key={day.date}
                         type="button"
                         onClick={() => onSelect(day.date)}
-                        aria-label={dayLabel(day.date)}
+                        aria-label={`${LETTERS[day.weekday]}${Number(day.date.slice(8))}: ${dayLabel(day.date)}`}
                         aria-pressed={selected}
                         className="group flex flex-col items-center gap-1 rounded-xl py-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                     >

@@ -1,4 +1,4 @@
-import { keepPreviousData, noop, useQuery, useQueryClient } from '@tanstack/react-query';
+import { noop, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment } from 'react';
 
 import type { SearchResult, SearchType } from '#/queries/search';
@@ -34,7 +34,7 @@ export function SearchResults({
 }) {
     const client = useQueryClient();
     const options = searchQueryOptions(text, types, semester);
-    const result = useQuery({ ...options, placeholderData: keepPreviousData });
+    const result = useQuery(options);
     // a aba da categoria reaproveita a primeira página já carregada
     const showCategory =
         onShowCategory &&

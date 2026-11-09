@@ -907,11 +907,13 @@ describe('página de busca com estado na URL', () => {
             expect(page.getByRole('heading', { name: 'Docentes' })).toBeDefined()
         );
 
-        testing.fireEvent.change(searchbox(page), { target: { value: 'MAT0023' } });
-        await testing.act(() => new Promise((resolve) => setTimeout(resolve, 350)));
-        await testing.waitFor(() =>
-            expect(page.queryByRole('heading', { name: 'Docentes' })).toBeNull()
-        );
-        expect(page.getByText('Cálculo 1')).toBeDefined();
+        await testing.act(async () => {
+            testing.fireEvent.change(searchbox(page), { target: { value: 'MAT0023' } });
+        });
+        await testing.waitFor(() => {
+            expect(requests.some((url) => url.searchParams.get('q') === 'MAT0023')).toBe(true);
+            expect(page.queryByRole('heading', { name: 'Docentes' })).toBeNull();
+            expect(page.getByText('Cálculo 1')).toBeDefined();
+        });
     });
 });

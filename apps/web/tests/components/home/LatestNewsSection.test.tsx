@@ -53,6 +53,7 @@ function clientWith(posts: ClassroomPost[]) {
         defaultOptions: { queries: { retry: false, retryOnMount: false, staleTime: Infinity } }
     });
     client.setQueryData(latestNewsQueryOptions.queryKey, {
+        partial: false,
         items: posts.map((post) => ({ classroom, post }))
     });
     return client;
@@ -71,6 +72,7 @@ describe('últimas notícias da home', () => {
         const post = news(1, '2026-10-29');
         const client = clientWith([post]);
         client.setQueryData(latestNewsQueryOptions.queryKey, {
+            partial: false,
             items: [
                 {
                     classroom,
@@ -95,7 +97,7 @@ describe('últimas notícias da home', () => {
     test('informa que não há notícias mesmo sem turmas atuais', () => {
         expect(renderSection(clientWith([]))).toContain('Nenhuma notícia por enquanto.');
         const client = clientWith([]);
-        client.setQueryData(latestNewsQueryOptions.queryKey, { items: [] });
+        client.setQueryData(latestNewsQueryOptions.queryKey, { items: [], partial: false });
         expect(renderSection(client)).toContain('Nenhuma notícia por enquanto.');
     });
 
@@ -110,6 +112,7 @@ describe('últimas notícias da home', () => {
     test('mostra notícias disponíveis enquanto outras turmas são sincronizadas', () => {
         const client = clientWith([]);
         client.setQueryData(latestNewsQueryOptions.queryKey, {
+            partial: true,
             items: [{ classroom, post: news(1) }]
         });
         const markup = renderSection(client);

@@ -44,7 +44,7 @@ function LatestNews() {
     const { items } = feed.data;
     return (
         <>
-            {feed.isError && <StaleDataNotice subject="as notícias" />}
+            {(feed.isError || feed.data.partial) && <StaleDataNotice subject="as notícias" />}
             {items.length > 0 ? (
                 <NewsCarousel news={items} />
             ) : (

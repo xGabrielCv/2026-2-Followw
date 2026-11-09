@@ -88,11 +88,11 @@ test('as setas e a semana trocam o dia, e Hoje volta para a data atual', async (
     fireEvent.click(await page.findByRole('button', { name: 'Dia anterior' }));
     fireEvent.click(page.getByRole('button', { name: 'Próximo dia' }));
     fireEvent.click(page.getByRole('button', { name: 'Hoje' }));
-    fireEvent.click(page.getByRole('button', { name: 'quarta-feira, 11 de novembro' }));
+    fireEvent.click(page.getByRole('button', { name: 'Q11: quarta-feira, 11 de novembro' }));
     expect(selected).toEqual(['2026-11-08', '2026-11-10', '2026-11-07', '2026-11-11']);
     expect(
         page
-            .getByRole('button', { name: 'segunda-feira, 9 de novembro' })
+            .getByRole('button', { name: 'S9: segunda-feira, 9 de novembro' })
             .getAttribute('aria-pressed')
     ).toBe('true');
 });
@@ -100,4 +100,11 @@ test('as setas e a semana trocam o dia, e Hoje volta para a data atual', async (
 test('sem login pede para entrar com o SIGAA', async () => {
     const page = await render([], false);
     expect(await page.findByText(/Matrícula UnB/)).toBeDefined();
+});
+
+test('nome acessível do dia contém o rótulo visível para comando de voz', async () => {
+    const page = await render([]);
+    const selected = await page.findByRole('button', { pressed: true });
+    const visible = selected.textContent.replace(/\s+/g, ' ').trim();
+    expect(selected.getAttribute('aria-label')!.startsWith(visible)).toBe(true);
 });

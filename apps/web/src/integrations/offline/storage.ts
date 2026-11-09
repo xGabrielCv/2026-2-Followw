@@ -228,25 +228,42 @@ async function deletePageCaches(keep?: string) {
     );
 }
 
-async function cachePage(cache: Cache, url: string) {
+let pageGeneration = 0;
+let warming: Promise<void> | undefined;
+
+async function cachePage(cache: Cache, url: string, generation: number) {
     if (await cache.match(url)) return;
     // oxlint-disable-next-line no-restricted-globals -- baixa o HTML da própria página, não a API
     const response = await fetch(url, { credentials: 'omit' });
     // navegação não aceita resposta redirecionada (ex.: /perfil → /login)
-    if (response.ok && !response.redirected) await cache.put(url, response);
+    if (generation === pageGeneration && response.ok && !response.redirected)
+        await cache.put(url, response);
 }
 
 /** Baixa para o cache do SW as páginas principais que faltam e apaga os caches de builds antigos. */
 export async function warmPages(_loggedIn: boolean) {
-    const current = pagesCacheName(import.meta.env.VITE_BUILD_ID ?? 'dev');
-    await deletePageCaches(current);
-    const cache = await caches.open(current);
-    const urls = ['/', '/ru', '/turmas', '/login'];
-    await Promise.allSettled(urls.map((url) => cachePage(cache, url)));
+    if (warming) return warming;
+    const generation = pageGeneration;
+    const task = (async () => {
+        const current = pagesCacheName(import.meta.env.VITE_BUILD_ID ?? 'dev');
+        const cache = await caches.open(current);
+        const urls = ['/', '/ru', '/turmas', '/login'];
+        await Promise.allSettled(urls.map((url) => cachePage(cache, url, generation)));
+        const complete = (await Promise.all(urls.map((url) => cache.match(url)))).every(Boolean);
+        if (generation === pageGeneration && complete) await deletePageCaches(current);
+    })();
+    warming = task;
+    try {
+        await task;
+    } finally {
+        if (warming === task) warming = undefined;
+    }
 }
 
 /** Apaga do dispositivo os dados da API e o HTML das páginas, que também traz dados do SSR. */
 export async function clearOfflineData() {
+    pageGeneration++;
+    warming = undefined;
     localStorageRepository.set(
         'cache-epoch',
         (localStorageRepository.get<number>('cache-epoch') ?? 0) + 1

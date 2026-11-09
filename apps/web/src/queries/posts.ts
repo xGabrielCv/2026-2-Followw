@@ -2,7 +2,12 @@ import { queryOptions } from '@tanstack/react-query';
 
 import type { components } from '#/queries/schema.gen';
 
-import { classroomPostsQueryOptions, classroomsQueryOptions } from '#/queries/classrooms';
+import {
+    type ClassroomPost,
+    classroomPostsQueryOptions,
+    classroomsQueryOptions
+} from '#/queries/classrooms';
+import { ApiError } from '#/queries/errors';
 
 export type ClassroomNews = components['schemas']['ClassroomNews'];
 
@@ -17,16 +22,25 @@ const published = (news: ClassroomNews) =>
  */
 export const latestNewsQueryOptions = queryOptions({
     queryKey: ['latest-news'],
-    queryFn: async ({ client }) => {
+    queryFn: async ({ client, signal }) => {
         const classrooms = await client.query(classroomsQueryOptions);
         const items: ClassroomNews[] = [];
+        let partial = false;
         // em sequência: a sessão do SIGAA do aluno atende uma turma por vez
         await classrooms.reduce<Promise<void>>(
             (previous, classroom) =>
                 previous.then(async () => {
-                    const posts = await client
-                        .query(classroomPostsQueryOptions(classroom.id))
-                        .catch(() => []);
+                    signal.throwIfAborted();
+                    const options = classroomPostsQueryOptions(classroom.id);
+                    const posts = await client.query(options).catch((error: unknown) => {
+                        signal.throwIfAborted();
+                        if (error instanceof ApiError && error.isUnauthorized) throw error;
+                        const cached = client.getQueryData<ClassroomPost[]>(options.queryKey);
+                        if (!cached) throw error;
+                        partial = true;
+                        return cached;
+                    });
+                    signal.throwIfAborted();
                     for (const post of posts)
                         if (post.type === 'news') items.push({ classroom, post });
                     return undefined;
@@ -34,6 +48,7 @@ export const latestNewsQueryOptions = queryOptions({
             Promise.resolve()
         );
         return {
+            partial,
             items: items
                 .toSorted((a, b) => published(b).localeCompare(published(a)))
                 .slice(0, LATEST)
