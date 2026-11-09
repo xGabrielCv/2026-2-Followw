@@ -129,6 +129,14 @@ describe('material da matéria', () => {
         const exe = new File(['MZ'], 'a.exe', { type: 'application/x-msdownload' });
         expect(fileProblem(pdf, 100)).toBeNull();
         expect(fileProblem(pdf, 2)).toContain('passa de');
-        expect(fileProblem(exe, 100)).toContain('PDF ou imagem');
+        expect(fileProblem(exe, 100)).toContain('PDF, imagem');
+        const docx = new File(['PK'], 'a.docx', {
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
+        const txt = new File(['oi'], 'a.txt', { type: 'text/plain' });
+        const semTipo = new File(['PK'], 'planilha.xlsx', { type: '' });
+        const exeSemTipo = new File(['MZ'], 'a.exe', { type: '' });
+        for (const file of [docx, txt, semTipo]) expect(fileProblem(file, 100)).toBeNull();
+        expect(fileProblem(exeSemTipo, 100)).toContain('Envie');
     });
 });

@@ -20,7 +20,7 @@ import { UploadMaterialDialog } from '#/components/materials/UploadMaterialDialo
 import { Button } from '#/components/ui/button';
 import { useIsOwn } from '#/lib/author';
 import { saveFile } from '#/lib/download';
-import { formatBytes, MATERIAL_KIND_LABELS } from '#/lib/materials';
+import { formatBytes, MATERIAL_KIND_LABELS, PREVIEW_MIME } from '#/lib/materials';
 import { titleCase } from '#/lib/profile';
 import { reviewMonth } from '#/lib/reviews';
 import { cn } from '#/lib/shadcn';
@@ -230,7 +230,8 @@ function MaterialRow({
     const [failed, setFailed] = useState(false);
     const [previewing, setPreviewing] = useState(false);
     const origin = originLabel(item, classroom);
-    const Icon = item.mime === 'application/pdf' ? FileText : ImageIcon;
+    const Icon = item.mime.startsWith('image/') ? ImageIcon : FileText;
+    const canPreview = PREVIEW_MIME.has(item.mime);
 
     const fetchFile = async (action: (blob: Blob) => void) => {
         setBusy(true);
@@ -278,15 +279,17 @@ function MaterialRow({
                     </span>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => setPreviewing(true)}
-                    >
-                        <Eye aria-hidden="true" />
-                        Abrir
-                    </Button>
+                    {canPreview && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() => setPreviewing(true)}
+                        >
+                            <Eye aria-hidden="true" />
+                            Abrir
+                        </Button>
+                    )}
                     <Button
                         size="sm"
                         variant="ghost"
@@ -316,12 +319,14 @@ function MaterialRow({
                     )}
                 </div>
             </div>
-            <MaterialPreview
-                code={code}
-                item={item}
-                open={previewing}
-                onOpenChange={setPreviewing}
-            />
+            {canPreview && (
+                <MaterialPreview
+                    code={code}
+                    item={item}
+                    open={previewing}
+                    onOpenChange={setPreviewing}
+                />
+            )}
         </li>
     );
 }

@@ -887,7 +887,7 @@ export interface paths {
         put?: never;
         /**
          * Enviar um material para a matéria, anonimamente
-         * @description PDF ou imagem de até 20 MB. O tipo é conferido pelo conteúdo e o arquivo é regravado sem metadados (autor, GPS, aparelho).
+         * @description PDF, imagem, DOCX, PPTX, XLSX ou texto (.txt) de até 20 MB. O tipo é conferido pelo conteúdo e o arquivo é regravado sem metadados (autor, GPS, aparelho); documentos com macros ou vínculos externos são recusados.
          */
         post: operations["upload_material_materials__code__post"];
         delete?: never;

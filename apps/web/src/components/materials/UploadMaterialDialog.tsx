@@ -104,7 +104,8 @@ export function UploadForm({
             </p>
             <div className="flex flex-col gap-2">
                 <Label htmlFor="material-file">
-                    Arquivo (PDF ou imagem, até {formatBytes(data.limits.max_file_bytes)})
+                    Arquivo (PDF, imagem, DOCX, PPTX, XLSX ou texto, até{' '}
+                    {formatBytes(data.limits.max_file_bytes)})
                 </Label>
                 <Input
                     id="material-file"

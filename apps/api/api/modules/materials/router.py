@@ -67,7 +67,7 @@ async def list_materials(
     response_model=MaterialItem,
     status_code=201,
     summary="Enviar um material para a matéria, anonimamente",
-    description="PDF ou imagem de até 20 MB. O tipo é conferido pelo conteúdo e o arquivo é regravado sem metadados (autor, GPS, aparelho).",
+    description="PDF, imagem, DOCX, PPTX, XLSX ou texto (.txt) de até 20 MB. O tipo é conferido pelo conteúdo e o arquivo é regravado sem metadados (autor, GPS, aparelho); documentos com macros ou vínculos externos são recusados.",
     responses={
         **_NOT_FOUND,
         409: {"description": "Limite atingido ou arquivo repetido."},

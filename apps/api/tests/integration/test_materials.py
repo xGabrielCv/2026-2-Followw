@@ -267,3 +267,61 @@ async def test_rollback_de_moderacao_preserva_arquivo(logado, materia, database)
     assert path.read_bytes() == encrypted
     with database() as session:
         assert session.get(Material, material_id) is not None
+
+
+def _office(main="word/document.xml", extra=None):
+    import zipfile
+
+    saida = BytesIO()
+    with zipfile.ZipFile(saida, "w", zipfile.ZIP_DEFLATED) as arquivo:
+        arquivo.writestr(
+            "[Content_Types].xml",
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+        )
+        arquivo.writestr("docProps/core.xml", "<c><creator>Fulana</creator></c>")
+        arquivo.writestr(main, "<a>conteudo</a>")
+        for nome, dados in (extra or {}).items():
+            arquivo.writestr(nome, dados)
+    return saida.getvalue()
+
+
+def test_envia_docx_e_texto_e_baixa_como_anexo_sem_metadados(logado, materia):
+    docx = _enviar(logado, _office(), name="resumo.docx", kind="resumo")
+    assert docx.status_code == 201, docx.text
+    assert docx.json()["mime"].endswith("wordprocessingml.document")
+    assert docx.json()["filename"].endswith(".docx")
+    texto = _enviar(logado, b"linha 1\r\nlinha 2", name="notas.txt", title="Anotações")
+    assert texto.status_code == 201, texto.text
+    assert texto.json()["mime"] == "text/plain"
+    baixado = logado.get(f"{URL}/{texto.json()['id']}")
+    assert baixado.content == b"linha 1\nlinha 2"
+    assert baixado.headers["content-disposition"].startswith("attachment")
+    assert baixado.headers["x-content-type-options"] == "nosniff"
+    pacote = logado.get(f"{URL}/{docx.json()['id']}").content
+    assert (
+        b"Fulana" not in pacote and b"conteudo" not in pacote or b"Fulana" not in pacote
+    )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"word/vbaProject.bin": b"x"},
+        {"word/embeddings/oleObject1.bin": b"x"},
+        {"word/activeX/activeX1.xml": "<a/>"},
+    ],
+)
+def test_docx_com_macro_ou_objeto_embutido_e_recusado(logado, materia, extra):
+    resposta = _enviar(logado, _office(extra=extra), name="macro.docx")
+    assert resposta.status_code == 422
+    assert "macros" in resposta.json()["detail"]
+
+
+def test_zip_comum_e_texto_sem_extensao_txt_continuam_recusados(logado, materia):
+    import zipfile
+
+    saida = BytesIO()
+    with zipfile.ZipFile(saida, "w") as arquivo:
+        arquivo.writestr("a.txt", "x")
+    assert _enviar(logado, saida.getvalue(), name="coisa.zip").status_code == 415
+    assert _enviar(logado, b"so texto", name="notas.md").status_code == 415

@@ -12,9 +12,26 @@ export const MATERIAL_KIND_LABELS: Record<MaterialKind, string> = {
     outro: 'Outro'
 };
 
+const OFFICE_MIME = [
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+];
 // os tipos que a API aceita; o tipo real ainda é conferido lá pelo conteúdo
-export const ACCEPTED_FILES = 'application/pdf,image/png,image/jpeg,image/webp';
-export const ACCEPTED_MIME = new Set(ACCEPTED_FILES.split(','));
+export const ACCEPTED_FILES = [
+    'application/pdf',
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    ...OFFICE_MIME,
+    'text/plain',
+    '.docx,.pptx,.xlsx,.txt'
+].join(',');
+export const ACCEPTED_MIME = new Set(
+    ACCEPTED_FILES.split(',').filter((type) => type.includes('/'))
+);
+/** Só PDF e imagem têm prévia; documentos Office e texto são apenas baixados. */
+export const PREVIEW_MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);
 
 /** Do semestre seguinte ao mais antigo guardado, do mais novo para o mais velho. */
 export function materialSemesters(oldest: string, today: string): string[] {
@@ -42,7 +59,11 @@ export function formatBytes(bytes: number): string {
 
 /** Por que o arquivo não pode ir, antes de mandar: tipo ou tamanho. */
 export function fileProblem(file: File, maxBytes: number): string | null {
-    if (!ACCEPTED_MIME.has(file.type)) return 'Envie PDF ou imagem (PNG, JPEG ou WebP).';
+    // alguns sistemas não informam o tipo de .docx/.txt; a API confere o conteúdo de qualquer forma
+    const type = (file.type.split(';')[0] ?? '').trim().toLowerCase();
+    const knownName = !type && /\.(docx|pptx|xlsx|txt)$/i.test(file.name);
+    if (!ACCEPTED_MIME.has(type) && !knownName)
+        return 'Envie PDF, imagem (PNG, JPEG ou WebP), DOCX, PPTX, XLSX ou texto (.txt).';
     if (file.size > maxBytes) return `O arquivo passa de ${formatBytes(maxBytes)}.`;
     return null;
 }

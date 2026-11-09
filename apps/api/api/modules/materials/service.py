@@ -217,9 +217,12 @@ class MaterialService:
             )
         if len(data) > MAX_FILE_BYTES:
             raise HTTPException(413, "Arquivo maior que 20 MB.")
-        mime = sniff(data)
+        mime = sniff(data, filename)
         if mime is None:
-            raise HTTPException(415, "Envie PDF ou imagem (PNG, JPEG ou WebP).")
+            raise HTTPException(
+                415,
+                "Envie PDF, imagem (PNG, JPEG ou WebP), documento Office (DOCX, PPTX ou XLSX) ou texto (.txt).",
+            )
         try:
             clean = await to_thread.run_sync(sanitize, data, mime, limiter=_SANITIZERS)
         except InvalidFile as error:
