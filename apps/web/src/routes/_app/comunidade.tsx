@@ -20,6 +20,7 @@ import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
 import { Button } from '#/components/ui/button';
 import { Input } from '#/components/ui/input';
+import { useIsOwn } from '#/lib/author';
 import { CAMPUS_LABELS, CAMPUSES, campusOfUnit } from '#/lib/campus';
 import { useDebounced } from '#/lib/debounce';
 import { relativeTime } from '#/lib/relative-time';
@@ -238,6 +239,7 @@ function PostList({
 }
 
 export function PostCard({ post }: { post: PostItem }) {
+    const isOwn = useIsOwn();
     return (
         <Link
             to="/comunidade/$id"
@@ -265,7 +267,7 @@ export function PostCard({ post }: { post: PostItem }) {
                         {CAMPUS_LABELS[post.campus]}
                     </span>
                 )}
-                {post.mine && (
+                {isOwn('post', post.id, post.mine) && (
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">Sua</span>
                 )}
                 <span className="ml-auto text-muted-foreground">

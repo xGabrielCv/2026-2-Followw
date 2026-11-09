@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Header, Query, Response
 from pydantic import StringConstraints
 
 from api.account import AccountDep
@@ -20,6 +20,7 @@ from api.modules.forum.service import (
     PostPage,
     ReplyInput,
 )
+from api.rate_limit import publish_quota
 from api.schemas import SearchText
 from api.sigaa import SigaaConnectionDep
 
@@ -74,14 +75,20 @@ async def list_posts(
     status_code=201,
     summary="Publicar uma dúvida ou um post anônimo",
     responses={**SIGAA_ERRORS, 422: {"description": "Campos inválidos."}},
-    dependencies=[require_enabled("forum")],
+    dependencies=[require_enabled("forum"), publish_quota("forum", 40)],
 )
 async def create_post(
-    author: AuthorDep, account: AccountDep, service: ForumServiceDep, body: PostInput
+    author: AuthorDep,
+    account: AccountDep,
+    service: ForumServiceDep,
+    body: PostInput,
+    response: Response,
 ) -> PostDetails:
     # O curso vem do perfil cifrado no navegador: o cliente não escolhe a marcação.
     profile = await account.profile() if body.tag_course else None
-    return await service.create(author, body, profile)
+    details = await service.create(author, body, profile)
+    response.headers["X-Created-Id"] = str(details.id)
+    return details
 
 
 @router.get(
@@ -105,7 +112,7 @@ async def get_post(
     status_code=201,
     summary="Responder anonimamente",
     responses={**_NOT_FOUND, 409: {"description": "Limite de respostas."}},
-    dependencies=[require_enabled("forum")],
+    dependencies=[require_enabled("forum"), publish_quota("forum", 120)],
 )
 async def reply_post(
     author: AuthorDep,
@@ -113,8 +120,14 @@ async def reply_post(
     service: ForumServiceDep,
     post_id: UUID,
     body: ReplyInput,
+    response: Response,
+    op_key: Annotated[
+        str | None, Header(alias="X-Followw-Op-Key", include_in_schema=False)
+    ] = None,
 ) -> PostDetails:
-    return await service.reply(post_id, author, body)
+    details, reply_id = await service.reply(post_id, author, body, op_key)
+    response.headers["X-Created-Id"] = str(reply_id)
+    return details
 
 
 @router.delete(

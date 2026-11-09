@@ -17,7 +17,7 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
-from api.anonymous import anonymous_key, same_key
+from api.anonymous import owns, resource_key
 from api.db.main import DatabaseDep
 from api.db.models import Classroom, Material, Subject
 from api.db.search import contains_term
@@ -114,7 +114,7 @@ def _item(material: Material, author: str) -> MaterialItem:
         mime=material.mime,
         size=material.size,
         month=material.created_at.strftime("%Y-%m"),
-        mine=same_key(material.uploader_key, author, _scope(material.subject_code)),
+        mine=owns(material.uploader_key, author, _scope(material.subject_code)),
     )
 
 
@@ -221,7 +221,7 @@ class MaterialService:
         if len(clean) > MAX_FILE_BYTES:
             raise HTTPException(413, "Arquivo maior que 20 MB.")
         digest = hashlib.sha256(clean).hexdigest()
-        key = anonymous_key(author, _scope(code))
+        key = resource_key(author)
         storage_key = uuid.uuid4().hex
 
         async def write(session: AsyncSession) -> MaterialItem:
@@ -232,22 +232,17 @@ class MaterialService:
                 {"scope": _scope(code)},
             )
             await purge_expired(session, self._storage)
-            files, size, mine, duplicate = (
+            files, size, duplicate = (
                 await session.execute(
                     select(
                         func.count(Material.id),
                         func.coalesce(func.sum(Material.size), 0),
-                        func.count(Material.id).filter(Material.uploader_key == key),
                         func.count(Material.id).filter(Material.sha256 == digest),
                     ).where(Material.subject_code == code)
                 )
             ).one()
             if duplicate:
                 raise HTTPException(409, "Esse arquivo já foi enviado nesta matéria.")
-            if mine >= MAX_PER_STUDENT:
-                raise HTTPException(
-                    409, f"Você já enviou {MAX_PER_STUDENT} arquivos nesta matéria."
-                )
             if files >= MAX_PER_SUBJECT:
                 raise HTTPException(
                     409, f"A matéria já tem {MAX_PER_SUBJECT} arquivos, o limite."
@@ -317,7 +312,7 @@ class MaterialService:
             if (
                 material is None
                 or material.subject_code != code
-                or not same_key(material.uploader_key, author, _scope(code))
+                or not owns(material.uploader_key, author, _scope(code))
             ):
                 raise HTTPException(404, "Material não encontrado.")
             await session.delete(material)

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from sigaa_client import Credentials, SigaaClient, SigaaError
 
 from api.account import Account
-from api.anonymous import OptionalAuthorDep
+from api.anonymous import UsageDep
 from api.cookies import clear_cookies, read_access_cookie, read_refresh_cookie
 from api.db.main import DatabaseDep
 from api.errors import SIGAA_ERRORS
@@ -26,7 +26,7 @@ async def sigaa_login(
     body: SigaaLoginRequest,
     response: Response,
     db: DatabaseDep,
-    author: OptionalAuthorDep,
+    usage: UsageDep,
 ):
     await limit_registration(body.registration)
     credentials = Credentials(registration=body.registration, password=body.password)
@@ -35,7 +35,7 @@ async def sigaa_login(
         await start_account(
             Account(connection, response=response),
             db,
-            author if request.headers.get("X-Followw-Metrics") == "1" else None,
+            usage if request.headers.get("X-Followw-Metrics") == "1" else None,
         )
     finally:
         await connection.aclose()
@@ -51,13 +51,13 @@ async def sigaa_refresh(
     connection: SigaaConnectionDep,
     response: Response,
     db: DatabaseDep,
-    author: OptionalAuthorDep,
+    usage: UsageDep,
 ) -> None:
     """Confere a sessão e renova o perfil guardado no cookie; o app chama ao abrir."""
     await start_account(
         Account(connection, response=response),
         db,
-        author if request.headers.get("X-Followw-Metrics") == "1" else None,
+        usage if request.headers.get("X-Followw-Metrics") == "1" else None,
     )
 
 

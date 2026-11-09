@@ -23,14 +23,8 @@ scripts/
 !/scripts/update_data.py
 *.ps1
 *.cmd
-!/run.ps1
-!/run.cmd
-!/stop.ps1
-!/stop.cmd
-!/restart.ps1
-!/restart.cmd
-!/admin-password.ps1
-!/admin-password.cmd
+!/scripts/*.ps1
+!/scripts/*.cmd
 compose.yml
 vercel.json
 skills-lock.json

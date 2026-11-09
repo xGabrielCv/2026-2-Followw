@@ -18,6 +18,7 @@ from api.modules.materials.service import (
     SubjectMaterials,
     SubjectWithMaterials,
 )
+from api.rate_limit import publish_quota
 from api.schemas import SearchText
 from api.sigaa import SigaaConnectionDep
 
@@ -73,12 +74,13 @@ async def list_materials(
         413: {"description": "Arquivo grande demais."},
         415: {"description": "Tipo de arquivo não aceito."},
     },
-    dependencies=[require_enabled("materials")],
+    dependencies=[require_enabled("materials"), publish_quota("materials", 10)],
 )
 async def upload_material(
     author: AuthorDep,
     connection: SigaaConnectionDep,
     service: MaterialServiceDep,
+    response: Response,
     code: Code,
     file: UploadFile,
     title: Annotated[
@@ -96,7 +98,7 @@ async def upload_material(
         data += chunk
         if len(data) > MAX_FILE_BYTES:
             raise HTTPException(413, "Arquivo maior que 20 MB.")
-    return await service.upload(
+    item = await service.upload(
         code.upper(),
         author,
         MaterialUpload(
@@ -105,6 +107,8 @@ async def upload_material(
         file.filename or "material",
         bytes(data),
     )
+    response.headers["X-Created-Id"] = str(item.id)
+    return item
 
 
 @router.get(

@@ -42,6 +42,8 @@ def test_login_conta_o_uso_com_uma_chave_anonima_por_periodo(client, sigaa, data
     with database.begin() as session:
         session.add(SystemFlag(key="telemetry", enabled=True))
     client.headers["X-Followw-Metrics"] = "1"
+    # três chaves aleatórias (dia, semana, mês), sem relação entre si nem com a matrícula
+    client.headers["X-Followw-Usage"] = ",".join(["1" * 64, "2" * 64, "3" * 64])
     client.post("/auth/sigaa", json=LOGIN)
     client.post("/auth/sigaa", json=LOGIN)
     client.post("/auth/sigaa/refresh")
@@ -52,16 +54,21 @@ def test_login_conta_o_uso_com_uma_chave_anonima_por_periodo(client, sigaa, data
     assert sorted(period for period, _ in linhas) == sorted(periods(dia))
     # As chaves de dia, semana e mês não se ligam entre si.
     assert len({key for _, key in linhas}) == 3
-    # a chave vem do segredo do aparelho, não da matrícula
-    assert ("d:2026-09-22", anonymous_key("a" * 64, "active:d:2026-09-22")) in linhas
+    # cada período usa a sua chave aleatória; o segredo antigo do aparelho nem entra
+    assert ("d:2026-09-22", anonymous_key("1" * 64, "active:d:2026-09-22")) in linhas
+    assert ("w:2026-W39", anonymous_key("2" * 64, "active:w:2026-W39")) in linhas
+    assert (
+        "d:2026-09-22",
+        anonymous_key("a" * 64, "active:d:2026-09-22"),
+    ) not in linhas
     assert (
         "d:2026-09-22",
         anonymous_key("251000000", "active:d:2026-09-22"),
     ) not in linhas
 
 
-def test_sem_segredo_do_aparelho_o_uso_nao_e_contado(client, sigaa, database):
-    del client.headers["X-Followw-Author"]
+def test_sem_chaves_de_uso_nada_e_contado(client, sigaa, database):
+    client.headers["X-Followw-Metrics"] = "1"
     assert client.post("/auth/sigaa", json=LOGIN).status_code == 200
     with database() as session:
         assert session.scalar(select(ActiveUser)) is None

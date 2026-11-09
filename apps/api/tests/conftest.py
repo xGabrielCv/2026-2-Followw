@@ -459,8 +459,10 @@ def stub_sigaa(monkeypatch):
 @pytest.fixture(autouse=True)
 def estado_de_resiliencia_limpo():
     """Cache e circuitos são por processo: cada teste começa do zero."""
-    from api import resilience
+    from api import rate_limit, resilience
 
     resilience.reset_all()
+    rate_limit.reset_memory()
     yield
     resilience.reset_all()
+    rate_limit.reset_memory()

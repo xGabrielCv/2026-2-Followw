@@ -143,17 +143,20 @@ def test_dados_pessoais_no_texto_sao_recusados(client, texto):
     assert "dados pessoais" in response.json()["detail"]
 
 
-def test_limite_de_chamados_abertos_por_aparelho(client):
-    for _ in range(5):
+def test_abrir_chamado_tem_cota_por_origem_de_rede_e_por_hora(client):
+    for _ in range(10):
         abrir(client)
     assert client.post("/support/tickets", json=NOVO).status_code == 429
-    client.headers["X-Followw-Author"] = OUTRO_APARELHO
-    assert client.post("/support/tickets", json=NOVO).status_code == 201
 
 
-def test_abrir_exige_a_chave_anonima_do_aparelho(client):
+def test_abrir_nao_exige_nem_guarda_identificador_de_aparelho(client, database):
     client.headers.pop("X-Followw-Author")
-    assert client.post("/support/tickets", json=NOVO).status_code == 400
+    ticket, _ = abrir(client)
+    with database() as session:
+        assert (
+            session.execute(text("SELECT author_key FROM tickets")).scalar_one() is None
+        )
+    assert ticket["number"] >= 1
 
 
 def test_categoria_invalida_e_texto_curto_sao_recusados(client):

@@ -107,7 +107,7 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?defina PUBLIC_HOST}
-      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:-0.0.0.0/0 ::/0}
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:?defina ADMIN_ALLOWED_IPS (IPs que podem abrir o painel)}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

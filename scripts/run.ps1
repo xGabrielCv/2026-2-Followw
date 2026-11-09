@@ -8,14 +8,14 @@
     quando você faz login ou abre seus dados; com -Offline nem isso.
 
 .EXAMPLE
-    .\run.ps1              # verifica, instala o que faltar e abre http://localhost:3000
-    .\run.ps1 -Offline     # bloqueia qualquer acesso externo da API
-    .\run.ps1 -Check       # só verifica as dependências, sem subir nada
-    .\run.ps1 -Test        # verificação completa: lint, tipos e todos os testes (API e front)
-    .\run.ps1 -Reseed      # recarrega os dados públicos (cursos, matérias, turmas)
-    .\run.ps1 -Update      # atualiza agora os dados do SIGAA público (turmas, matérias, docentes)
-    .\run.ps1 -CollectOffer 2027.1   # atualiza só as turmas de um semestre
-    .\run.ps1 -Stop        # para o banco que ficou rodando
+    .\scripts\run.ps1              # verifica, instala o que faltar e abre http://localhost:3000
+    .\scripts\run.ps1 -Offline     # bloqueia qualquer acesso externo da API
+    .\scripts\run.ps1 -Check       # só verifica as dependências, sem subir nada
+    .\scripts\run.ps1 -Test        # verificação completa: lint, tipos e todos os testes (API e front)
+    .\scripts\run.ps1 -Reseed      # recarrega os dados públicos (cursos, matérias, turmas)
+    .\scripts\run.ps1 -Update      # atualiza agora os dados do SIGAA público (turmas, matérias, docentes)
+    .\scripts\run.ps1 -CollectOffer 2027.1   # atualiza só as turmas de um semestre
+    .\scripts\run.ps1 -Stop        # para o banco que ficou rodando
 #>
 [CmdletBinding()]
 param(
@@ -38,7 +38,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$Root = $PSScriptRoot
+$Root = Split-Path -Parent $PSScriptRoot
 $Local = Join-Path $Root '.local'
 $PgVersion = '18.4-1'
 $PgHome = Join-Path $Local 'pgsql'
@@ -354,7 +354,7 @@ if (Test-Path $professorsCsv) {
         Ok 'catálogo de docentes já carregado'
     }
 } else {
-    Warn 'sem catálogo de docentes: a busca de docentes fica vazia (rode .\run.ps1 -Update)'
+    Warn 'sem catálogo de docentes: a busca de docentes fica vazia (rode .\scripts\run.ps1 -Update)'
 }
 
 # ---------------------------------------------------------------- servidores
@@ -393,9 +393,9 @@ try {
     Wait-Port $WebPort 120 'O front'
     # Uma única abertura depois de subir. Recarregar código ou atualizar dados não abre abas.
     if (-not $NoBrowser) { Start-Process "http://localhost:$WebPort" }
-    Write-Host "`n    Followw em http://localhost:$WebPort  (Ctrl+C, .\stop.ps1 para parar ou .\restart.ps1 para reiniciar)" -ForegroundColor Green
+    Write-Host "`n    Followw em http://localhost:$WebPort  (Ctrl+C, .\scripts\stop.ps1 para parar ou .\scripts\restart.ps1 para reiniciar)" -ForegroundColor Green
     if ($adminReady) {
-        Write-Host "    Painel do administrador: http://localhost:$WebPort/api/admin (usuario e senha do .\admin-password.cmd)`n" -ForegroundColor DarkGray
+        Write-Host "    Painel do administrador: http://localhost:$WebPort/api/admin (usuario e senha do .\scripts\admin-password.cmd)`n" -ForegroundColor DarkGray
     } else {
         Write-Host "    Cadastre o administrador em http://localhost:$WebPort/api/admin`n" -ForegroundColor DarkGray
     }

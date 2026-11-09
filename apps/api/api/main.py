@@ -14,6 +14,7 @@ from api.modules.admin.router import router as admin_router
 from api.modules.auth.router import router as auth_router
 from api.modules.class_groups.router import router as class_groups_router
 from api.modules.classrooms.router import router as classrooms_router
+from api.modules.community.router import router as community_router
 from api.modules.demo.router import router as demo_router
 from api.modules.forum.router import router as forum_router
 from api.modules.internships.router import router as internships_router
@@ -115,6 +116,10 @@ tags_metadata = [
         "description": "Denúncias e pedidos de exclusão de conteúdo, para a moderação.",
     },
     {
+        "name": "Community",
+        "description": "Migração única da autoria antiga para credenciais independentes por publicação.",
+    },
+    {
         "name": "Support",
         "description": "Chamados de suporte anônimos: a chave de cada chamado fica só no aparelho do aluno.",
     },
@@ -184,6 +189,7 @@ def custom_openapi() -> dict[str, Any]:
                     "Tutorials",
                     "Reports",
                     "Support",
+                    "Community",
                     "Demo",
                 ],
             },
@@ -272,5 +278,6 @@ app.include_router(materials_router, prefix="/materials", tags=["Materials"])
 app.include_router(forum_router, prefix="/forum", tags=["Forum"])
 app.include_router(tutorials_router, prefix="/tutorials", tags=["Tutorials"])
 app.include_router(reports_router, prefix="/reports", tags=["Reports"])
+app.include_router(community_router, prefix="/community", tags=["Community"])
 app.include_router(support_router, prefix="/support", tags=["Support"])
 app.include_router(admin_router, prefix="/admin")

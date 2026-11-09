@@ -111,7 +111,7 @@ No Windows, clone este fork e execute na raiz:
 ```powershell
 git clone https://github.com/xGabrielCv/2026-2-Followw.git
 cd 2026-2-Followw
-powershell -NoProfile -ExecutionPolicy Bypass -File .\run.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1
 ```
 
 O inicializador verifica/instala Git, uv, Python 3.14, Node e Bun, prepara um PostgreSQL portátil
@@ -119,17 +119,17 @@ em `.local/`, gera chaves próprias em `apps/api/.env`, instala as dependências
 <http://localhost:3000>. Requer internet na primeira instalação; o winget pode pedir autorização
 do Windows para instalar ferramentas. Abra <http://localhost:3000/api/admin> para cadastrar
 usuário e senha do administrador local (mínimo 12 caracteres). Se já houver acesso configurado
-e você o perdeu, execute `.\admin-password.cmd --reset`, reinicie e cadastre novamente.
+e você o perdeu, execute `.\scripts\admin-password.cmd --reset`, reinicie e cadastre novamente.
 
 ```powershell
-.\run.ps1 -NoBrowser       # inicia sem abrir o navegador
-.\run.ps1 -Offline         # sem consultas externas em execução, após instalar e importar o catálogo
-.\run.ps1 -SkipDataUpdate  # não agenda atualização pública em segundo plano
-.\run.ps1 -Check           # confere dependências
-.\run.ps1 -Test            # valida API, bibliotecas, tipos, lint e testes do front
-.\run.ps1 -Update          # atualiza catálogo público no SIGAA; pode demorar
-.\stop.ps1                # encerra a instância
-.\restart.ps1             # reinicia sem abrir outra aba
+.\scripts\run.ps1 -NoBrowser       # inicia sem abrir o navegador
+.\scripts\run.ps1 -Offline         # sem consultas externas em execução, após instalar e importar o catálogo
+.\scripts\run.ps1 -SkipDataUpdate  # não agenda atualização pública em segundo plano
+.\scripts\run.ps1 -Check           # confere dependências
+.\scripts\run.ps1 -Test            # valida API, bibliotecas, tipos, lint e testes do front
+.\scripts\run.ps1 -Update          # atualiza catálogo público no SIGAA; pode demorar
+.\scripts\stop.ps1                # encerra a instância
+.\scripts\restart.ps1             # reinicia sem abrir outra aba
 ```
 
 O repositório contém código, testes sintéticos e os scripts de instalação, **sem banco, catálogo
@@ -163,7 +163,7 @@ configuração de produção e cópias de segurança; o script local só escuta 
 ## 🧪 Testes e carga
 
 ```powershell
-.\run.ps1 -Test                      # API, bibliotecas, tipos, lint e testes do front
+.\scripts\run.ps1 -Test                      # API, bibliotecas, tipos, lint e testes do front
 cd apps\web; bun run e2e             # Playwright (admin com MFA e chamado do aluno ao atendimento)
 cd apps\api; uv run --no-sync python loadtest/run.py --workers 4 --levels 100,250,500 --seconds 20
 ```

@@ -162,20 +162,20 @@ def test_atendimento_ve_tudo_mas_so_no_escopo_admin(postgres, tickets):
         assert scalar(connection, "SELECT count(*) FROM tickets") == 0
 
 
-def test_so_cria_chamado_com_a_chave_do_proprio_aparelho(postgres):
+def test_so_cria_chamado_no_escopo_de_criacao(postgres, database):
     insert = (
-        "INSERT INTO tickets (id, secret_hash, author_key, category, title, status, priority, message_count) "
-        "VALUES (gen_random_uuid(), :s, :a, 'bug', 'v2:x', 'open', 'normal', 1)"
+        "INSERT INTO tickets (id, secret_hash, category, title, status, priority, message_count) "
+        "VALUES (gen_random_uuid(), :s, 'bug', 'v2:x', 'open', 'normal', 1)"
     )
-    with pytest.raises(DBAPIError), postgres.begin() as connection:
-        as_app(connection, author_key=AUTOR_A)
-        connection.execute(text(insert), {"s": HASH_A, "a": AUTOR_B})
-    with pytest.raises(DBAPIError), postgres.begin() as connection:
-        as_app(connection)
-        connection.execute(text(insert), {"s": HASH_A, "a": AUTOR_A})
+    for context in ({}, {"scope": "public"}, {"ticket_hash": HASH_A}):
+        with pytest.raises(DBAPIError), postgres.begin() as connection:
+            as_app(connection, **context)
+            connection.execute(text(insert), {"s": HASH_A})
     with postgres.begin() as connection:
-        as_app(connection, author_key=AUTOR_A)
-        connection.execute(text(insert), {"s": HASH_A, "a": AUTOR_A})
+        as_app(connection, scope="ticket_create", ticket_hash=HASH_A)
+        connection.execute(text(insert), {"s": HASH_A})
+        # o chamado recém-criado só se enxerga pela própria chave
+        assert scalar(connection, "SELECT count(*) FROM tickets") == 1
 
 
 def test_recuperacao_exige_o_hash_do_codigo(postgres, tickets):
@@ -216,7 +216,7 @@ def test_tabelas_administrativas_so_existem_no_escopo_admin(postgres, database, 
         as_app(connection)
         assert scalar(connection, f"SELECT count(*) FROM {table}") == 0
     with postgres.begin() as connection:
-        as_app(connection, ticket_hash=HASH_A, author_key=AUTOR_A)
+        as_app(connection, ticket_hash=HASH_A)
         assert scalar(connection, f"SELECT count(*) FROM {table}") == 0
     with postgres.begin() as connection:
         as_app(connection, scope="admin")

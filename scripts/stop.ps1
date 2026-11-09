@@ -3,7 +3,7 @@
     Para o Followw por completo: front, API, atualização em segundo plano e o PostgreSQL local.
 
 .EXAMPLE
-    .\stop.ps1            # ou stop.cmd com duplo clique
+    .\scripts\stop.ps1            # ou stop.cmd com duplo clique
 #>
 param(
     [int]$WebPort = 3000,
@@ -11,7 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'
-$Root = $PSScriptRoot
+$Root = Split-Path -Parent $PSScriptRoot
 $PgBin = Join-Path $Root '.local\pgsql\bin'
 $PgData = Join-Path $Root '.local\pgdata'
 
@@ -26,6 +26,10 @@ foreach ($port in $WebPort, $ApiPort) {
         Select-Object -ExpandProperty OwningProcess -Unique
     foreach ($id in $owners) {
         if ($id -gt 0) { taskkill /PID $id /T /F 2>$null | Out-Null; $stopped++ }
+        # Filho órfão do uvicorn (o pai já morreu e o soquete continua preso à porta): acha pelo parent_pid.
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -match "spawn_main\(parent_pid=$id[,)]" } |
+            ForEach-Object { taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null; $stopped++ }
     }
 }
 # O que sobrar deste projeto: recarregador da API, bun, a atualização dos dados.
@@ -45,4 +49,4 @@ if (Test-Path (Join-Path $PgData 'postmaster.pid')) {
 } else {
     Ok 'banco de dados já estava parado'
 }
-Write-Host "`n    Followw parado. Para subir de novo: .\run.ps1 (ou .\restart.ps1)`n" -ForegroundColor Green
+Write-Host "`n    Followw parado. Para subir de novo: .\scripts\run.ps1 (ou .\scripts\restart.ps1)`n" -ForegroundColor Green

@@ -9,10 +9,9 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, Header, HTTPException
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.anonymous import anonymous_key
 from api.cookies import derive_key
 from api.db.context import use_context
 from api.db.main import DatabaseDep
@@ -43,8 +42,7 @@ Body = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=5, max_length=4000)
 ]
 
-MAX_OPEN_PER_AUTHOR = 5
-MAX_NEW_PER_DAY = 10
+# Sem identificador de aluno ou aparelho: o limite de abertura é por origem de rede, na rota.
 MAX_MESSAGES = 100
 REOPEN_DAYS = 30
 RECOVERY_ATTEMPTS = 5
@@ -179,34 +177,15 @@ class SupportService:
     def __init__(self, db: DatabaseDep) -> None:
         self._db = db
 
-    async def create(self, author: str, body: TicketInput) -> TicketCreated:
+    async def create(self, body: TicketInput) -> TicketCreated:
         reject_personal_data(body.title, body.body)
-        scope = anonymous_key(author, "support")
         key = secrets.token_urlsafe(32)
         code = _recovery_code()
 
         async def write(session: AsyncSession) -> TicketCreated:
-            day_ago = datetime.now(UTC) - timedelta(days=1)
-            open_now = await session.scalar(
-                select(func.count(Ticket.id)).where(
-                    Ticket.author_key == scope, Ticket.status != "closed"
-                )
-            )
-            today = await session.scalar(
-                select(func.count(Ticket.id)).where(
-                    Ticket.author_key == scope, Ticket.created_at >= day_ago
-                )
-            )
-            if (open_now or 0) >= MAX_OPEN_PER_AUTHOR or (
-                today or 0
-            ) >= MAX_NEW_PER_DAY:
-                raise HTTPException(
-                    429, "Você já tem muitos chamados abertos. Aguarde as respostas."
-                )
             ticket = Ticket(
                 secret_hash=_hash(key, "secret"),
                 recovery_hash=_hash(_normalize_code(code), "recovery"),
-                author_key=scope,
                 category=body.category,
                 title=body.title,
                 related_type=body.related_type,
@@ -224,8 +203,8 @@ class SupportService:
                 id=ticket.id, number=ticket.number, key=key, recovery_code=code
             )
 
-        # o banco só deixa ver e contar os chamados deste aparelho
-        with use_context(author_key=scope):
+        # o banco só deixa criar neste escopo e ler o chamado recém-criado, pela própria chave
+        with use_context(scope="ticket_create", ticket_hash=_hash(key, "secret")):
             return await self._db.write(write)
 
     async def get(self, ticket_id: uuid.UUID, key: str) -> TicketView:

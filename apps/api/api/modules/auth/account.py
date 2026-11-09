@@ -11,14 +11,16 @@ from api.db.models import ActiveUser
 from api.flags import flags
 
 
-async def start_account(account: Account, db: Database, author: str | None) -> None:
+async def start_account(
+    account: Account, db: Database, usage: dict[str, str] | None
+) -> None:
     """Confere a senha (logando, se não houver sessão), renova o perfil e conta o uso.
 
-    O uso conta pela chave do aparelho, que não tem relação com a matrícula.
+    O uso conta por chaves aleatórias de período (dia, semana, mês), sem relação entre si nem com a matrícula.
     """
     await account.profile(refresh=True)
-    if author is not None and (await db.read(flags))["telemetry"]:
-        await db.write(lambda session: record_activity(session, author))
+    if usage is not None and (await db.read(flags))["telemetry"]:
+        await db.write(lambda session: record_activity(session, usage))
 
 
 def periods(day: date) -> list[str]:
@@ -27,11 +29,11 @@ def periods(day: date) -> list[str]:
 
 
 async def record_activity(
-    session: AsyncSession, author: str, day: date | None = None
+    session: AsyncSession, usage: dict[str, str], day: date | None = None
 ) -> None:
-    """Uma chave por período: conta alunos únicos sem ligar um dia ao outro."""
+    """Uma chave aleatória por período: conta alunos únicos sem ligar um dia ao outro."""
     rows = [
-        {"period": period, "key": anonymous_key(author, f"active:{period}")}
+        {"period": period, "key": anonymous_key(usage[period[0]], f"active:{period}")}
         for period in periods(day or academic_calendar.today())
     ]
     await session.execute(insert(ActiveUser).values(rows).on_conflict_do_nothing())

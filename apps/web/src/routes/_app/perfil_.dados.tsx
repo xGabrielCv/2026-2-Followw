@@ -15,7 +15,7 @@ import { useEffect, useState } from 'react';
 import { GitHubIcon, REPOSITORY_URL } from '#/components/GitHubLink';
 import { BackHeader } from '#/components/HeaderBar';
 import { BackupSetting } from '#/components/profile/BackupSetting';
-import { StorageSetting } from '#/components/profile/StorageSetting';
+import { AnalyticsSetting, StorageSetting } from '#/components/profile/StorageSetting';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -58,15 +58,15 @@ const DEVICE: Item[] = [
     },
     {
         what: 'Turmas, menções, frequência, colegas, postagens, notícias, estágios e extrato do RU',
-        how: 'No cache cifrado deste aparelho, por 30 dias por padrão. Você pode escolher 7, 30 ou 90 dias. As consultas são atualizadas em segundo plano, preservando o dado salvo se a rede falhar.'
+        how: 'No cache cifrado deste navegador, por 30 dias por padrão. Você pode escolher 7, 30, 90 ou 400 dias. As consultas são atualizadas em segundo plano, preservando o dado salvo se a rede falhar.'
     },
     {
-        what: 'Configurações, calendário, marcações de presença, grades do simulador e o segredo das suas avaliações',
+        what: 'Configurações, calendário, marcações de presença e grades do simulador',
         how: 'Só neste navegador. Dados acadêmicos e preferências ficam cifrados; a chave não exportável fica no IndexedDB. Código do próprio site ainda pode acessá-los. O backup exportado contém dados pessoais em texto aberto: proteja o arquivo.'
     },
     {
-        what: 'Segredo do aparelho (chave de autoria)',
-        how: 'Código aleatório sem relação com a matrícula, guardado cifrado. Mantém a autoria pseudônima. O backup novo não exporta esse segredo; backups antigos podem contê-lo.'
+        what: 'As chaves das suas publicações e chamados',
+        how: 'Cada avaliação, resposta, material, guia ou chamado tem uma chave aleatória própria, guardada cifrada neste navegador. É ela que deixa você editar ou apagar. Não expiram com o prazo de armazenamento e o backup não as exporta.'
     }
 ];
 
@@ -104,7 +104,7 @@ const CLOUD: Item[] = [
     },
     {
         what: 'Contagem de uso',
-        how: 'Uma chave anônima por dia, semana e mês, tirada do segredo do aparelho: dá para saber quantos aparelhos usaram, nunca quem.'
+        how: 'Só se você ligar as métricas de uso: uma chave aleatória nova por dia, semana e mês, sem relação entre si. Dá para saber quantos acessos houve, nunca quem.'
     }
 ];
 
@@ -157,18 +157,25 @@ function DataUsagePage() {
                 </SectionTitle>
                 <Card className="gap-2 p-4 text-sm text-muted-foreground">
                     <p>
-                        Para impor limites (ex.: 10 arquivos por matéria) e deixar você apagar o que
-                        publicou, o servidor guarda uma <strong>chave anônima</strong> em cada
-                        conteúdo. Ela sai do <strong>segredo aleatório deste aparelho</strong>, não
-                        da sua matrícula, e muda em cada matéria, conversa ou turma: duas chaves
-                        nunca se ligam entre si.
+                        <strong>Suas publicações são privadas em relação à sua identidade.</strong>{' '}
+                        Suas avaliações, comentários e chamados não são vinculados à sua matrícula,
+                        nome ou conta do SIGAA.
                     </p>
                     <p>
-                        Isso é pseudonimização: identificadores persistidos não contêm sua
-                        matrícula, mas podem correlacionar ações no mesmo escopo. O operador da API
-                        processa a sessão e o segredo em memória; essa arquitetura não garante
-                        anonimato contra um operador malicioso. A autoria antiga continua disponível
-                        neste navegador, mas o backup novo não exporta segredos de acesso.
+                        Cada publicação usa uma chave aleatória para que você possa gerenciá-la.
+                        Essa chave fica guardada neste navegador, e o servidor não guarda sua
+                        identidade acadêmica junto ao conteúdo publicado. Se você limpar os dados do
+                        navegador, perde a chave e não consegue mais editar ou apagar essa
+                        publicação.
+                    </p>
+                    <p>
+                        Evite escrever informações pessoais que possam revelar quem você é: o que
+                        você escreve pode identificar você (um detalhe da sua turma, seu nome num
+                        arquivo). Os detalhes técnicos e os limites estão na{' '}
+                        <Link to="/privacidade" className="font-semibold text-primary">
+                            Política de Privacidade
+                        </Link>
+                        .
                     </p>
                     <p>
                         O que você escreve pode identificar você (um detalhe da sua turma, seu nome
@@ -185,6 +192,7 @@ function DataUsagePage() {
                 <DeviceUsage />
                 <Card className="gap-1 px-3 py-1">
                     <StorageSetting />
+                    <AnalyticsSetting />
                 </Card>
                 {user && (
                     <Card className="gap-1 px-3 py-1">

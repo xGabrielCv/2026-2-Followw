@@ -2,7 +2,6 @@ from fastapi import APIRouter, Request, Response
 from sigaa_client import RestaurantCredentials, RestaurantStatement
 
 from api.account import AccountDep
-from api.anonymous import AuthorDep
 from api.cache import CacheControl, NoStore
 from api.db.main import DatabaseDep
 from api.errors import SIGAA_ERRORS
@@ -116,6 +115,5 @@ async def put_statistics_sharing(
     body: SharingInput,
     account: AccountDep,
     db: DatabaseDep,
-    author: AuthorDep,
 ) -> SharingStatus:
-    return await set_sharing(account, db, body.shared, author)
+    return await set_sharing(account, db, body.shared, body.keys)

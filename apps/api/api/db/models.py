@@ -324,7 +324,7 @@ class ProfessorReview(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class Material(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Arquivo que um aluno compartilhou numa matéria, sem autor.
 
-    `uploader_key` deriva do segredo aleatório do aparelho e da matéria, nunca da matrícula.
+    `uploader_key` verifica a credencial aleatória deste material (gerada no navegador); não liga materiais entre si.
     """
 
     __tablename__ = "materials"
@@ -344,7 +344,7 @@ class Material(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     size: Mapped[int] = mapped_column()
     sha256: Mapped[str] = mapped_column()
     storage_key: Mapped[str] = mapped_column(unique=True)
-    uploader_key: Mapped[str] = mapped_column(index=True)
+    uploader_key: Mapped[str | None] = mapped_column(index=True)
 
 
 class Report(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -373,7 +373,7 @@ class Tutorial(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     body: Mapped[str] = mapped_column(Encrypted("tutorials.body"))
     category: Mapped[str] = mapped_column()
     # Segredo do aparelho por escopo; limita quantos guias aguardam aprovação.
-    author_key: Mapped[str] = mapped_column(index=True)
+    author_key: Mapped[str | None] = mapped_column(index=True)
     # pending, approved ou rejected.
     status: Mapped[str] = mapped_column(default="pending")
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -382,7 +382,7 @@ class Tutorial(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class ForumPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Dúvida ou publicação anônima da comunidade.
 
-    `author_key` deriva do segredo aleatório do aparelho e da conversa, sem identificador acadêmico.
+    `author_key` verifica a credencial aleatória desta publicação, sem identificador de aluno ou aparelho.
     """
 
     __tablename__ = "forum_posts"
@@ -394,7 +394,7 @@ class ForumPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     campus: Mapped[str | None] = mapped_column()
     course_id: Mapped[int | None] = mapped_column()
     subject_code: Mapped[str | None] = mapped_column()
-    author_key: Mapped[str] = mapped_column()
+    author_key: Mapped[str | None] = mapped_column()
     reply_count: Mapped[int] = mapped_column(default=0)
     last_activity_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -408,7 +408,10 @@ class ForumReply(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("forum_posts.id", ondelete="CASCADE"), index=True
     )
     body: Mapped[str] = mapped_column(Encrypted("forum.reply"))
-    author_key: Mapped[str] = mapped_column()
+    # Verificador da credencial desta resposta (aleatória, só dela); nulo depois de migrada de dados antigos.
+    author_key: Mapped[str | None] = mapped_column()
+    # Quem abriu a conversa provou, ao responder, que tem a chave da publicação: sem ligar nada além disso.
+    by_op: Mapped[bool] = mapped_column(default=False)
 
 
 class ActiveUser(Base):

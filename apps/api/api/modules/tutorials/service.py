@@ -9,7 +9,7 @@ from pydantic import BaseModel, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.anonymous import anonymous_key
+from api.anonymous import resource_key
 from api.crypto import matches
 from api.db.main import DatabaseDep
 from api.db.models import Tutorial
@@ -18,7 +18,9 @@ Category = Literal[
     "matricula", "estagio", "documentos", "auxilios", "campus", "sigaa", "outros"
 ]
 # Guias do mesmo aluno esperando aprovação ao mesmo tempo.
-MAX_PENDING_PER_AUTHOR = 3
+# Sem identificar quem enviou, o teto é da fila inteira (a moderação decide); por origem de rede há
+# também uma cota por hora no roteador.
+MAX_PENDING_TOTAL = 60
 _SCOPE = "tutorials"
 
 
@@ -93,18 +95,16 @@ class TutorialService:
         return await self._db.read(load)
 
     async def submit(self, author: str, body: TutorialInput) -> TutorialSubmitted:
-        key = anonymous_key(author, _SCOPE)
+        key = resource_key(author)
 
         async def write(session: AsyncSession) -> TutorialSubmitted:
             pending = await session.scalar(
-                select(func.count(Tutorial.id)).where(
-                    Tutorial.author_key == key, Tutorial.status == "pending"
-                )
+                select(func.count(Tutorial.id)).where(Tutorial.status == "pending")
             )
-            if (pending or 0) >= MAX_PENDING_PER_AUTHOR:
+            if (pending or 0) >= MAX_PENDING_TOTAL:
                 raise HTTPException(
                     409,
-                    f"Você já tem {MAX_PENDING_PER_AUTHOR} guias esperando aprovação.",
+                    "Há guias demais esperando aprovação. Tente de novo mais tarde.",
                 )
             tutorial = Tutorial(**body.model_dump(), author_key=key, status="pending")
             session.add(tutorial)

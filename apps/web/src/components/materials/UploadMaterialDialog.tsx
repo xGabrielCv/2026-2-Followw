@@ -170,8 +170,7 @@ export function UploadForm({
                 </span>
             </label>
             <p className="text-xs text-muted-foreground">
-                Limites: {data.limits.max_per_student} arquivos por aluno e{' '}
-                {data.limits.max_per_subject} por matéria, até{' '}
+                Limites: {data.limits.max_per_subject} arquivos por matéria, até{' '}
                 {formatBytes(data.limits.max_subject_bytes)} no total. Materiais de semestres
                 anteriores a {data.oldest_semester} são apagados sozinhos.
             </p>

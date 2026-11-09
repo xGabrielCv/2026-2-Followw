@@ -4,7 +4,7 @@ import type { Classroom } from '#/queries/classrooms';
 import type { Comparison } from '#/queries/comparison';
 import type { InternshipItem } from '#/queries/internships';
 
-import { authorSecret, validAuthor } from '#/lib/author';
+import { keyFor, newKey, validAuthor } from '#/lib/author';
 import { difference, insights, myApprovalRate, myResults } from '#/lib/comparison';
 import { countdown } from '#/lib/countdown';
 import { filterInternships, lookupText } from '#/lib/internships';
@@ -125,10 +125,11 @@ describe('menu Mais controlado pelo admin', () => {
     });
 });
 
-describe('segredo do aparelho', () => {
-    test('formato validado e nenhum segredo no SSR', () => {
+describe('chaves de autoria', () => {
+    test('formato validado, chave nova aleatória e nada guardado no SSR', () => {
         expect(validAuthor('a'.repeat(64))).toBe(true);
         expect(validAuthor('251000000')).toBe(false);
-        expect(authorSecret()).toBeNull();
+        expect(validAuthor(newKey())).toBe(true);
+        expect(keyFor('post', 'qualquer')).toBeUndefined();
     });
 });

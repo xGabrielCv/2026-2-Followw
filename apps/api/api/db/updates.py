@@ -31,6 +31,27 @@ def apply_updates(connection: Connection) -> None:
                 text("UPDATE admin_log SET detail=:detail WHERE id=:id"),
                 {"id": id_, "detail": encrypt(detail, "admin.log.detail")},
             )
+    # Autoria por credencial de publicação: colunas legadas passam a aceitar nulo e a resposta ganha o selo
+    # "de quem abriu a conversa" (sem ligar publicações entre si).
+    connection.execute(
+        text(
+            "ALTER TABLE forum_replies ADD COLUMN IF NOT EXISTS by_op BOOLEAN NOT NULL DEFAULT false"
+        )
+    )
+    for table, column in (
+        ("forum_posts", "author_key"),
+        ("forum_replies", "author_key"),
+        ("tutorials", "author_key"),
+        ("materials", "uploader_key"),
+        ("tickets", "author_key"),
+    ):
+        connection.execute(
+            text(f"ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL")
+        )
+    # A chave por aparelho dos chamados não é mais usada: zera (idempotente), sem tocar em mais nada.
+    connection.execute(
+        text("UPDATE tickets SET author_key = NULL WHERE author_key IS NOT NULL")
+    )
     connection.execute(
         text(
             "CREATE TABLE IF NOT EXISTS schema_updates (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"

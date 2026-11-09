@@ -9,7 +9,9 @@ export const STORAGE_KEYS = {
     LAYOUT: 'layout',
     REVIEWS: 'reviews',
     // chamados de suporte: a chave de cada um é a única prova de posse
-    SUPPORT: 'support'
+    SUPPORT: 'support',
+    // credenciais aleatórias de cada publicação (e o segredo antigo, até migrar)
+    AUTHOR: 'author'
 } as const;
 
 function getStorage(): Storage | null {

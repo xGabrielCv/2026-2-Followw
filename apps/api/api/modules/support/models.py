@@ -22,8 +22,8 @@ class Ticket(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # Só verificadores (HMAC) dos segredos: o servidor não consegue reconstruí-los.
     secret_hash: Mapped[str] = mapped_column()
     recovery_hash: Mapped[str | None] = mapped_column()
-    # Chave anônima do aparelho, por escopo; só limita quantos chamados ficam abertos.
-    author_key: Mapped[str] = mapped_column()
+    # Legado: já foi uma chave por aparelho. Hoje fica sempre nulo; as antigas são zeradas na migração.
+    author_key: Mapped[str | None] = mapped_column()
     category: Mapped[str] = mapped_column()
     title: Mapped[str] = mapped_column(Encrypted("support.title"))
     # open, in_review, waiting_student, answered, resolved ou closed.

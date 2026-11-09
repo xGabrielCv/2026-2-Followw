@@ -2,6 +2,7 @@ import { useIsRestoring, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react';
 
 import { runBackgroundSync, type SyncStep } from '#/integrations/prefetch/background-sync';
+import { migrateLegacyAuthorship } from '#/lib/author-migration';
 import { useOnline } from '#/lib/online';
 import { appConfigQueryOptions, menuVisible } from '#/queries/app-config';
 import { meQueryOptions } from '#/queries/me';
@@ -26,6 +27,11 @@ export function BackgroundSync() {
     const { data: config } = useQuery(appConfigQueryOptions);
     const registration = user?.registration;
     const internships = menuVisible(config, 'estagios');
+
+    // autoria antiga -> chaves independentes por publicação (uma vez; sem efeito se não houver o que migrar)
+    useEffect(() => {
+        if (!restoring && online && registration) void migrateLegacyAuthorship();
+    }, [restoring, online, registration]);
 
     useEffect(() => {
         if (restoring || !online || !registration) return undefined;

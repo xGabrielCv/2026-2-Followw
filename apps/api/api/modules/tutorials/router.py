@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 
 from api.anonymous import AuthorDep
 from api.cache import NoStore
@@ -15,6 +15,7 @@ from api.modules.tutorials.service import (
     TutorialServiceDep,
     TutorialSubmitted,
 )
+from api.rate_limit import publish_quota
 from api.schemas import SearchText
 from api.sigaa import SigaaConnectionDep
 
@@ -58,12 +59,15 @@ async def get_tutorial(
         **SIGAA_ERRORS,
         409: {"description": "Guias demais esperando aprovação."},
     },
-    dependencies=[require_enabled("tutorials")],
+    dependencies=[require_enabled("tutorials"), publish_quota("tutorials", 3)],
 )
 async def submit_tutorial(
     author: AuthorDep,
     connection: SigaaConnectionDep,
     service: TutorialServiceDep,
     body: TutorialInput,
+    response: Response,
 ) -> TutorialSubmitted:
-    return await service.submit(author, body)
+    submitted = await service.submit(author, body)
+    response.headers["X-Created-Id"] = str(submitted.id)
+    return submitted

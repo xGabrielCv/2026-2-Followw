@@ -43,10 +43,10 @@ _POLICIES: list[tuple[str, str, str | None, str | None]] = [
     (
         "tickets",
         "SELECT",
-        f"{_ADMIN} OR {_TICKET_PROOF} OR author_key = current_setting('app.author_key', true)",
+        f"{_ADMIN} OR {_TICKET_PROOF}",
         None,
     ),
-    ("tickets", "INSERT", None, "author_key = current_setting('app.author_key', true)"),
+    ("tickets", "INSERT", None, "current_setting('app.scope', true) = 'ticket_create'"),
     (
         "tickets",
         "UPDATE",

@@ -86,9 +86,9 @@ describe('material da matéria', () => {
     test('sem material mostra estado vazio; no limite, o envio fica desligado', () => {
         expect(render(data([])).getByText(/Ninguém compartilhou material/)).toBeDefined();
         dom.testing.cleanup();
-        const full = render(data([item({})], { mine: 10 }));
+        const full = render(data([item({})], { files: 50 }));
         expect(full.getByRole('button', { name: 'Enviar' }).hasAttribute('disabled')).toBe(true);
-        expect(full.getByText(/Apague um para enviar outro/)).toBeDefined();
+        expect(full.getByText(/chegou ao limite de arquivos ou de espaço/)).toBeDefined();
     });
 
     test('visitante abre e baixa material sem envio nem exclusão mesmo com autoria no cache', () => {

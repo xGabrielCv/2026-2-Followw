@@ -3,7 +3,14 @@ import createClient, { type Middleware } from 'openapi-fetch';
 
 import type { paths } from '#/queries/schema.gen.ts';
 
-import { authorSecret } from '#/lib/author';
+import {
+    type AuthorKind,
+    keyFor,
+    legacySecret,
+    newKey,
+    rememberKey,
+    usageHeader
+} from '#/lib/author';
 import { localStorageRepository } from '#/lib/local-storage';
 import { initializeLocalVault } from '#/lib/local-vault';
 import { toApiError } from '#/queries/errors.ts';
@@ -81,15 +88,69 @@ export const apiClient = createClient<paths>({
     credentials: 'include'
 });
 
-// a autoria anônima vem do segredo do aparelho, nunca da matrícula
+// Autoria: cada publicação leva uma chave ALEATÓRIA própria (criada aqui) e o servidor guarda só um
+// verificador dela. Nada identifica o aluno ou o aparelho entre publicações, e nunca vem da matrícula.
+const route = (request: Request) => {
+    const path = new URL(request.url).pathname.replace(/^\/api/, '');
+    return { method: request.method, parts: path.split('/').filter(Boolean) };
+};
+
+/** Que credencial este pedido usa: uma nova (criação) ou a guardada da publicação (apagar). */
+function authorKey({ method, parts }: ReturnType<typeof route>): string | undefined {
+    const [root, id, child, childId] = parts;
+    if (method === 'POST' && (root === 'tutorials' || root === 'materials') && parts.length <= 2)
+        return newKey();
+    if (method === 'POST' && root === 'forum') {
+        if (parts.length === 1 || (parts.length === 3 && child === 'replies')) return newKey();
+    }
+    if (method === 'DELETE' && root === 'forum' && id) {
+        const stored =
+            child === 'replies' && childId ? keyFor('reply', childId) : keyFor('post', id);
+        return stored ?? legacySecret();
+    }
+    if (method === 'DELETE' && root === 'materials' && childId === undefined && child)
+        return keyFor('material', child) ?? legacySecret();
+    return undefined;
+}
+
+const KIND_BY_ROOT: Record<string, AuthorKind | undefined> = {
+    forum: 'post',
+    materials: 'material',
+    tutorials: 'tutorial'
+};
+
 const authorMiddleware: Middleware = {
     async onRequest({ request }) {
         if (typeof indexedDB !== 'undefined') await initializeLocalVault();
-        const secret = authorSecret();
-        if (secret) request.headers.set('X-Followw-Author', secret);
-        if (localStorageRepository.get('analytics-consent') === true)
+        const where = route(request);
+        const key = authorKey(where);
+        if (key) request.headers.set('X-Followw-Author', key);
+        // quem abriu a conversa prova isso ao responder (a chave do post nunca sai de outro jeito)
+        if (where.method === 'POST' && where.parts[0] === 'forum' && where.parts[2] === 'replies') {
+            const op = keyFor('post', where.parts[1]);
+            if (op) request.headers.set('X-Followw-Op-Key', op);
+        }
+        // métricas opcionais: três chaves aleatórias de período, só no login/renovação e com consentimento
+        if (
+            localStorageRepository.get('analytics-consent') === true &&
+            where.parts[0] === 'auth' &&
+            where.parts[1] === 'sigaa'
+        ) {
             request.headers.set('X-Followw-Metrics', '1');
+            request.headers.set('X-Followw-Usage', usageHeader());
+        }
         return request;
+    },
+    async onResponse({ request, response }) {
+        const created = response.headers.get('X-Created-Id');
+        const key = request.headers.get('X-Followw-Author');
+        if (!response.ok || !created || !key) return;
+        const { method, parts } = route(request);
+        if (method !== 'POST') return;
+        // o id novo vem do servidor; a chave só existe aqui
+        const kind =
+            parts[0] === 'forum' && parts[2] === 'replies' ? 'reply' : KIND_BY_ROOT[parts[0]];
+        if (kind) rememberKey(kind, created, key);
     }
 };
 

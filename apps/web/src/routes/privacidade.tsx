@@ -77,8 +77,16 @@ function PrivacyPage() {
                             <p>
                                 Avaliações, grupos, materiais, dúvidas, guias e denúncias não exigem
                                 login para publicar, editar ou apagar, mas a leitura é pública. Não
-                                associamos nome nem matrícula às publicações: limites e autoria usam
-                                chaves derivadas de um segredo aleatório do aparelho. O conteúdo
+                                associamos nome nem matrícula às publicações. Cada publicação nasce
+                                com uma chave aleatória própria, gerada e guardada no seu navegador;
+                                o servidor guarda só um verificador dela, sem relação com as demais
+                                publicações, com a sua conta ou com o seu aparelho. Os limites
+                                contra abuso usam a origem de rede só durante a janela de cada cota,
+                                sem gravá-la junto ao conteúdo. Isso reduz muito, mas não elimina, a
+                                possibilidade de alguém ligar publicações: o servidor ainda recebe,
+                                no momento de cada pedido, dados de conexão (como o endereço de
+                                rede) e o texto que você envia; publicações antigas ficam como
+                                estavam até você abrir o app e migrá-las automaticamente. O conteúdo
                                 fica cifrado no banco (AES-256-GCM) e os arquivos ficam cifrados e
                                 sem metadados removidos na preparação do arquivo. A API e a
                                 moderação conseguem decifrar esse conteúdo; não se trata de
@@ -101,13 +109,14 @@ function PrivacyPage() {
                             <p>
                                 Configurações, calendário, marcações de presença, grades e o cache
                                 dos dados do SIGAA ficam cifrados no navegador por 30 dias por
-                                padrão, com opções de 7, 30 ou 90 dias em Uso de dados. O login tem
-                                limite separado de até 8 horas. A chave local fica no próprio
+                                padrão, com opções de 7, 30, 90 ou 400 dias em Uso de dados. O login
+                                tem limite separado de até 8 horas. A chave local fica no próprio
                                 navegador; a cifra não impede acesso por código malicioso da mesma
                                 origem ou por alguém com o aparelho desbloqueado. Backups exportados
                                 contêm informações pessoais em texto aberto e não incluem senhas ou
-                                segredos de acesso. Credenciais de autoria e suporte permanecem
-                                cifradas até a limpeza manual para preservar acesso ao conteúdo.
+                                segredos de acesso. As chaves das suas publicações e chamados
+                                permanecem cifradas até a limpeza manual para você manter acesso ao
+                                que publicou.
                             </p>
                         </div>
                         <div>
@@ -117,8 +126,8 @@ function PrivacyPage() {
                                 métricas de navegação (páginas e interações), sem gravação de sessão
                                 e sem os textos da tela. A API registra dados técnicos das
                                 requisições, como rota, status e duração, sem matrícula, para
-                                diagnóstico. A contagem de uso do painel usa uma chave anônima por
-                                dia, semana e mês.
+                                diagnóstico. A contagem de uso do painel só existe se você ligar as
+                                métricas e usa uma chave aleatória nova por dia, semana e mês.
                             </p>
                         </div>
                         <div>
@@ -127,7 +136,7 @@ function PrivacyPage() {
                                 Não envie sua senha a ninguém. Como o servidor não guarda seus dados
                                 do SIGAA, não há o que apagar deles por lá; o que você publicou na
                                 comunidade pode ser apagado no próprio item, com login e a chave de
-                                autoria preservada neste aparelho. Qualquer pessoa pode solicitar
+                                publicação guardada neste navegador. Qualquer pessoa pode solicitar
                                 revisão ou remoção pelo botão de denúncia, inclusive sem login. Para
                                 limpar o dispositivo, use Perfil, Uso de dados, ou remova os dados
                                 do site no navegador.
@@ -153,9 +162,10 @@ function PrivacyPage() {
                         <p>
                             Grupos, avaliações, materiais, conversas e guias aprovados podem ser
                             consultados sem login. Contribuir e alterar conteúdo exige autenticação
-                            no SIGAA e, quando aplicável, o segredo de autoria do aparelho. Publique
-                            apenas conteúdo que você tenha direito de compartilhar. Denúncias
-                            permanecem disponíveis a todos para proteger a comunidade.
+                            no SIGAA e, para editar ou apagar, a chave da publicação guardada no seu
+                            navegador. Publique apenas conteúdo que você tenha direito de
+                            compartilhar. Denúncias permanecem disponíveis a todos para proteger a
+                            comunidade.
                         </p>
                         <p>
                             É proibido sobrecarregar o serviço, burlar restrições, acessar contas ou

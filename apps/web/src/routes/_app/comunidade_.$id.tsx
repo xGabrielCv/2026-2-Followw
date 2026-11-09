@@ -12,6 +12,7 @@ import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { Button } from '#/components/ui/button';
 import { Textarea } from '#/components/ui/textarea';
+import { useIsOwn } from '#/lib/author';
 import { CAMPUS_LABELS } from '#/lib/campus';
 import { useOnline } from '#/lib/online';
 import { relativeTime } from '#/lib/relative-time';
@@ -52,6 +53,7 @@ function PostPage() {
 export function Conversation({ post, canEdit = false }: { post: PostDetails; canEdit?: boolean }) {
     const navigate = useNavigate();
     const remove = useDeletePost();
+    const isOwn = useIsOwn();
     return (
         <div className="flex flex-col gap-4 pb-8">
             <article className="flex flex-col gap-2 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/8">
@@ -88,7 +90,7 @@ export function Conversation({ post, canEdit = false }: { post: PostDetails; can
                 <h1 className="text-lg leading-snug font-semibold">{post.title}</h1>
                 <p className="text-sm wrap-anywhere whitespace-pre-line">{post.body}</p>
                 <div className="flex items-center justify-end gap-1">
-                    {canEdit && post.mine ? (
+                    {canEdit && isOwn('post', post.id, post.mine) ? (
                         <Button
                             size="sm"
                             variant="ghost"
@@ -137,6 +139,8 @@ function ReplyRow({
     canEdit: boolean;
 }) {
     const remove = useDeleteReply(postId);
+    const isOwn = useIsOwn();
+    const mine = isOwn('reply', reply.id, reply.mine);
     return (
         <li
             className={cn(
@@ -150,11 +154,11 @@ function ReplyRow({
                         Autor da conversa
                     </span>
                 )}
-                {reply.mine && !reply.by_author && (
+                {mine && !reply.by_author && (
                     <span className="rounded-full bg-muted px-2 py-0.5">Sua resposta</span>
                 )}
                 <span className="ml-auto">{relativeTime(reply.created_at)}</span>
-                {canEdit && reply.mine ? (
+                {canEdit && mine ? (
                     <button
                         type="button"
                         className="rounded-md p-1 hover:bg-muted hover:text-destructive"

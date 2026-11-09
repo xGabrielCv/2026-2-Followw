@@ -5,7 +5,7 @@ const decoder = new TextDecoder('utf-8', { fatal: true });
 const VAULT_KEY = 'followw:encrypted-vault';
 const KEY_ID = 'followw-device-key-v1';
 export const RETENTION_KEY = 'followw:retention-days';
-export const RETENTION_DAYS = [7, 30, 90] as const;
+export const RETENTION_DAYS = [7, 30, 90, 400] as const;
 export const DEFAULT_RETENTION_DAYS = 30;
 const DAY = 86400_000;
 const PUBLIC_KEYS = new Set([
@@ -204,6 +204,11 @@ export class LocalVault {
         this.schedule();
     }
 
+    /** Apaga o que é acadêmico e mantém as credenciais (autoria, avaliações, chamados). */
+    clearNonCredentials() {
+        for (const key of Object.keys(this.values)) if (!credentialKey(key)) this.remove(key);
+    }
+
     private schedule() {
         if (!this.initialized) return;
         this.queue = this.queue
@@ -254,4 +259,11 @@ export function localVault(storage: Storage) {
 export async function initializeLocalVault() {
     if (typeof window === 'undefined' || typeof indexedDB === 'undefined') return;
     await localVault(window.localStorage).initialize();
+}
+
+/** Limpeza do cache acadêmico sem perder as chaves das publicações e dos chamados do aluno. */
+export async function clearAcademicData(storage: Storage) {
+    const vault = localVault(storage);
+    vault.clearNonCredentials();
+    await vault.flush();
 }

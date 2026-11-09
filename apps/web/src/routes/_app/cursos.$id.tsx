@@ -1,6 +1,6 @@
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, notFound, rootRouteId } from '@tanstack/react-router';
-import { ChartColumn } from 'lucide-react';
+import { ChartColumn, ChevronRight } from 'lucide-react';
 
 import { CourseSummary } from '#/components/curriculum/CourseSummary';
 import { CurriculumView } from '#/components/curriculum/CurriculumView';
@@ -8,7 +8,6 @@ import { Legend } from '#/components/curriculum/Legend';
 import { ErrorCard, ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
-import { buttonVariants } from '#/components/ui/button';
 import { useFlowSearch, validateFlowSearch } from '#/lib/curriculum/navigation';
 import { flowTarget, parseCourseId } from '#/lib/curriculum/target';
 import { titleCase } from '#/lib/profile';
@@ -70,29 +69,29 @@ export const Route = createFileRoute('/_app/cursos/$id')({
     component: FlowPage
 });
 
-function FlowHeader({ legend = false, stats }: { legend?: boolean; stats?: number }) {
+function FlowHeader({ legend = false }: { legend?: boolean }) {
+    return <BackHeader to="/buscar" title="Fluxo acadêmico" actions={legend && <Legend />} />;
+}
+
+/** Atalho bem visível para as estatísticas do fluxo (antes era um botão pequeno no cabeçalho). */
+function StatisticsShortcut({ courseId }: { courseId: number }) {
     return (
-        <BackHeader
-            to="/buscar"
-            title="Fluxo acadêmico"
-            actions={
-                (legend || stats !== undefined) && (
-                    <>
-                        {legend && <Legend />}
-                        {stats !== undefined && (
-                            <Link
-                                to="/cursos/$id/estatisticas"
-                                params={{ id: stats }}
-                                className={buttonVariants({ variant: 'outline', size: 'sm' })}
-                            >
-                                <ChartColumn aria-hidden="true" />
-                                Estatísticas
-                            </Link>
-                        )}
-                    </>
-                )
-            }
-        />
+        <Link
+            to="/cursos/$id/estatisticas"
+            params={{ id: courseId }}
+            className="mt-3 flex items-center gap-3 rounded-2xl bg-primary/10 p-3 ring-1 ring-primary/20 transition-colors outline-none hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                <ChartColumn className="size-5" aria-hidden="true" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-semibold">Ver estatísticas do seu fluxo</span>
+                <span className="text-xs text-muted-foreground">
+                    Progresso, matérias atrasadas e planejamento da formatura
+                </span>
+            </span>
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
     );
 }
 
@@ -109,11 +108,11 @@ function FlowPage() {
     return (
         <div ref={ref} className="flex min-h-0 flex-1 flex-col">
             <div className="shrink-0 px-4 pb-5 desk:px-6">
-                <FlowHeader
-                    legend={Boolean(desktop && loggedIn && course && entrySemester)}
-                    stats={ownCourse && loggedIn && entrySemester ? courseId : undefined}
-                />
+                <FlowHeader legend={Boolean(desktop && loggedIn && course && entrySemester)} />
                 {course && <CourseSummary course={course} entrySemester={entrySemester} />}
+                {ownCourse && loggedIn && entrySemester && (
+                    <StatisticsShortcut courseId={courseId} />
+                )}
             </div>
             {!ownCourse && listed.isPending ? (
                 <LoadingText className="p-4">Carregando curso...</LoadingText>

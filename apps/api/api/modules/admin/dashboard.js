@@ -2,6 +2,7 @@ import { $, call, closeDrawer, confirmation, currentUser, el, hasPermission, not
 import { initializeAuth } from './dashboard-auth.js';
 import { accountsView, securityView } from './dashboard-accounts.js';
 import { supportView } from './dashboard-support.js';
+import { statisticsPanel } from './dashboard-statistics.js';
 
 const LABELS = { review:"Avaliações", group:"Grupos", material:"Materiais", post:"Publicações", reply:"Respostas", tutorial:"Guias", report:"Denúncias" };
 const REASONS = { ofensivo:"Ofensivo", dados_pessoais:"Expõe alguém", spam:"Spam", falso:"Falso", direitos_autorais:"Direitos autorais", outro:"Outro" };
@@ -363,6 +364,7 @@ async function system() {
           try { const r = await call("/maintenance", { method:"POST" }); notice(Object.entries(r).map(([k, n]) => `${k}: ${n}`).join("\n")); render(); }
           catch (error) { notice(error.message, true); e.target.disabled = false; }
         } }, "Rodar limpeza agora"))),
+    statisticsPanel(render),
     el("div", { class:"panel" }, el("h3", {}, "Registro do administrador"),
       log.length ? el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Quando"), el("th", {}, "Conta / cargo"), el("th", {}, "Ação"), el("th", {}, "Alvo"), el("th", {}, "Detalhe"))),
         el("tbody", {}, log.map((l) => el("tr", {}, el("td", {}, when(l.created_at)), el("td", {}, [l.actor || "Legado", l.actor_role].filter(Boolean).join(" · ")), el("td", {}, l.action), el("td", {}, [l.target_type, l.target_id].filter(Boolean).join(" · ")), el("td", { class:"clip" }, l.detail || "")))))

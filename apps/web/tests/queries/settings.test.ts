@@ -65,6 +65,7 @@ describe('configurações e lançamentos ficam no navegador', () => {
         expect(requests).toHaveLength(1);
         expect(new URL(requests[0].url).pathname).toBe('/api/me/statistics-sharing');
         expect(requests[0].method).toBe('PUT');
-        expect(await requests[0].json()).toEqual({ shared: true });
+        // nada além do pedido e das chaves de liberações anteriores (aqui, nenhuma)
+        expect(await requests[0].json()).toEqual({ shared: true, keys: {} });
     });
 });

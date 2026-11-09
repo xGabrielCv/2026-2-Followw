@@ -324,15 +324,27 @@ def test_so_entram_turmas_de_quem_compartilha_as_estatisticas(
     ]
     client.cookies.update(cookies(refresh=CREDENCIAIS))
     status = client.put("/me/statistics-sharing", json={"shared": True}).json()
+    chaves = status.pop("keys")
     assert status == {"shared": True, "classrooms": 1, "pending": False}
+    # uma chave aleatória por turma, devolvida ao navegador (o servidor só guarda o verificador)
+    assert len(chaves) == 1 and all(len(k) >= 32 for k in chaves.values())
     # a turma já tinha índice: nada a buscar em segundo plano
     assert qstash.published == []
-    # repetir não duplica
-    client.put("/me/statistics-sharing", json={"shared": True})
+    # repetir com a chave guardada não duplica
+    again = client.put(
+        "/me/statistics-sharing", json={"shared": True, "keys": chaves}
+    ).json()
+    assert again["keys"] == {}
     outcomes = client.get("/public/subjects/FGA0003/outcomes").json()
     assert outcomes["subject"]["classrooms"] == 2
 
+    # sem a chave, ninguém desfaz a liberação (nem o mesmo aluno em outro navegador)
     client.put("/me/statistics-sharing", json={"shared": False})
+    assert (
+        client.get("/public/subjects/FGA0003/outcomes").json()["subject"]["classrooms"]
+        == 2
+    )
+    client.put("/me/statistics-sharing", json={"shared": False, "keys": chaves})
     outcomes = client.get("/public/subjects/FGA0003/outcomes").json()
     assert outcomes["subject"]["classrooms"] == 1
     # o compartilhamento não guarda a matrícula de ninguém
@@ -362,6 +374,7 @@ def test_liberar_busca_indices_na_requisicao_sem_persistir_credenciais(
 
     status = client.put("/me/statistics-sharing", json={"shared": True}).json()
 
+    assert status.pop("keys")
     assert status == {"shared": True, "classrooms": 1, "pending": False}
     assert qstash.published == []
     outcomes = client.get("/public/subjects/FGA0003/outcomes").json()

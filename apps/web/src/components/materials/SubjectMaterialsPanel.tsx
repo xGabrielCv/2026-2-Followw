@@ -16,6 +16,7 @@ import { ReportButton } from '#/components/community/ReportButton';
 import { LoadingText } from '#/components/LoadingText';
 import { UploadMaterialDialog } from '#/components/materials/UploadMaterialDialog';
 import { Button } from '#/components/ui/button';
+import { useIsOwn } from '#/lib/author';
 import { saveFile } from '#/lib/download';
 import { formatBytes, MATERIAL_KIND_LABELS } from '#/lib/materials';
 import { titleCase } from '#/lib/profile';
@@ -88,10 +89,8 @@ export function MaterialsView({
     children?: React.ReactNode;
 }) {
     const { usage, limits } = data;
-    const full =
-        usage.mine >= limits.max_per_student ||
-        usage.files >= limits.max_per_subject ||
-        usage.bytes >= limits.max_subject_bytes;
+    // o servidor não sabe quem enviou: o limite por matéria vale para todos
+    const full = usage.files >= limits.max_per_subject || usage.bytes >= limits.max_subject_bytes;
     const semesters = [...new Set(data.items.map((item) => item.semester))];
 
     return (
@@ -120,19 +119,10 @@ export function MaterialsView({
                         max={limits.max_subject_bytes}
                         format={formatBytes}
                     />
-                    {onUpload && (
-                        <Meter
-                            label="Seus envios"
-                            value={usage.mine}
-                            max={limits.max_per_student}
-                        />
-                    )}
                 </div>
                 {onUpload && full && (
                     <p className="text-xs text-warning">
-                        {usage.mine >= limits.max_per_student
-                            ? `Você já enviou ${limits.max_per_student} arquivos nesta matéria. Apague um para enviar outro.`
-                            : 'A matéria chegou ao limite de arquivos ou de espaço.'}
+                        A matéria chegou ao limite de arquivos ou de espaço.
                     </p>
                 )}
             </div>
@@ -229,6 +219,8 @@ function MaterialRow({
     classroom?: SubjectMaterialsPanelProps['classroom'];
 }) {
     const remove = useDeleteMaterial(code);
+    const isOwn = useIsOwn();
+    const mine = isOwn('material', item.id, item.mine);
     const [busy, setBusy] = useState(false);
     const [failed, setFailed] = useState(false);
     const origin = originLabel(item, classroom);
@@ -266,7 +258,7 @@ function MaterialRow({
                     <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
                         {MATERIAL_KIND_LABELS[item.kind]}
                     </span>
-                    {item.mine && (
+                    {mine && (
                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                             Seu envio
                         </span>
@@ -304,7 +296,7 @@ function MaterialRow({
                         <Download aria-hidden="true" />
                         Baixar
                     </Button>
-                    {canEdit && item.mine ? (
+                    {canEdit && mine ? (
                         <Button
                             size="sm"
                             variant="ghost"

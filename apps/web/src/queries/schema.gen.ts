@@ -1008,6 +1008,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/community/migrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Trocar a autoria antiga por credenciais independentes, uma por publicação
+         * @description Uso único: o navegador manda o segredo antigo e recebe uma chave nova por publicação sua.
+         */
+        post: operations["migrate_authorship_community_migrate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/support/tickets": {
         parameters: {
             query?: never;
@@ -1019,7 +1039,7 @@ export interface paths {
         put?: never;
         /**
          * Abrir um chamado de suporte anônimo
-         * @description Devolve a chave e o código de recuperação uma única vez. Não guarda matrícula, nome nem e-mail.
+         * @description Devolve a chave e o código de recuperação uma única vez. Não guarda matrícula, nome, e-mail nem identificador de aparelho.
          */
         post: operations["create_ticket_support_tickets_post"];
         delete?: never;
@@ -1781,6 +1801,30 @@ export interface components {
              */
             created_at: string;
         };
+        /** Migrated */
+        Migrated: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "post" | "reply" | "material" | "tutorial";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Key */
+            key: string;
+        };
+        /** MigrationResult */
+        MigrationResult: {
+            /** Items */
+            items: components["schemas"]["Migrated"][];
+            /** Statistics */
+            statistics: {
+                [key: string]: string;
+            };
+        };
         /** NewReview */
         NewReview: {
             /** Rating */
@@ -2301,6 +2345,10 @@ export interface components {
         SharingInput: {
             /** Shared */
             shared: boolean;
+            /** Keys */
+            keys?: {
+                [key: string]: string;
+            };
         };
         /** SharingStatus */
         SharingStatus: {
@@ -2313,6 +2361,10 @@ export interface components {
              * @default false
              */
             pending: boolean;
+            /** Keys */
+            keys?: {
+                [key: string]: string;
+            };
         };
         /** SigaaLoginRequest */
         SigaaLoginRequest: {
@@ -5498,6 +5550,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migrate_authorship_community_migrate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MigrationResult"];
+                };
             };
             /** @description Validation Error */
             422: {

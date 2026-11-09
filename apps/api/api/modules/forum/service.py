@@ -16,7 +16,7 @@ from pydantic import BaseModel, StringConstraints
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.anonymous import anonymous_key, same_key
+from api.anonymous import owns, resource_key
 from api.crypto import matches
 from api.db.main import DatabaseDep
 from api.db.models import Course, ForumPost, ForumReply, Subject
@@ -162,7 +162,7 @@ def _item(
         reply_count=post.reply_count,
         created_at=post.created_at,
         last_activity_at=post.last_activity_at,
-        mine=same_key(post.author_key, author, _scope(post.id)),
+        mine=owns(post.author_key, author, _scope(post.id)),
     )
 
 
@@ -250,8 +250,12 @@ class ForumService:
                         id=reply.id,
                         body=reply.body,
                         created_at=reply.created_at,
-                        mine=same_key(reply.author_key, author, scope),
-                        by_author=reply.author_key == post.author_key,
+                        mine=owns(reply.author_key, author, scope),
+                        by_author=reply.by_op
+                        or (
+                            reply.author_key is not None
+                            and reply.author_key == post.author_key
+                        ),
                     )
                     for reply in replies
                 ],
@@ -282,7 +286,7 @@ class ForumService:
                     campus=body.campus,
                     course_id=course_id,
                     subject_code=body.subject,
-                    author_key=anonymous_key(author, _scope(post_id)),
+                    author_key=resource_key(author),
                 )
             )
 
@@ -290,8 +294,14 @@ class ForumService:
         return await self.get(post_id, author)
 
     async def reply(
-        self, post_id: uuid.UUID, author: str, body: ReplyInput
-    ) -> PostDetails:
+        self,
+        post_id: uuid.UUID,
+        author: str,
+        body: ReplyInput,
+        op_key: str | None = None,
+    ) -> tuple[PostDetails, uuid.UUID]:
+        reply_id = uuid.uuid4()
+
         async def write(session: AsyncSession) -> None:
             post = await session.get(ForumPost, post_id, with_for_update=True)
             if post is None:
@@ -300,21 +310,23 @@ class ForumService:
                 raise HTTPException(409, "A conversa chegou ao limite de respostas.")
             session.add(
                 ForumReply(
+                    id=reply_id,
                     post_id=post_id,
                     body=body.body,
-                    author_key=anonymous_key(author, _scope(post_id)),
+                    author_key=resource_key(author),
+                    by_op=owns(post.author_key, op_key, _scope(post_id)),
                 )
             )
             post.reply_count += 1
             post.last_activity_at = datetime.now(UTC)
 
         await self._db.write(write)
-        return await self.get(post_id, author)
+        return await self.get(post_id, author), reply_id
 
     async def delete_post(self, post_id: uuid.UUID, author: str) -> None:
         async def write(session: AsyncSession) -> None:
             post = await session.get(ForumPost, post_id)
-            if post is None or not same_key(post.author_key, author, _scope(post_id)):
+            if post is None or not owns(post.author_key, author, _scope(post_id)):
                 raise HTTPException(404, "Publicação não encontrada.")
             await session.delete(post)
 
@@ -328,7 +340,7 @@ class ForumService:
             if (
                 reply is None
                 or reply.post_id != post_id
-                or not same_key(reply.author_key, author, _scope(post_id))
+                or not owns(reply.author_key, author, _scope(post_id))
             ):
                 raise HTTPException(404, "Resposta não encontrada.")
             await session.delete(reply)

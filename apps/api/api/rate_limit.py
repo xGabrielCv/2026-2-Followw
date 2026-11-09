@@ -7,7 +7,7 @@ from ipaddress import ip_address, ip_network
 from math import ceil
 from time import time
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
 from starlette._utils import get_route_path
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -156,6 +156,28 @@ async def _limit(
             error_type=type(error).__name__,
         )
         return local
+
+
+def reset_memory() -> None:
+    """Zera as cotas em memória (testes)."""
+    _MEMORY.clear()
+
+
+def publish_quota(group: str, limit: int, window_seconds: int = 3600):
+    """Cota de publicação por origem de rede, temporária e sem relação com conta ou aparelho.
+
+    Substitui o limite "por aluno" que exigia um identificador estável: o IP só vive na janela da cota
+    (memória/Redis, com expiração) e nunca é gravado junto de uma publicação.
+    """
+
+    async def check(request: Request) -> None:
+        if request.method == "OPTIONS":
+            return
+        await limit_by(
+            f"publish:{group}", _bucket(_client_host(request)), limit, window_seconds
+        )
+
+    return Depends(check)
 
 
 def _bucket(host: str) -> str:

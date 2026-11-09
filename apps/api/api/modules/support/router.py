@@ -2,7 +2,6 @@ import uuid
 
 from fastapi import APIRouter
 
-from api.anonymous import AuthorDep
 from api.cache import NoStore
 from api.modules.support.service import (
     KeyGranted,
@@ -14,6 +13,7 @@ from api.modules.support.service import (
     TicketKey,
     TicketView,
 )
+from api.rate_limit import publish_quota
 
 # Sem login: o acesso é a posse da chave do chamado, que só o aparelho do aluno guarda.
 router = APIRouter(dependencies=[NoStore])
@@ -25,12 +25,11 @@ _NOT_FOUND = {404: {"description": "Chamado não encontrado."}}
     response_model=TicketCreated,
     status_code=201,
     summary="Abrir um chamado de suporte anônimo",
-    description="Devolve a chave e o código de recuperação uma única vez. Não guarda matrícula, nome nem e-mail.",
+    description="Devolve a chave e o código de recuperação uma única vez. Não guarda matrícula, nome, e-mail nem identificador de aparelho.",
+    dependencies=[publish_quota("support", 10)],
 )
-async def create_ticket(
-    body: TicketInput, author: AuthorDep, service: SupportServiceDep
-) -> TicketCreated:
-    return await service.create(author, body)
+async def create_ticket(body: TicketInput, service: SupportServiceDep) -> TicketCreated:
+    return await service.create(body)
 
 
 @router.post(

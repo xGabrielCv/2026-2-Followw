@@ -246,7 +246,11 @@ def test_guia_so_aparece_depois_de_aprovado(ana, base, painel):
 def test_guias_pendentes_tem_limite_e_exigem_login(client, ana, base):
     for _ in range(3):
         assert ana.post("/tutorials", json=GUIA).status_code == 201
-    assert ana.post("/tutorials", json=GUIA).status_code == 409
+    # sem identificar quem enviou, o limite é por origem de rede e por hora
+    assert ana.post("/tutorials", json=GUIA).status_code == 429
+    from api import rate_limit
+
+    rate_limit.reset_memory()
     ana.cookies.clear()
     assert ana.post("/tutorials", json=GUIA).status_code == 401
     assert ana.post("/tutorials", json={**GUIA, "body": "curto"}).status_code in (
@@ -446,6 +450,7 @@ def test_estatisticas_de_uso_por_periodo(ana, base, painel, sigaa, hoje, databas
     with database.begin() as session:
         session.add(SystemFlag(key="telemetry", enabled=True))
     ana.headers["X-Followw-Metrics"] = "1"
+    ana.headers["X-Followw-Usage"] = ",".join(["4" * 64, "5" * 64, "6" * 64])
     # O conteúdo nasce com a data real: o "hoje" do painel precisa ser o mesmo.
     hoje(datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None))
     ana.cookies.clear()

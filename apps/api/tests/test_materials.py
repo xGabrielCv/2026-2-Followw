@@ -140,16 +140,12 @@ def test_semestre_fora_da_janela_e_campos_invalidos(logado, materia):
     assert logado.get("/materials/XYZ0001").status_code == 404
 
 
-def test_limites_por_aluno_por_materia_e_espaco(logado, materia, monkeypatch, cookies):
-    monkeypatch.setattr(materials, "MAX_PER_STUDENT", 2)
+def test_limites_por_materia_e_espaco(logado, materia, monkeypatch, cookies):
     monkeypatch.setattr(materials, "MAX_PER_SUBJECT", 3)
     assert _enviar(logado, _png((1, 1, 1))).status_code == 201
     # o mesmo arquivo de novo não entra
     assert _enviar(logado, _png((1, 1, 1))).status_code == 409
     assert _enviar(logado, _png((2, 2, 2))).status_code == 201
-    limite = _enviar(logado, _png((3, 3, 3)))
-    assert limite.status_code == 409
-    assert "2 arquivos" in limite.json()["detail"]
 
     logado.cookies.clear()
     logado.cookies.update(cookies(refresh=BIA))
