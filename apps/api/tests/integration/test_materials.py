@@ -298,9 +298,11 @@ def test_envia_docx_e_texto_e_baixa_como_anexo_sem_metadados(logado, materia):
     assert baixado.headers["content-disposition"].startswith("attachment")
     assert baixado.headers["x-content-type-options"] == "nosniff"
     pacote = logado.get(f"{URL}/{docx.json()['id']}").content
-    assert (
-        b"Fulana" not in pacote and b"conteudo" not in pacote or b"Fulana" not in pacote
-    )
+    import zipfile
+
+    with zipfile.ZipFile(BytesIO(pacote)) as arquivo:
+        assert b"Fulana" not in arquivo.read("docProps/core.xml")
+        assert b"conteudo" in arquivo.read("word/document.xml")
 
 
 @pytest.mark.parametrize(
