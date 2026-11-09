@@ -162,3 +162,34 @@ async def test_cancelamento_apos_pg_adquirir_lock_nao_devolve_conexao_presa_ao_p
         await recovered.release()
     finally:
         await first.dispose()
+
+
+async def test_quem_espera_o_mesmo_aluno_nao_esgota_o_pool_de_outros_alunos(database):
+    """Regressão: esperando, o pedido segurava uma conexão do pool e travava todos os demais."""
+    url = database.kw["bind"].url.set(drivername="postgresql+asyncpg")
+    # um pool com 2 conexões: 1 do dono do lock e 1 para tentativas (esperas e outros alunos)
+    pequeno = create_async_engine(url, pool_size=2, max_overflow=0)
+    try:
+        dono = await session_lock.acquire("aluno-a", 1, engine=pequeno)
+        esperas = [
+            asyncio.create_task(session_lock.acquire("aluno-a", 3, engine=pequeno))
+            for _ in range(5)
+        ]
+        await asyncio.sleep(0.3)  # as esperas estão sondando agora
+        inicio = time.monotonic()
+        outro = await session_lock.acquire("aluno-b", 1, engine=pequeno)
+        assert time.monotonic() - inicio < 0.8
+        await outro.release()
+        await dono.release()
+        # uma das esperas assume; as demais continuam na fila até o tempo acabar ou soltarem
+        primeira = await asyncio.wait_for(
+            asyncio.wait(esperas, return_when=asyncio.FIRST_COMPLETED), 3
+        )
+        vencedora = next(iter(primeira[0]))
+        await vencedora.result().release()
+        for tarefa in esperas:
+            if not tarefa.done():
+                tarefa.cancel()
+        await asyncio.gather(*esperas, return_exceptions=True)
+    finally:
+        await pequeno.dispose()

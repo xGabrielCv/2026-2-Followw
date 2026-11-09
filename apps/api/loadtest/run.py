@@ -81,7 +81,7 @@ def server_env(name: str, log: Path, args) -> dict:
         APP_DB_ROLE=name,
         APP_DB_PASSWORD=password,
         SESSION_LOCK_BACKEND="postgres",
-        SESSION_LOCK_POOL="5",
+        SESSION_LOCK_POOL=str(getattr(args, "lock_pool", 5)),
         RATE_LIMIT_BACKEND="postgres",
         JWT_SECRET_KEY="chave-sintetica-exclusiva-de-carga-" + "x" * 8,
         DATA_ENCRYPTION_KEY="chave-sintetica-de-carga-do-conteudo-" + "y" * 8,
@@ -471,6 +471,7 @@ def main() -> None:
     parser.add_argument("--pool", type=int, default=10)
     parser.add_argument("--overflow", type=int, default=10)
     parser.add_argument("--origin-latency", type=float, default=0.4)
+    parser.add_argument("--lock-pool", type=int, default=5)
     parser.add_argument("--shards", type=int, default=4, help="processos-cliente")
     parser.add_argument("--out", default="")
     args = parser.parse_args()

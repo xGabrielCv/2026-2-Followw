@@ -63,25 +63,30 @@ class HeldLock:
 async def acquire(
     name: str, timeout: float, engine: AsyncEngine | None = None
 ) -> HeldLock:
-    """Espera até `timeout` segundos; levanta `TimeoutError` se não conseguir."""
+    """Espera até `timeout` segundos; levanta `TimeoutError` se não conseguir.
+
+    Quem espera NÃO segura uma conexão do pool: cada tentativa pega uma, tenta o lock e, se não
+    conseguiu, devolve a conexão antes de dormir. Assim, vários pedidos esperando o mesmo aluno não
+    esgotam o pool e não travam os pedidos de outros alunos (só quem tem o lock ocupa conexão).
+    """
     key = lock_key(name)
-    connection = None
-    try:
-        async with asyncio.timeout(timeout):
+    async with asyncio.timeout(timeout):
+        while True:
             connection = await (engine or lock_engine()).connect()
-            connection = await connection.execution_options(
-                isolation_level="AUTOCOMMIT"
-            )
-            while True:
+            try:
+                connection = await connection.execution_options(
+                    isolation_level="AUTOCOMMIT"
+                )
                 if await connection.scalar(
                     text("SELECT pg_try_advisory_lock(:k)"), {"k": key}
                 ):
                     return HeldLock(connection, key)
-                await asyncio.sleep(0.03 + random.random() * 0.05)
-    except BaseException:
-        if connection is not None:
-            try:
-                await connection.invalidate()
-            finally:
-                await connection.close()
-        raise
+            except BaseException:
+                # Cancelado ou falho no meio: a conexão pode ter ficado com o lock; descarta-a.
+                try:
+                    await connection.invalidate()
+                finally:
+                    await connection.close()
+                raise
+            await connection.close()
+            await asyncio.sleep(0.03 + random.random() * 0.05)

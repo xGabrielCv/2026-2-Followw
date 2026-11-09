@@ -42,6 +42,7 @@ class Measurements:
         self.routes = {}
         self.authenticated = 0
         self.isolation_errors = 0
+        self.auth_failures = 0
 
     def record(self, path, milliseconds, status):
         self.times.append(milliseconds)
@@ -92,14 +93,13 @@ async def virtual_user(
             )
             if login is not None and login.status_code == 200:
                 identity = await request("GET", "/me", recorder=bootstrap)
-                valid = (
-                    identity is not None
-                    and identity.status_code == 200
-                    and identity.json().get("registration") == registration
-                )
-                if not valid:
+                if identity is None or identity.status_code != 200:
+                    # timeout ou erro depois do login: falha de autenticação, não troca de identidade
+                    measurements.auth_failures += 1
+                elif identity.json().get("registration") != registration:
                     measurements.isolation_errors += 1
                 else:
+                    valid = True
                     measurements.authenticated += 1
     finally:
         ready.put_nowait(valid)
@@ -196,6 +196,7 @@ async def level(users, args, process, database, offset):
         "status": measurements.status,
         "routes": measurements.routes,
         "isolation_errors": measurements.isolation_errors,
+        "auth_failures": measurements.auth_failures,
         "cpu_percent_max": round(max(samples or [0]), 1),
         "rss_mb_max": round(max(memory or [0]) / 2**20, 1),
         "pg_connections_max": max(pools or [0]),
@@ -211,7 +212,7 @@ async def run(args):
     report = {
         "scope": "synthetic_authenticated_local",
         "workers": args.workers,
-        "pool_per_worker": f"{args.pool}+{args.overflow}; locks=5",
+        "pool_per_worker": f"{args.pool}+{args.overflow}; locks={args.lock_pool}",
         "generator_processes": 1,
         "steady_seconds_per_level": args.seconds,
         "bootstrap_concurrency": 50,
@@ -294,6 +295,7 @@ if __name__ == "__main__":
     parser.add_argument("--pool", type=int, default=5)
     parser.add_argument("--overflow", type=int, default=5)
     parser.add_argument("--origin-latency", type=float, default=0.02)
+    parser.add_argument("--lock-pool", type=int, default=5)
     parser.add_argument("--out", default="")
     args = parser.parse_args()
     args.levels = [int(value) for value in args.levels.split(",")]
