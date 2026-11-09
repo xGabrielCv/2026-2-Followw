@@ -1,6 +1,7 @@
 import { type QueryClient, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
+import { electLeader, type LockManagerLike } from '#/lib/tab-leader';
 import { api } from '#/queries/api';
 
 // O que cada parte da nuvem alimenta no app, pelo caminho da API na chave da query.
@@ -40,16 +41,56 @@ export function invalidateChanged(
     return changed;
 }
 
-/** Confere em segundo plano se a comunidade mudou (nova avaliação, post, material...). */
+const LEADER_LOCK = 'followw-content-sync';
+const CHANNEL = 'followw-content-version';
+
+/** Sem Web Locks ou BroadcastChannel cada aba confere por conta própria, como antes. */
+const sharedAcrossTabs = () =>
+    typeof navigator !== 'undefined' &&
+    'locks' in navigator &&
+    typeof BroadcastChannel !== 'undefined';
+
+/**
+ * Confere em segundo plano se a comunidade mudou (nova avaliação, post, material...). Com várias abas,
+ * só a aba visível consulta (a cada 2 minutos) e avisa as outras, em vez de cada uma repetir o pedido.
+ */
 export function ContentSync() {
     const queryClient = useQueryClient();
-    const { data } = useQuery(contentVersionQueryOptions);
+    const shared = sharedAcrossTabs();
+    const [leader, setLeader] = useState(!shared);
+    const { data } = useQuery({ ...contentVersionQueryOptions, enabled: leader });
     const last = useRef<Record<string, string> | null>(null);
+    const channel = useRef<BroadcastChannel | null>(null);
+
+    useEffect(() => {
+        if (!shared) return undefined;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- LockManager cumpre o formato usado
+        const locks = navigator.locks as unknown as LockManagerLike;
+        const stopElection = electLeader({
+            name: LEADER_LOCK,
+            locks,
+            doc: document,
+            onChange: setLeader
+        });
+        const listener = new BroadcastChannel(CHANNEL);
+        channel.current = listener;
+        listener.addEventListener('message', (event: MessageEvent<Record<string, string>>) => {
+            if (last.current) invalidateChanged(queryClient, last.current, event.data);
+            last.current = event.data;
+        });
+        return () => {
+            stopElection();
+            listener.close();
+            channel.current = null;
+        };
+    }, [shared, queryClient]);
 
     useEffect(() => {
         if (!data) return;
         if (last.current) invalidateChanged(queryClient, last.current, data.parts);
+        const changed = JSON.stringify(last.current) !== JSON.stringify(data.parts);
         last.current = data.parts;
+        if (changed) channel.current?.postMessage(data.parts);
     }, [data, queryClient]);
 
     return null;
