@@ -6,6 +6,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from api.anonymous import anonymous_key
+from api.community_limits import read_limits
 from api.db.context import set_context
 from api.db.main import Database
 from api.db.models import Subject
@@ -23,6 +24,10 @@ async def reserve_upload(db: Database, code: str, key: str) -> None:
     set_context(scope="upload_budget")
 
     async def reserve(session):
+        limit = min(
+            MAX_DAILY_UPLOAD_ATTEMPTS,
+            (await read_limits(session)).upload_attempts_per_day,
+        )
         if (
             await session.scalar(select(Subject.code).where(Subject.code == code))
             is None
@@ -31,20 +36,22 @@ async def reserve_upload(db: Database, code: str, key: str) -> None:
         await session.execute(
             delete(UploadBudget).where(UploadBudget.expires_at <= datetime.now(UTC))
         )
-        return await session.scalar(
+        reserved = await session.scalar(
             insert(UploadBudget)
             .values(digest=digest, count=1, expires_at=expires_at)
             .on_conflict_do_update(
                 index_elements=[UploadBudget.digest],
                 set_={"count": UploadBudget.count + 1},
-                where=UploadBudget.count < MAX_DAILY_UPLOAD_ATTEMPTS,
+                where=UploadBudget.count < limit,
             )
             .returning(UploadBudget.count)
         )
+        return reserved, limit
 
-    if await db.write(reserve) is None:
+    reserved, limit = await db.write(reserve)
+    if reserved is None:
         raise HTTPException(
             429,
-            "As 10 autorizações de envio desta matéria neste navegador foram usadas hoje. Tente amanhã.",
+            f"As {limit} autorizações de envio desta matéria neste navegador foram usadas hoje. Tente amanhã.",
             headers={"Retry-After": str((day + 1) * DAY_SECONDS - now)},
         )

@@ -5,6 +5,7 @@ const fields = [
     ['materials_per_subject', 'Arquivos por matéria', 50],
     ['materials_subject_mb', 'MB por matéria', 100],
     ['forum_replies', 'Respostas por conversa', 500],
+    ['upload_attempts_per_day', 'Autorizações de envio por matéria, navegador e dia', 10],
     ['tutorials_pending', 'Guias aguardando moderação', 60],
 ];
 
@@ -25,6 +26,6 @@ export async function limitsView(render) {
         } }, el('div', { class: 'grid g2' }, fields.map(([key, label, maximum]) => el('label', {}, label,
             el('input', { name: key, type: 'number', min: 1, max: maximum, step: 1, required: true, value: values[key] }),
             el('small', { class: 'muted' }, `Entre 1 e ${maximum}`)))),
-            el('p', { class: 'muted' }, 'Autorizações de materiais continuam limitadas a 10 tentativas por matéria, navegador e dia. Isso não identifica alunos nem impõe uma cota exata entre aparelhos.'),
+            el('p', { class: 'muted' }, 'O limite de arquivos é por matéria (no máximo 50), nunca por estudante. As autorizações de envio por dia contam por navegador e matéria; isso não identifica alunos nem impõe uma cota exata entre aparelhos.'),
             el('button', { type: 'submit', class: 'primary' }, 'Salvar limites'))];
 }

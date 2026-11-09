@@ -137,3 +137,31 @@ def test_parametros_fora_do_escopo_nao_emitem_autorizacao(browser):
     )
     assert grant(browser, key="matricula-nao-e-chave").status_code == 422
     assert grant(browser, code="ABC9999").status_code == 404
+
+
+def test_limite_diario_configurado_pelo_painel_e_aplicado_e_nunca_passa_de_dez(
+    browser, database
+):
+    from api.community_limits import KEY as LIMITS_KEY
+    from api.community_limits import CommunityLimits
+    from api.db.models import SystemText
+
+    with database.begin() as session:
+        session.add(
+            SystemText(
+                key=LIMITS_KEY,
+                value=CommunityLimits(upload_attempts_per_day=2).model_dump_json(),
+            )
+        )
+    assert grant(browser).status_code == 200
+    assert grant(browser).status_code == 200
+    recusada = grant(browser)
+    assert recusada.status_code == 429
+    assert "2 autorizações" in recusada.json()["detail"]
+    assert (
+        browser.get(f"/materials/{CODE}").json()["limits"]["max_daily_upload_attempts"]
+        == 2
+    )
+    # o teto de segurança continua sendo 10: o painel não passa disso
+    with pytest.raises(ValueError):
+        CommunityLimits(upload_attempts_per_day=11)

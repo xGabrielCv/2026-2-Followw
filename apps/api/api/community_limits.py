@@ -15,6 +15,8 @@ class CommunityLimits(BaseModel):
     materials_per_subject: int = Field(default=50, ge=1, le=50)
     materials_subject_mb: int = Field(default=100, ge=1, le=100)
     forum_replies: int = Field(default=500, ge=1, le=500)
+    # Autorizações de envio por navegador, matéria e dia (não é um limite por aluno).
+    upload_attempts_per_day: int = Field(default=10, ge=1, le=10)
     tutorials_pending: int = Field(default=60, ge=1, le=60)
 
 

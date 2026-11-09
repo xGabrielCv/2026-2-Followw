@@ -355,6 +355,9 @@ async def effective_limits(session: AsyncSession) -> Limits:
     configured = await read_limits(session)
     return Limits(
         max_file_bytes=min(MAX_FILE_BYTES, configured.materials_file_mb * 1024**2),
+        max_daily_upload_attempts=min(
+            MAX_DAILY_UPLOAD_ATTEMPTS, configured.upload_attempts_per_day
+        ),
         max_per_subject=min(MAX_PER_SUBJECT, configured.materials_per_subject),
         max_subject_bytes=min(
             MAX_SUBJECT_BYTES, configured.materials_subject_mb * 1024**2
