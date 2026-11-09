@@ -12,7 +12,8 @@ from api.modules.admin.router import api as admin_api
 
 RAIZ = Path(__file__).resolve().parents[4]
 PROIBIDAS_NO_PAINEL = re.compile(
-    r"sql|terminal|shell|exec|console|eval|restart|reiniciar|download-file", re.I
+    r"sql|terminal|shell|exec|console|eval|restart|reiniciar|download-file",
+    re.IGNORECASE,
 )
 
 
@@ -54,7 +55,7 @@ def test_r_ano_05_limite_de_materiais_e_por_turma_e_nao_por_estudante():
     campo = CommunityLimits.model_fields["materials_per_subject"]
     assert campo.default == 50
     nomes = " ".join(CommunityLimits.model_fields)
-    assert not re.search(r"student|aluno|author|user|per_person", nomes, re.I)
+    assert not re.search(r"student|aluno|author|user|per_person", nomes, re.IGNORECASE)
 
 
 def test_r_git_03_commits_novos_nao_levam_coautoria_de_ia():
@@ -64,7 +65,7 @@ def test_r_git_03_commits_novos_nao_levam_coautoria_de_ia():
     assert not re.search(
         r"co-authored-by:.*(claude|anthropic|codex|openai|copilot)|generated with",
         mensagens,
-        re.I,
+        re.IGNORECASE,
     )
 
 
@@ -90,7 +91,7 @@ def test_r_inf_03_env_exemplo_nao_tem_segredo_real():
         if re.match(r"\s*#", linha) or "=" not in linha:
             continue
         nome, valor = linha.split("=", 1)
-        if re.search(r"PASSWORD|SECRET|KEY|TOKEN", nome, re.I):
+        if re.search(r"PASSWORD|SECRET|KEY|TOKEN", nome, re.IGNORECASE):
             assert valor.strip() in {"", "''", '""'} or valor.strip().startswith("<"), (
                 nome
             )
