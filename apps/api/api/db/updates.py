@@ -52,6 +52,15 @@ def apply_updates(connection: Connection) -> None:
     connection.execute(
         text("UPDATE tickets SET author_key = NULL WHERE author_key IS NOT NULL")
     )
+    # Janelas das cotas sensíveis compartilhadas entre workers. UNLOGGED: é contador efêmero. O bucket já é
+    # um HMAC (o IP nunca é gravado) e as linhas vencidas são apagadas aos poucos.
+    connection.execute(
+        text(
+            "CREATE UNLOGGED TABLE IF NOT EXISTS rate_windows ("
+            "bucket TEXT NOT NULL, window_start BIGINT NOT NULL, count INTEGER NOT NULL, "
+            "PRIMARY KEY (bucket, window_start))"
+        )
+    )
     connection.execute(
         text(
             "CREATE TABLE IF NOT EXISTS schema_updates (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"

@@ -45,7 +45,7 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 * 🔎 busca de matérias, cursos e docentes, com horários, vagas, requisitos e perfis;
 * 🧭 fluxo de cada curso por semestre, com carga horária, pré e correquisitos;
 * 🤝 leitura de grupos, avaliações, materiais, dúvidas, posts e guias aprovados, sem conta;
-* 🛟 **suporte anônimo**: abra um chamado sem login e sem se identificar (a chave fica só no seu aparelho; um
+* 🛟 **suporte anônimo**: abra um chamado sem login e sem se identificar (a chave fica só no seu navegador; um
   código de recuperação opcional abre o chamado em outro).
 
 Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias continuam públicas.
@@ -92,7 +92,7 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 | Índices de aprovação das turmas | ☁️ só se você liberar, e só a porcentagem da turma |
 | Chamados de suporte | ☁️ texto cifrado; só um verificador da chave (nunca a chave), sem matrícula, nome ou e-mail |
 
-A autoria anônima vem de um segredo aleatório do aparelho — nunca da matrícula — e não associamos nome ou matrícula às publicações. O conteúdo compartilhado é público e a moderação
+Cada publicação (avaliação, resposta, material, guia, chamado) nasce com uma **chave aleatória própria**, guardada só no seu navegador; o servidor guarda apenas um verificador dela e não associa nome, matrícula, conta ou aparelho às publicações (nem uma publicação à outra). Isso reduz muito, mas não elimina, a chance de alguém ligar publicações: o servidor ainda vê dados de conexão e o texto enviado. O conteúdo compartilhado é público e a moderação
 pode decifrá-lo; não publique informações pessoais no texto ou nos arquivos. Cookies de sessão e perfil são cifrados; cache, preferências e backups locais ainda não têm
 criptografia própria. O app explica tudo isso em **Perfil › Uso de dados**.
 

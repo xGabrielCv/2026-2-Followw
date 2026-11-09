@@ -375,3 +375,37 @@ def test_busca_publica_de_turmas_repetida_consulta_o_sigaa_uma_vez(client, monke
         (673, {"year": 2026, "period": 2}),
         (673, {"year": 2026, "period": 1}),
     ]
+
+
+def test_busca_de_materias_sem_login_repetida_vem_do_json_pronto(
+    client, database, monkeypatch
+):
+    from api.db.models import Subject
+    from api.modules.public_subjects import router, service
+
+    with database.begin() as session:
+        session.add(Subject(code="FGA0003", name="CALCULO 1"))
+    chamadas = []
+    original = service.PublicSubjectService.search
+
+    async def contando(self, *args, **kwargs):
+        chamadas.append(args)
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(service.PublicSubjectService, "search", contando)
+    respostas = [
+        client.get("/public/subjects", params={"q": "calculo"}) for _ in range(10)
+    ]
+    assert all(r.status_code == 200 for r in respostas)
+    assert (
+        len({r.text for r in respostas}) == 1
+        and respostas[0].json()[0]["code"] == "FGA0003"
+    )
+    assert len(chamadas) == 1  # as outras nove saíram do cache
+    assert respostas[0].headers["Cache-Control"] == "no-store"
+    # erro não é cacheado: filtro inválido continua dando erro a cada pedido
+    assert client.get("/public/subjects", params={"unit": "NAOEXISTE"}).status_code in {
+        404,
+        422,
+    }
+    assert router.SEARCH_RESPONSES._store

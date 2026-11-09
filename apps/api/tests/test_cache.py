@@ -40,7 +40,8 @@ def test_le_as_diretivas_da_requisicao(header, esperado):
     ],
 )
 def test_revalida_quando_o_cliente_pede(header, idade, revalida):
-    assert CacheControl.parse(header).revalidate(AGORA - idade) is revalida
+    # agora de verdade: o teste não pode depender de quanto tempo a suíte já levou desde o import
+    assert CacheControl.parse(header).revalidate(datetime.now(UTC) - idade) is revalida
 
 
 @pytest.mark.parametrize(
@@ -53,7 +54,7 @@ def test_revalida_quando_o_cliente_pede(header, idade, revalida):
     ],
 )
 def test_stale_if_error_limita_a_idade_do_cache(header, idade, aceita):
-    assert CacheControl.parse(header).accepts_stale(AGORA - idade) is aceita
+    assert CacheControl.parse(header).accepts_stale(datetime.now(UTC) - idade) is aceita
 
 
 def test_age_da_resposta_e_o_do_dado_mais_velho():

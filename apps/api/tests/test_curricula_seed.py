@@ -9,6 +9,13 @@ from api.db.seed.courses import read_courses, seed_courses
 from api.db.seed.curricula import COMPONENTS_CSV, read_curricula, seed_curricula
 from api.db.seed.units import seed_units
 
+
+@pytest.fixture
+def async_database(maintenance_database):
+    """A carga do catálogo é manutenção (db-init, conta dona do esquema), não a API: ela pode apagar."""
+    return maintenance_database
+
+
 MATRIX_COLUMNS = (
     "sigaa_id,course_sigaa_id,code,created_year,active,shift,valid_from,matrix,"
     "total_workload,required_workload,optional_min_workload,complementary_min_workload,"

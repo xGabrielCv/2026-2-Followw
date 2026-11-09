@@ -3,6 +3,7 @@ import { initializeAuth } from './dashboard-auth.js';
 import { accountsView, securityView } from './dashboard-accounts.js';
 import { supportView } from './dashboard-support.js';
 import { statisticsPanel } from './dashboard-statistics.js';
+import { operationsView } from './dashboard-operations.js';
 
 const LABELS = { review:"Avaliações", group:"Grupos", material:"Materiais", post:"Publicações", reply:"Respostas", tutorial:"Guias", report:"Denúncias" };
 const REASONS = { ofensivo:"Ofensivo", dados_pessoais:"Expõe alguém", spam:"Spam", falso:"Falso", direitos_autorais:"Direitos autorais", outro:"Outro" };
@@ -49,7 +50,7 @@ async function render() {
   const main = $("#main");
   main.replaceChildren(el("p", { class:"muted" }, "Carregando…"));
   try {
-    const views = { overview, usage, moderation, data, breakdown, system, accounts: () => accountsView(render), security: securityView, support: () => supportView(render) };
+    const views = { overview, usage, moderation, data, breakdown, system, accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render) };
     const children = await views[state.view]();
     if (version !== rendering) return;
     // `null` vira o texto "null" no DOM: só entram nós de verdade
@@ -374,7 +375,7 @@ async function system() {
 
 initializeAuth(() => {
     const requested = location.hash.slice(1);
-    const permissions = { overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', accounts: 'accounts', support: 'support' };
+    const permissions = { overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', accounts: 'accounts', support: 'support', operations: 'operations' };
     state.view = requested === 'security' || (requested in permissions && hasPermission(permissions[requested])) ? requested : hasPermission('operations') ? 'overview' : 'moderation';
     void render();
 });

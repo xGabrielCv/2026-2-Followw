@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections.abc import AsyncGenerator
 from contextlib import suppress
 from typing import Annotated
@@ -8,6 +9,7 @@ import httpx
 from fastapi import Depends, HTTPException, Request, Response, status
 from sigaa_client import Credentials, SigaaClient, SigaaError, SigaaPublicClient
 
+from api import session_lock
 from api.cookies import (
     read_access_cookie,
     read_refresh_cookie,
@@ -15,6 +17,7 @@ from api.cookies import (
     set_access_cookie,
     set_refresh_cookie,
 )
+from api.core.config import settings
 from api.logger import event, operation
 
 # O SIGAA guarda na sessão a turma aberta: duas requisições do mesmo aluno ao mesmo tempo
@@ -46,6 +49,7 @@ class SigaaConnection:
         self._response = response
         self._client: SigaaClient | None = None
         self._lock: asyncio.Lock | None = None
+        self._shared_lock: session_lock.HeldLock | None = None
         self._credential_deadline = credential_deadline
 
     @property
@@ -70,6 +74,7 @@ class SigaaConnection:
                     token = self._session_token or await client.authenticate()
             except BaseException:
                 await client.aclose()
+                await self._release_shared()
                 self._release()
                 raise
             self._client = client
@@ -87,6 +92,7 @@ class SigaaConnection:
                     await client.logout()
         finally:
             await client.aclose()
+            await self._release_shared()
             self._release()
 
     async def _acquire(self) -> None:
@@ -97,9 +103,20 @@ class SigaaConnection:
         lock = _SESSION_LOCKS.get(key)
         if lock is None:
             lock = _SESSION_LOCKS[key] = asyncio.Lock()
+        started = time.monotonic()
         try:
             await asyncio.wait_for(lock.acquire(), _LOCK_TIMEOUT)
-        except TimeoutError:
+            if settings.session_lock_backend == "postgres":
+                # Entre workers: o lock do banco é da conexão (cai com o processo) e tem o mesmo prazo total.
+                remaining = max(0.1, _LOCK_TIMEOUT - (time.monotonic() - started))
+                try:
+                    self._shared_lock = await session_lock.acquire(
+                        self.registration, remaining
+                    )
+                except BaseException:
+                    lock.release()
+                    raise
+        except TimeoutError, OSError:
             event("sigaa.session_lock_timeout")
             raise HTTPException(
                 status_code=503,
@@ -107,6 +124,11 @@ class SigaaConnection:
                 headers={"Retry-After": "5", "Cache-Control": "no-store"},
             ) from None
         self._lock = lock
+
+    async def _release_shared(self) -> None:
+        held, self._shared_lock = self._shared_lock, None
+        if held is not None:
+            await held.release()
 
     def _release(self) -> None:
         lock, self._lock = self._lock, None

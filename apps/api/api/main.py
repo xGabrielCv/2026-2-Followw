@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from api.core.config import settings
 from api.errors import EXCEPTION_HANDLERS
 from api.logger import RequestLoggingMiddleware
+from api.maintenance import MaintenanceMiddleware
 from api.modules.admin.router import router as admin_router
 from api.modules.auth.router import router as auth_router
 from api.modules.class_groups.router import router as class_groups_router
@@ -225,6 +226,7 @@ if settings.environment == "production":
     app.add_middleware(HTTPSRedirectMiddleware)
 
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(MaintenanceMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

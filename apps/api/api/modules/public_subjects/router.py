@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response
-from pydantic import StringConstraints
+from pydantic import StringConstraints, TypeAdapter
 from sigaa_client import Grade
 
 from api.account import OptionalAccountDep
@@ -21,9 +21,15 @@ from api.modules.public_subjects.statistics import (
     SubjectStatisticsServiceDep,
 )
 from api.modules.recommendations.service import HistoryItem
+from api.resilience import TTLCache
 from api.schemas import SearchText, UnitFilter
 
 router = APIRouter()
+
+# Busca sem login é igual para todos e o catálogo muda em dias: guarda o JSON pronto por 60 s (a
+# serialização de dezenas de KB era o maior custo) e, se o banco falhar, serve a cópia por até 10 min.
+_CATALOG_JSON = TypeAdapter(list[CatalogSubject])
+SEARCH_RESPONSES = TTLCache(ttl=60, stale_ttl=600, max_entries=512)
 
 _GRADES = "|".join(grade.value for grade in Grade)
 _STATUSES = "|".join(status.value for status in ClassroomStatus)
@@ -158,7 +164,17 @@ async def search_subjects(
             description="Nas recomendações: as turmas do aluno como `CODIGO:AAAA.P:MENCAO:SITUACAO` (menção e situação podem vir vazias). O navegador as tem da lista de turmas; o servidor não guarda o histórico.",
         ),
     ] = [],  # noqa: B006 — o FastAPI copia o padrão a cada requisição
-) -> list[CatalogSubject]:
+) -> list[CatalogSubject] | Response:
+    if account is None and (q or code or unit):
+
+        async def render() -> bytes:
+            found = await service.search(q, code=code, unit=unit, semester=semester)
+            return _CATALOG_JSON.dump_json(found)
+
+        body = await SEARCH_RESPONSES.get(f"{q}|{code}|{unit}|{semester}", render)
+        return Response(
+            body, media_type="application/json", headers={"Cache-Control": "no-store"}
+        )
     subjects = await service.search(
         q,
         code=code,

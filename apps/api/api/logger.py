@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from api.metrics import observe_origin, observe_request
+from api.metrics import begin_request, end_request, observe_origin, observe_request
 
 _context: ContextVar[dict | None] = ContextVar("log_context", default=None)
 _log = logging.getLogger("followw")
@@ -127,12 +127,14 @@ class RequestLoggingMiddleware:
             await send(message)
 
         event("request.started")
+        begin_request()
         try:
             await self.app(scope, receive, logged_send)
         except BaseException as error:
             event("request.failed", level=logging.ERROR, **error_fields(error))
             raise
         finally:
+            end_request()
             # Routers incluídos no FastAPI guardam o caminho completo neste contexto.
             matched = scope.get("fastapi", {}).get("effective_route_context")
             route = getattr(matched or scope.get("route"), "path_format", None)

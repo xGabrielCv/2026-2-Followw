@@ -110,6 +110,11 @@ class PublicSubjectService:
             return await self._db.read(lambda session: _recommended(session, ranking))
         # O perfil vem do cookie do navegador: a matriz do aluno marca as matérias.
         profile = await account.profile() if account else None
+        if profile is None:
+            # Sem login não há escrita nenhuma: transação só de leitura.
+            return await self._db.read(
+                lambda session: _search(session, q, code, unit, semester, None)
+            )
         return await self._db.write(
             lambda session: _search(session, q, code, unit, semester, profile)
         )

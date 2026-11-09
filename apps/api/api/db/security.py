@@ -70,6 +70,15 @@ _POLICIES: list[tuple[str, str, str | None, str | None]] = [
 GUARDED = tuple(dict.fromkeys(table for table, *_ in _POLICIES))
 # a aplicação só acrescenta nestas (auditoria e mensagens não se reescrevem)
 APPEND_ONLY = ("admin_log", "ticket_messages")
+# Catálogo institucional: a API cria e atualiza (sincroniza o que o aluno abre), mas nunca apaga.
+NO_DELETE = (
+    "units",
+    "courses",
+    "curricula",
+    "curriculum_components",
+    "professors",
+    "subjects",
+)
 
 
 def secure(connection: Connection, password: str | None = None) -> None:
@@ -109,6 +118,8 @@ def secure(connection: Connection, password: str | None = None) -> None:
     connection.execute(
         text(f"REVOKE INSERT, UPDATE, DELETE ON schema_updates FROM {APP_ROLE}")
     )
+    for table in NO_DELETE:
+        connection.execute(text(f"REVOKE DELETE ON {table} FROM {APP_ROLE}"))
     for table in GUARDED:
         connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
         connection.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))

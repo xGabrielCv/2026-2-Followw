@@ -37,6 +37,7 @@ class RateLimitMiddleware:
             _bucket(_client_host(Request(scope))),
             limit,
             settings.rate_limit_window_seconds,
+            shared=group == "login",
         )
         if result is not None and not result.allowed:
             # Sair sempre apaga os cookies; só a chamada ao SIGAA fica de fora.
@@ -71,6 +72,7 @@ async def limit_registration(registration: str) -> None:
         registration,
         settings.rate_limit_registration_requests,
         settings.rate_limit_registration_window_seconds,
+        shared=True,
     )
     if result is not None and not result.allowed:
         raise HTTPException(
@@ -82,7 +84,7 @@ async def limit_registration(registration: str) -> None:
 
 async def limit_by(group: str, key: str, limit: int, window_seconds: int) -> None:
     """Cota própria de um recurso (ex.: tentativas de recuperação de um chamado), de qualquer IP."""
-    result = await _limit(group, key, limit, window_seconds)
+    result = await _limit(group, key, limit, window_seconds, shared=True)
     if result is not None and not result.allowed:
         raise HTTPException(
             status_code=429,
@@ -129,8 +131,36 @@ def _memory_limit(group: str, key: str, limit: int, window: int) -> _MemoryResul
     return _MemoryResult(current.count <= limit, current.reset)
 
 
+async def _postgres_limit(
+    identifier: str, group: str, limit: int, window: int
+) -> _MemoryResult:
+    """Contagem atômica compartilhada: dois workers (ou duas réplicas) nunca somam cotas separadas."""
+    from sqlalchemy import text
+
+    from api.db.main import async_session
+
+    now = int(time())
+    start = now // window * window
+    async with async_session.begin() as session:
+        count = await session.scalar(
+            text(
+                "INSERT INTO rate_windows (bucket, window_start, count) VALUES (:b, :w, 1) "
+                "ON CONFLICT (bucket, window_start) DO UPDATE SET count = rate_windows.count + 1 "
+                "RETURNING count"
+            ),
+            {"b": f"{group}:{identifier}", "w": start},
+        )
+        # limpeza aos poucos: 1 em 50 pedidos apaga janelas com mais de duas janelas de idade
+        if now % 50 == 0:
+            await session.execute(
+                text("DELETE FROM rate_windows WHERE window_start < :old"),
+                {"old": start - 2 * window},
+            )
+    return _MemoryResult((count or 0) <= limit, start + window)
+
+
 async def _limit(
-    group: str, key: str, limit: int, window: int
+    group: str, key: str, limit: int, window: int, *, shared: bool = False
 ) -> Response | _MemoryResult:
     identifier = hmac.digest(
         derive_key("followw:rate-limit"), key.encode(), "sha256"
@@ -141,6 +171,16 @@ async def _limit(
         return local
     redis = redis_client()
     if redis is None:
+        if shared and settings.rate_limit_backend == "postgres":
+            try:
+                async with asyncio.timeout(settings.redis_timeout_seconds + 1):
+                    return await _postgres_limit(identifier, group, limit, window)
+            except Exception as error:  # noqa: BLE001 — sem banco, a cota local ainda vale
+                event(
+                    "rate_limit.shared_unavailable",
+                    level=logging.WARNING,
+                    error_type=type(error).__name__,
+                )
         return local
     try:
         async with asyncio.timeout(settings.redis_timeout_seconds):
@@ -174,7 +214,10 @@ def publish_quota(group: str, limit: int, window_seconds: int = 3600):
         if request.method == "OPTIONS":
             return
         await limit_by(
-            f"publish:{group}", _bucket(_client_host(request)), limit, window_seconds
+            f"publish:{group}",
+            _bucket(_client_host(request)),
+            limit * settings.publish_quota_multiplier,
+            window_seconds,
         )
 
     return Depends(check)

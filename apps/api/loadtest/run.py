@@ -82,6 +82,7 @@ def server_env(name: str, log: Path, args) -> dict:
         # só neste ambiente: todos os usuários virtuais compartilham um IP
         RATE_LIMIT_REQUESTS="100000000",
         RATE_LIMIT_LOGIN_REQUESTS="100000000",
+        PUBLISH_QUOTA_MULTIPLIER="100000",
         UPSTASH_REDIS_REST_URL="",
         UPSTASH_REDIS_REST_TOKEN="",
         DEMO_DATA="false",
@@ -360,6 +361,18 @@ async def main_async(args) -> dict:
         server = start_server(env, args.workers)
         await wait_ready()
         proc = psutil.Process(server.pid)
+        # Verifica o bloqueio ANTES de qualquer carga: se a saída externa não estiver barrada, cancela.
+        async with httpx.AsyncClient() as guard:
+            check = (
+                await guard.get(
+                    f"http://127.0.0.1:{PORT}/__loadtest/egress_check", timeout=30
+                )
+            ).json()
+        if check.get("blocked") is not True:
+            raise SystemExit(
+                "ISOLAMENTO FALHOU: a API não bloqueou a saída externa. Carga cancelada."
+            )
+        print("isolamento de rede verificado: saída externa bloqueada", flush=True)
         # aquecimento: faz o cache do cardápio e o pool existirem
         async with httpx.AsyncClient() as warm:
             await warm.get(
@@ -393,6 +406,13 @@ async def main_async(args) -> dict:
         report["profile"] = await profile()
         for row in report["profile"]:
             print(json.dumps(row, ensure_ascii=False), flush=True)
+        async with httpx.AsyncClient() as guard:
+            attempts = (
+                await guard.get(
+                    f"http://127.0.0.1:{PORT}/__loadtest/blocked", timeout=30
+                )
+            ).json()["attempts"]
+        report["external_attempts_blocked"] = attempts
         report["sigaa_simulated_calls"] = sigaa_log.stat().st_size
         report["ru_simulated_calls_during_ladder"] = log.stat().st_size
         print(
@@ -420,6 +440,7 @@ async def main_async(args) -> dict:
         drop_database(name)
         log.unlink(missing_ok=True)
         Path(str(log) + ".sigaa").unlink(missing_ok=True)
+        Path(str(log) + ".blocked").unlink(missing_ok=True)
 
 
 def main() -> None:

@@ -381,3 +381,34 @@ def test_filtros_do_atendimento_sao_listas_fechadas(client, query):
         "/admin/api/tickets?" + query, headers={"X-Admin-Request": "1"}
     )
     assert response.status_code in {401, 422}
+
+
+@pytest.mark.parametrize(
+    "tabela",
+    [
+        "units",
+        "courses",
+        "curricula",
+        "curriculum_components",
+        "professors",
+        "subjects",
+    ],
+)
+def test_api_nao_apaga_catalogo_institucional(postgres, database, tabela):
+    with pytest.raises(DBAPIError), postgres.begin() as connection:
+        as_app(connection)
+        connection.execute(text(f"DELETE FROM {tabela}"))
+    with postgres.begin() as connection:
+        as_app(connection)  # ler continua valendo
+        scalar(connection, f"SELECT count(*) FROM {tabela}")
+
+
+def test_cotas_compartilhadas_sao_so_da_api_sem_dado_pessoal(postgres, database):
+    with postgres.begin() as connection:
+        as_app(connection)
+        connection.execute(
+            text(
+                "INSERT INTO rate_windows (bucket, window_start, count) VALUES ('g:hmac', 1, 1)"
+            )
+        )
+        assert scalar(connection, "SELECT count FROM rate_windows") == 1

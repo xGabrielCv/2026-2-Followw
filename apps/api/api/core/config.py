@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -71,7 +72,20 @@ class Settings(BaseSettings):
     redis_timeout_seconds: float = Field(default=1, gt=0, allow_inf_nan=False)
 
     # Cotas por IP em janela fixa; login tem uma cota própria, mais restrita.
+    # Onde as cotas SENSÍVEIS (login, publicação, recuperação) são contadas quando não há Redis:
+    # `memory` = por processo (desenvolvimento, um worker); `postgres` = compartilhado entre workers e
+    # réplicas, sem o atacante ganhar cota nova só por cair em outro worker. A cota global de leitura
+    # continua por processo (contá-la no banco custaria uma escrita por pedido).
+    rate_limit_backend: Literal["memory", "postgres"] = "memory"
+    # Bloqueio da sessão SIGAA do mesmo aluno: `memory` vale dentro de um processo; `postgres` vale entre
+    # workers e réplicas (advisory lock). Com vários workers use `postgres`.
+    session_lock_backend: Literal["memory", "postgres"] = "memory"
+    # Conexões reservadas só para esses bloqueios (cada requisição ao SIGAA segura uma enquanto dura).
+    session_lock_pool: int = Field(default=8, ge=1, le=100)
     rate_limit_requests: int = Field(default=600, gt=0)
+    # Multiplica as cotas de publicação por origem de rede (só para o teste de carga: todos os usuários
+    # virtuais compartilham um IP). Em produção fica 1.
+    publish_quota_multiplier: int = Field(default=1, ge=1, le=1_000_000)
     rate_limit_login_requests: int = Field(default=30, gt=0)
     rate_limit_window_seconds: int = Field(default=60, gt=0)
     # Refresh abre o app e pode vir de muitos alunos atrás do mesmo NAT.

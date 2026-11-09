@@ -101,6 +101,7 @@ async def dashboard_asset(
         "dashboard-accounts.js",
         "dashboard-support.js",
         "dashboard-statistics.js",
+        "dashboard-operations.js",
     ],
 ) -> Response:
     return Response(
@@ -524,10 +525,12 @@ async def reset_metrics(service: AdminServiceDep) -> None:
     metrics.reset()
 
 
+from api.modules.admin.operations import router as operations_router
 from api.modules.admin.statistics import router as statistics_router
 from api.modules.support.staff import router as tickets_router
 
 api.include_router(tickets_router, prefix="/tickets")
 api.include_router(statistics_router, prefix="/statistics")
+api.include_router(operations_router, prefix="/operations")
 router.include_router(public, prefix="/api")
 router.include_router(api, prefix="/api")

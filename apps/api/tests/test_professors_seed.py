@@ -7,6 +7,12 @@ from api.db.models import Professor
 from api.db.seed.professors import read_professors, seed_professors
 
 
+@pytest.fixture
+def async_database(maintenance_database):
+    """A carga do catálogo é manutenção (db-init, conta dona do esquema), não a API: ela pode apagar."""
+    return maintenance_database
+
+
 def _csv(path, columns, rows):
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, columns)
