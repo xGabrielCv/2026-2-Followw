@@ -50,10 +50,7 @@ $WebDir = Join-Path $Root 'apps\web'
 $SeedMarker = Join-Path $Local 'seed.sha256'
 $professorsCsv = Join-Path $Local 'data\professors.csv'
 $professorsMarker = Join-Path $Local 'professors.sha256'
-$UpdateState = Join-Path $Local 'update.json'
-$UpdateLog = Join-Path $Local 'update.log'
 # Os dados públicos do SIGAA se atualizam sozinhos, em segundo plano, a cada tantos dias.
-$UpdateEveryDays = 3
 $DatabaseUrl = "postgresql+asyncpg://postgres@127.0.0.1:$DbPort/followw"
 
 function Step($message) { Write-Host "`n==> $message" -ForegroundColor Cyan }
@@ -218,13 +215,8 @@ elseif (-not (Test-Path (Join-Path $WebDir 'node_modules'))) { Fail 'Instale as 
 Ok 'front (bun install)'
 
 # ------------------------------------------------------------- atualização
-# O scripts/update_data.py lê o SIGAA público (sem login), troca só o que mudou nos CSVs e no banco.
-function Test-UpdateDue {
-    if (-not (Test-Path $UpdateState)) { return $true }
-    try { $last = [datetime]::Parse((Get-Content $UpdateState -Raw | ConvertFrom-Json).updated_at) }
-    catch { return $true }
-    return ((Get-Date) - $last).TotalDays -ge $UpdateEveryDays
-}
+# Atualização manual (-Update/-CollectOffer): scripts/update_data.py lê o SIGAA público (sem login) e
+# troca só o que mudou nos CSVs e no banco. A rotina automática é do agendador da API (mais abaixo).
 if ($Update -or $CollectOffer) {
     Step 'Atualizando os dados do SIGAA público'
     $env:DATABASE_URL = $DatabaseUrl
@@ -330,7 +322,7 @@ if (-not $Offline) {
 }
 if (-not (Test-Path (Join-Path $dataDir 'units.csv'))) { Fail 'Catálogo ausente. Execute uma vez com internet para importar os dados públicos de referência.' }
 # Os modelos entram no hash: tabela nova no código também roda o db-init, que só cria o que falta.
-$hash = (@(Get-ChildItem $dataDir -Filter *.csv | Sort-Object Name) + @(Get-Item (Join-Path $ApiDir 'api\db\models.py'), (Join-Path $ApiDir 'api\db\security.py'), (Join-Path $ApiDir 'api\modules\support\models.py')) |
+$hash = (@(Get-ChildItem $dataDir -Filter *.csv | Sort-Object Name) + @(Get-Item (Join-Path $ApiDir 'api\db\models.py'), (Join-Path $ApiDir 'api\db\security.py'), (Join-Path $ApiDir 'api\modules\support\models.py'), (Join-Path $ApiDir 'api\modules\sync\models.py')) |
     Get-FileHash -Algorithm SHA256 | ForEach-Object Hash) -join ''
 $seeded = if (Test-Path $SeedMarker) { Get-Content $SeedMarker -Raw } else { '' }
 if ($Reseed -or $seeded.Trim() -ne $hash) {
@@ -362,13 +354,14 @@ foreach ($port in $ApiPort, $WebPort) {
     if (Test-Port $port) { Fail "A porta $port já está em uso. Feche o programa que a usa ou rode com outra porta." }
 }
 
-if (-not $Offline -and -not $SkipDataUpdate -and (Test-UpdateDue)) {
-    # Em outra janela minimizada: demora (os docentes levam ~1 h) e não segura o app.
-    Start-Process powershell -WindowStyle Hidden -ArgumentList @(
-        '-NoProfile', '-Command',
-        "Set-Location '$Root'; uv run --no-sync python scripts/update_data.py *> '$UpdateLog'"
-    ) | Out-Null
-    Warn "dados com mais de $UpdateEveryDays dias: atualizando em segundo plano (log em .local\update.log)"
+# A atualização dos dados públicos agora é do agendador da API (00h, 08h e 16h de Brasília, mais uma
+# verificação do RU às 6h). Na subida ele só sincroniza se o último sucesso for velho; vários processos
+# nunca executam a mesma rodada. Offline ou -SkipDataUpdate desligam o agendador.
+if ($Offline -or $SkipDataUpdate) {
+    $env:SYNC_SCHEDULER_ENABLED = 'false'
+    Warn 'agendador de sincronização desligado nesta execução'
+} else {
+    Remove-Item Env:\SYNC_SCHEDULER_ENABLED -ErrorAction SilentlyContinue
 }
 
 # A partir daqui só a API roda, com o papel restrito: as políticas RLS passam a valer.
