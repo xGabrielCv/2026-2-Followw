@@ -16,8 +16,12 @@ test('planejamento inclui optativa, respeita carga e restaura preferências loca
     await page.getByLabel('Horas por semestre', { exact: true }).fill('120');
     await expect(page.getByRole('list', { name: 'Semestres simulados' })).toContainText('FGA0001');
     const simulated = page.getByRole('list', { name: 'Semestres simulados' });
-    const rows = await simulated.locator(':scope > li').allTextContents();
-    expect(rows.every((text) => Number(/(\d+)h/.exec(text)?.[1]) <= 120)).toBe(true);
+    // só o texto de horas de cada semestre (o rótulo "2027.1" fica colado nele no textContent)
+    const hours = await simulated
+        .locator(':scope > li > div > span:nth-child(2)')
+        .allTextContents();
+    expect(hours.length).toBeGreaterThan(0);
+    expect(hours.every((text) => Number.parseInt(text, 10) <= 120)).toBe(true);
     await page.reload();
     await ready(page);
     await expect(page.getByLabel('Matérias por semestre', { exact: true })).toHaveValue('4');

@@ -322,7 +322,7 @@ if (-not $Offline) {
 }
 if (-not (Test-Path (Join-Path $dataDir 'units.csv'))) { Fail 'Catálogo ausente. Execute uma vez com internet para importar os dados públicos de referência.' }
 # Os modelos entram no hash: tabela nova no código também roda o db-init, que só cria o que falta.
-$hash = (@(Get-ChildItem $dataDir -Filter *.csv | Sort-Object Name) + @(Get-Item (Join-Path $ApiDir 'api\db\models.py'), (Join-Path $ApiDir 'api\db\security.py'), (Join-Path $ApiDir 'api\modules\support\models.py'), (Join-Path $ApiDir 'api\modules\sync\models.py')) |
+$hash = (@(Get-ChildItem $dataDir -Filter *.csv | Sort-Object Name) + @(Get-Item (Join-Path $ApiDir 'api\db\models.py'), (Join-Path $ApiDir 'api\db\security.py'), (Join-Path $ApiDir 'api\modules\support\models.py'), (Join-Path $ApiDir 'api\modules\sync\models.py'), (Join-Path $ApiDir 'api\modules\logs\models.py'), (Join-Path $ApiDir 'api\db\updates.py')) |
     Get-FileHash -Algorithm SHA256 | ForEach-Object Hash) -join ''
 $seeded = if (Test-Path $SeedMarker) { Get-Content $SeedMarker -Raw } else { '' }
 if ($Reseed -or $seeded.Trim() -ne $hash) {

@@ -309,7 +309,8 @@ export function PostCard({ post }: { post: PostItem }) {
                 {isOwn('post', post.id, post.mine) && (
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">Sua</span>
                 )}
-                <span className="ml-auto text-muted-foreground">
+                {/* o tempo relativo muda entre o SSR e o navegador */}
+                <span className="ml-auto text-muted-foreground" suppressHydrationWarning>
                     {relativeTime(post.created_at)}
                 </span>
             </div>
