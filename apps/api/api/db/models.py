@@ -22,6 +22,7 @@ from api.crypto import Encrypted
 from api.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from api.modules.admin.models import AdminAccount, AdminSession  # noqa: F401 — registra tabelas administrativas
 from api.modules.community.models import UploadBudget, UsedCommunityPermission  # noqa: F401 — registra controles efêmeros
+from api.modules.logs.models import AppEvent  # noqa: F401 — registra os eventos técnicos
 from api.modules.support.models import Ticket, TicketMessage  # noqa: F401 — registra os chamados
 from api.modules.sync.models import SyncRun, SyncState  # noqa: F401 — registra a sincronização agendada
 

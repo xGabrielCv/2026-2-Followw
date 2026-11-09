@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Sincronização agendada do catálogo público e do cardápio; `None` liga fora dos testes.
     sync_scheduler_enabled: bool | None = None
     sync_tick_seconds: float = Field(default=30, ge=1, le=300)
+    # Eventos técnicos (avisos, erros, sincronização) guardados para o painel; `None` liga fora dos testes.
+    log_events_enabled: bool | None = None
+    log_retention_days: int = Field(default=14, ge=1, le=90)
 
     cors_origins: list[str] = ["https://followw.app"]
 

@@ -21,6 +21,7 @@ from api.modules.community.router import router as community_router
 from api.modules.demo.router import router as demo_router
 from api.modules.forum.router import router as forum_router
 from api.modules.internships.router import router as internships_router
+from api.modules.logs.sink import get_sink
 from api.modules.materials.router import router as materials_router
 from api.modules.me.router import router as me_router
 from api.modules.posts.router import router as posts_router
@@ -145,12 +146,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     if enabled is None:
         enabled = settings.environment != "testing"
     scheduler = get_scheduler()
+    sink = get_sink()
+    log_events = settings.log_events_enabled
+    if log_events is None:
+        log_events = settings.environment != "testing"
+    if log_events:
+        await sink.start()
     if enabled:
         await scheduler.start(settings.sync_tick_seconds)
     try:
         yield
     finally:
         await scheduler.stop()
+        await sink.stop()
 
 
 app = FastAPI(

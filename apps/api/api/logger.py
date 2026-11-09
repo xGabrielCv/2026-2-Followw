@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -41,7 +41,19 @@ _FIELDS = {
     "error_file",
     "error_function",
     "error_line",
+    "source",
+    "trigger",
+    "outcome",
 }
+
+
+# O gravador de eventos (modules/logs) se registra aqui; sem ele o logger só escreve no fluxo.
+_sink: Callable[[int, str, dict], None] | None = None
+
+
+def set_sink(sink: Callable[[int, str, dict], None] | None) -> None:
+    global _sink
+    _sink = sink
 
 
 def error_fields(error: BaseException) -> dict:
@@ -83,6 +95,8 @@ def event(name: str, *, level: int = logging.INFO, **fields) -> None:
             }
         ),
     )
+    if _sink is not None:
+        _sink(level, name, context)
 
 
 @contextmanager

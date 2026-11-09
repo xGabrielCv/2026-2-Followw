@@ -100,6 +100,7 @@ async def dashboard_asset(
         "dashboard-limits.js",
         "dashboard-moderation.js",
         "dashboard-sync.js",
+        "dashboard-logs.js",
     ],
 ) -> Response:
     return Response(
@@ -472,6 +473,7 @@ async def reset_metrics(service: AdminServiceDep) -> None:
 
 
 from api.modules.admin.limits import router as limits_router
+from api.modules.admin.logs import router as logs_router
 from api.modules.admin.moderation import router as moderation_router
 from api.modules.admin.operations import router as operations_router
 from api.modules.admin.statistics import router as statistics_router
@@ -484,5 +486,6 @@ api.include_router(operations_router, prefix="/operations")
 api.include_router(moderation_router)
 api.include_router(limits_router, prefix="/limits")
 api.include_router(sync_router, prefix="/sync")
+api.include_router(logs_router, prefix="/logs")
 router.include_router(public, prefix="/api")
 router.include_router(api, prefix="/api")
