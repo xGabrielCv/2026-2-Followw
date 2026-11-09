@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { infiniteQueryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 
-import type { components } from '#/queries/schema.gen';
+import type { components, paths } from '#/queries/schema.gen';
 
 import { api } from '#/queries/api';
 import { apiClient } from '#/queries/client';
@@ -24,6 +24,28 @@ export type ReportReason = ReportInput['reason'];
 /** A mensagem que a API mandou (`detail`), para mostrar ao aluno o limite que bateu. */
 export const apiMessage = (error: unknown, fallback: string) =>
     error instanceof ApiError && typeof error.detail === 'string' ? error.detail : fallback;
+
+export type ForumListQuery = Omit<
+    NonNullable<paths['/forum']['get']['parameters']['query']>,
+    'page'
+>;
+
+/** Mesma chave e função para o loader da rota (SSR) e para a lista, então a primeira página já vem pronta. */
+export const forumListQueryOptions = (query: ForumListQuery) =>
+    infiniteQueryOptions({
+        queryKey: ['get', '/forum', { params: { query } }] as const,
+        initialPageParam: 1,
+        queryFn: async ({ pageParam, signal }) => {
+            const { data, error } = await apiClient.GET('/forum', {
+                signal,
+                params: { query: { ...query, page: pageParam } }
+            });
+            if (error || !data) throw error ?? new Error('Resposta vazia');
+            return data;
+        },
+        getNextPageParam: (last) =>
+            last.page * last.page_size < last.total ? last.page + 1 : undefined
+    });
 
 // ------------------------------------------------------------------ materiais
 

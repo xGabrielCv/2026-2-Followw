@@ -1,4 +1,4 @@
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { noop, useInfiniteQuery, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { MessageCircle, Plus, Search } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
@@ -10,7 +10,7 @@ import {
 } from 'nuqs/server';
 import { useState } from 'react';
 
-import type { PostItem } from '#/queries/community';
+import type { ForumListQuery, PostItem } from '#/queries/community';
 import type { Campus } from '#/queries/groups';
 
 import { NewPostDialog, POST_KIND_LABELS } from '#/components/community/NewPostDialog';
@@ -25,8 +25,9 @@ import { CAMPUS_LABELS, CAMPUSES, campusOfUnit } from '#/lib/campus';
 import { useDebounced } from '#/lib/debounce';
 import { relativeTime } from '#/lib/relative-time';
 import { cn } from '#/lib/shadcn';
-import { api } from '#/queries/api';
 import { classroomsQueryOptions } from '#/queries/classrooms';
+import { forumListQueryOptions } from '#/queries/community';
+import { loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 
 const ALL = 'all';
@@ -45,6 +46,33 @@ const comunidadeParsers = {
 
 export const Route = createFileRoute('/_app/comunidade')({
     validateSearch: createStandardSchemaV1(comunidadeParsers, { partialOutput: true }),
+    loaderDeps: ({ search }) => ({
+        kind: search.kind,
+        order: search.order,
+        region: search.region,
+        course: search.course,
+        minhas: search.minhas,
+        q: search.q
+    }),
+    // A primeira página das conversas vai pronta no HTML; o LCP não espera o JavaScript.
+    loader: async ({ context: { queryClient }, deps }) => {
+        const user = await loadQuery(queryClient, meQueryOptions);
+        if (deps.minhas) return;
+        const text = (deps.q ?? '').trim();
+        await queryClient
+            .infiniteQuery(
+                forumListQueryOptions(
+                    forumQuery({
+                        kind: deps.kind ?? ALL,
+                        order: deps.order ?? 'recent',
+                        campus: deps.region ?? campusOfUnit(user?.unit?.id) ?? ALL,
+                        course: deps.course ? user?.course?.id : undefined,
+                        q: text.length >= 3 ? text : undefined
+                    })
+                )
+            )
+            .catch(noop);
+    },
     head: () => ({ meta: [{ title: 'Dúvidas e posts | Followw' }] }),
     staticData: {
         header: () => <BackHeader to="/mais" title="Dúvidas e posts" />
@@ -52,6 +80,20 @@ export const Route = createFileRoute('/_app/comunidade')({
     errorComponent: ErrorState,
     component: ComunidadePage
 });
+
+function forumQuery(input: {
+    kind: (typeof KINDS)[number];
+    order: (typeof ORDERS)[number];
+    campus: Campus | typeof ALL;
+    course?: number;
+    q?: string;
+}): ForumListQuery {
+    return {
+        ...input,
+        kind: input.kind === ALL ? undefined : input.kind,
+        campus: input.campus === ALL ? undefined : input.campus
+    };
+}
 
 function ComunidadePage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
@@ -186,17 +228,7 @@ function PostList({
     subjects?: string[];
     onWrite?: () => void;
 }) {
-    const pages = api.useInfiniteQuery(
-        'get',
-        '/forum',
-        { params: { query } },
-        {
-            initialPageParam: 1,
-            pageParamName: 'page',
-            getNextPageParam: (last) =>
-                last.page * last.page_size < last.total ? last.page + 1 : undefined
-        }
-    );
+    const pages = useInfiniteQuery(forumListQueryOptions(query));
     if (pages.isPending) return <LoadingText>Carregando conversas...</LoadingText>;
     if (pages.isError)
         return (
