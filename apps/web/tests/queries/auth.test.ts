@@ -1,8 +1,7 @@
 import type { Middleware } from 'openapi-fetch';
 
 import { QueryClientProvider, noop, onlineManager } from '@tanstack/react-query';
-import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { posthog } from 'posthog-js';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createElement, type ReactNode } from 'react';
 
 import type { components } from '#/queries/schema.gen.ts';
@@ -257,7 +256,6 @@ describe('hooks de sessão', () => {
     const paths = () => requests.map((r) => `${r.method} ${new URL(r.url).pathname}`);
 
     test('logout encerra na API, limpa a conta e avisa quem chamou', async () => {
-        const reset = spyOn(posthog, 'reset').mockImplementation(noop);
         let saiu = false;
         const { result, queryClient } = renderHook(() => useLogout(() => (saiu = true)));
         queryClient.setQueryData(classroomsQueryOptions.queryKey, []);
@@ -267,9 +265,7 @@ describe('hooks de sessão', () => {
         expect(paths()).toEqual(['DELETE /api/auth/sigaa']);
         expect(queryClient.getQueryData(meQueryOptions.queryKey)).toBeNull();
         expect(queryClient.getQueryState(classroomsQueryOptions.queryKey)).toBeUndefined();
-        expect(reset).toHaveBeenCalledTimes(1);
         expect(saiu).toBe(true);
-        reset.mockRestore();
     });
 
     test('logout que falha mantém a sessão', async () => {

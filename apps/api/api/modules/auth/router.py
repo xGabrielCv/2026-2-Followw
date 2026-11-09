@@ -9,10 +9,12 @@ from api.cookies import clear_cookies, read_access_cookie, read_refresh_cookie
 from api.db.main import DatabaseDep
 from api.errors import SIGAA_ERRORS
 from api.modules.auth.account import start_account
+from api.modules.community.permissions import router as community_permissions_router
 from api.rate_limit import limit_registration
 from api.sigaa import SigaaConnection, SigaaConnectionDep
 
 router = APIRouter()
+router.include_router(community_permissions_router)
 
 
 class SigaaLoginRequest(BaseModel):

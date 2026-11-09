@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { useMemo, useSyncExternalStore } from 'react';
 
 import { forgetShareKeys, rememberShareKeys, shareKeys } from '#/lib/author';
-import { accountStore } from '#/lib/local-storage';
+import { accountStore, flushLocalStorage, localAccount } from '#/lib/local-storage';
 import { apiClient } from '#/queries/client';
 import { meQueryOptions } from '#/queries/me';
 
@@ -12,6 +12,7 @@ import { meQueryOptions } from '#/queries/me';
  */
 export interface UserSettings {
     displayName?: string | null;
+    profile?: { bio?: string; photo?: string | null };
     // matérias marcadas como concluídas à mão no fluxo
     completedSubjects?: string[];
     // índice da paleta escolhido para cada matéria na agenda
@@ -43,14 +44,15 @@ export function useUserSettings(): UserSettings {
 
 /** Libera ou recolhe as estatísticas das turmas do aluno nos índices públicos. */
 export async function syncStatisticsSharing(shared: boolean) {
+    const account = localAccount();
     // cada turma liberada tem uma chave aleatória própria, guardada só aqui; sem ela ninguém desfaz
     const keys = shareKeys();
     const { data, error } = await apiClient.PUT('/me/statistics-sharing', {
         body: { shared, keys }
     });
     if (error || !data) throw new Error('Não foi possível mudar o compartilhamento');
-    if (shared) rememberShareKeys(data.keys ?? {});
-    else forgetShareKeys(Object.keys(keys));
+    if (shared) rememberShareKeys(data.keys ?? {}, account);
+    else forgetShareKeys(Object.keys(keys), account);
 }
 
 export function useUpdateSettings() {
@@ -65,6 +67,7 @@ export function useUpdateSettings() {
             const store = settingsStore(user.registration);
             const next = { ...store.getSnapshot(), ...body };
             store.set(next);
+            await flushLocalStorage();
             return next;
         },
         onSuccess: (_, { body }) => {

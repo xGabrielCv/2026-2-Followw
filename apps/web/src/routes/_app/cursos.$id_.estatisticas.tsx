@@ -18,6 +18,7 @@ import { curriculumQueryOptions } from '#/queries/curriculum';
 import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 import { useCompletedSubjects } from '#/queries/settings';
+import { approvedCodes } from '#/queries/subjects';
 
 export const Route = createFileRoute('/_app/cursos/$id_/estatisticas')({
     params: {
@@ -57,6 +58,10 @@ function FlowStatisticsPage() {
     });
     const history = useQuery({ ...allClassroomsQueryOptions, enabled });
     const { codes } = useCompletedSubjects();
+    const completedCodes = useMemo(
+        () => [...new Set([...approvedCodes(history.data ?? []), ...codes])],
+        [history.data, codes]
+    );
     const planning = useMemo(() => {
         if (!matrix.data || !history.data) return null;
         const model = normalizeCurriculum(matrix.data);
@@ -116,11 +121,16 @@ function FlowStatisticsPage() {
                     manualCount={codes.size}
                 />
             )}
-            {planning && (
+            {planning && matrix.data && (
                 <GraduationPlanner
                     model={planning.model}
                     state={planning.state}
                     semester={currentRegularSemester(nowInBrasilia().date)}
+                    registration={user.registration}
+                    curriculum={matrix.data}
+                    workload={user.workload}
+                    maxWorkload={user.period_max_workload}
+                    completedCodes={completedCodes}
                 />
             )}
         </div>

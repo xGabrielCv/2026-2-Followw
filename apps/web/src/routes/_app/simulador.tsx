@@ -1,8 +1,9 @@
+import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Copy, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { createParser, createStandardSchemaV1 } from 'nuqs/server';
-import { useState, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 
 import type { SchedulePlan } from '#/lib/planned-schedule';
 
@@ -30,6 +31,10 @@ import { formatRating, ratingTone } from '#/lib/reviews';
 import { nowInBrasilia } from '#/lib/schedule';
 import { averageRating, planMetrics } from '#/lib/schedule-compare';
 import { cn } from '#/lib/shadcn';
+import { allClassroomsQueryOptions } from '#/queries/classrooms';
+import { meQueryOptions } from '#/queries/me';
+import { useUserSettings } from '#/queries/settings';
+import { approvedCodes } from '#/queries/subjects';
 
 const simuladorParsers = {
     semester: createParser({
@@ -56,6 +61,13 @@ function SimuladorPage() {
         () => EMPTY_PLANS
     );
     const { maxHours, toggle } = usePlannedSchedule();
+    const { data: user } = useQuery(meQueryOptions);
+    const history = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
+    const { completedSubjects } = useUserSettings();
+    const completedCodes = useMemo(
+        () => [...new Set([...approvedCodes(history.data ?? []), ...(completedSubjects ?? [])])],
+        [history.data, completedSubjects]
+    );
     const [{ semester: picked }, setSearch] = useQueryStates(simuladorParsers, {
         history: 'replace',
         scroll: false
@@ -195,7 +207,12 @@ function SimuladorPage() {
                 </section>
             )}
             {semester && (
-                <SuggestedPlans plans={value.plans} semester={semester} maxHours={maxHours} />
+                <SuggestedPlans
+                    plans={value.plans}
+                    semester={semester}
+                    maxHours={maxHours}
+                    completedCodes={completedCodes}
+                />
             )}
             {semester && value.plans.length > 1 && (
                 <Comparison plans={value.plans} semester={semester} activeId={active?.id} />

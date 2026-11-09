@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.account import Account
 from api.anonymous import resource_key
+from api.db.context import apply_context, set_context
 from api.db.main import Database
 from api.db.models import Classroom, SharedStatistics
 from api.modules.classrooms.repository import ClassroomRepository
@@ -137,10 +138,20 @@ async def _share(
             minted[id_] = fresh
             rows.append({"classroom_id": id_, "sharer_key": resource_key(fresh)})
         if rows:
+            set_context(
+                scope="statistics_share",
+                share_keys=",".join(row["sharer_key"] for row in rows),
+            )
+            await apply_context(session)
             await session.execute(
                 insert(SharedStatistics).values(rows).on_conflict_do_nothing()
             )
     else:
+        set_context(
+            scope="statistics_share",
+            share_keys=",".join(resource_key(key) for key in keys_in.values()),
+        )
+        await apply_context(session)
         # Só a liberação de quem tem a chave: outro aluno que liberou a mesma turma continua valendo.
         for id_ in classrooms:
             known = keys_in.get(id_)

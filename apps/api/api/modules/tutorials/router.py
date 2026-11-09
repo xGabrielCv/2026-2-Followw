@@ -7,6 +7,7 @@ from api.anonymous import AuthorDep
 from api.cache import NoStore
 from api.errors import SIGAA_ERRORS
 from api.flags import require_enabled
+from api.modules.community.permissions import CommunityWriteDep
 from api.modules.tutorials.service import (
     Category,
     TutorialDetails,
@@ -17,7 +18,6 @@ from api.modules.tutorials.service import (
 )
 from api.rate_limit import publish_quota
 from api.schemas import SearchText
-from api.sigaa import SigaaConnectionDep
 
 router = APIRouter()
 
@@ -63,7 +63,7 @@ async def get_tutorial(
 )
 async def submit_tutorial(
     author: AuthorDep,
-    connection: SigaaConnectionDep,
+    connection: CommunityWriteDep,
     service: TutorialServiceDep,
     body: TutorialInput,
     response: Response,

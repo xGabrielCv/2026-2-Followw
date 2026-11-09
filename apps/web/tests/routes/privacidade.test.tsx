@@ -64,8 +64,11 @@ describe('privacidade e termos', () => {
         expect(markup).toContain('AES-256-GCM');
         expect(markup).toContain('30 dias por padrão');
         expect(markup).toContain('8 horas');
-        expect(markup).toContain('PostHog');
-        expect(markup).toContain('sem gravação de sessão');
+        expect(markup).not.toContain('PostHog');
+        expect(markup).toContain('rastreador externo nem gravação de sessão');
+        expect(markup).toContain('uma autorização curta e de uso único');
+        expect(markup).toContain('não prometemos anonimato absoluto');
+        expect(markup).not.toContain('não exigem login para publicar');
         expect(markup).not.toContain('mailto:');
         expect(markup).not.toContain('contato@followw.app');
         expect(markup).not.toContain('removal@followw.app');

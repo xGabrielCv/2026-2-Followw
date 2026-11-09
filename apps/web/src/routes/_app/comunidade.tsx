@@ -31,7 +31,7 @@ import { meQueryOptions } from '#/queries/me';
 
 const ALL = 'all';
 const KINDS = [ALL, 'duvida', 'post'] as const;
-const ORDERS = ['recent', 'active', 'unanswered'] as const;
+const ORDERS = ['recent', 'active', 'unanswered', 'unresolved', 'resolved'] as const;
 const CAMPUS_OPTIONS = [ALL, ...CAMPUSES] as const;
 
 const comunidadeParsers = {
@@ -111,7 +111,9 @@ function Community({ campus: myCampus, courseId }: { campus?: Campus; courseId?:
                     labels={{
                         recent: 'Mais recentes',
                         active: 'Movimentadas',
-                        unanswered: 'Sem resposta'
+                        unanswered: 'Sem resposta',
+                        unresolved: 'Dúvidas abertas',
+                        resolved: 'Resolvidas'
                     }}
                     onChange={(order) =>
                         void setSearch({ order: order === 'recent' ? null : order })
@@ -257,6 +259,11 @@ export function PostCard({ post }: { post: PostItem }) {
                 >
                     {POST_KIND_LABELS[post.kind]}
                 </span>
+                {post.resolved && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-primary">
+                        Resolvida
+                    </span>
+                )}
                 {post.subject && (
                     <span className="rounded-full bg-muted px-2 py-0.5 font-medium">
                         {post.subject.code}

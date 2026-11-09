@@ -19,6 +19,7 @@ export const SHIFT_LABELS: Record<Shift, string> = {
 };
 
 export interface Preferences {
+    completedCodes?: readonly string[];
     /** dias (1 = segunda ... 6 = sábado) em que o aluno não pode ir ao campus: nenhuma aula neles */
     blockedWeekdays: number[];
     /** horários indisponíveis: nenhuma aula pode tocar neles */
@@ -137,6 +138,8 @@ export function metricsOf(items: PlannedClass[]): Metrics {
 
 /** Por que a turma não pode entrar de jeito nenhum (independente das outras), ou `null`. */
 export function blockedReason(item: PlannedClass, prefs: Preferences): string | null {
+    if (!requirementsMet(item.prerequisites, new Set(prefs.completedCodes)))
+        return 'pré-requisitos ainda não confirmados';
     const times = classTimes(item);
     const day = times.find((time) => prefs.blockedWeekdays.includes(time.weekday));
     if (day) return `tem aula em um dia bloqueado`;
@@ -145,6 +148,13 @@ export function blockedReason(item: PlannedClass, prefs: Preferences): string | 
     if (prefs.maxHours != null && (item.hours ?? 0) > prefs.maxHours)
         return 'passa da carga horária máxima sozinha';
     return null;
+}
+
+function requirementsMet(groups: PlannedClass['prerequisites'], codes: ReadonlySet<string>) {
+    return (
+        !groups?.length ||
+        groups.some((group) => group.length > 0 && group.every((item) => codes.has(item.code)))
+    );
 }
 
 const conflicts = (a: PlannedClass, b: PlannedClass) =>
@@ -219,6 +229,11 @@ export function suggestSchedules(
     const seen = new Set<string>();
 
     const record = (items: PlannedClass[]) => {
+        const concurrent = new Set([
+            ...(prefs.completedCodes ?? []),
+            ...items.map((item) => item.code)
+        ]);
+        if (items.some((item) => !requirementsMet(item.corequisites, concurrent))) return;
         const key = items
             .map((item) => `${item.code}-${item.number}`)
             .toSorted()

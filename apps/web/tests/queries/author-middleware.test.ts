@@ -15,10 +15,14 @@ const OUTRO = '33333333-3333-4333-8333-333333333333';
 describe('chaves de autoria nos pedidos', () => {
     let sent: Request[];
     let created: string | undefined;
+    let beforeResponse: (() => Promise<void>) | undefined;
 
     // sem rede: devolve o que o servidor devolveria e guarda o pedido final (com os cabeçalhos postos)
     const fakeFetch = async (input: Request) => {
+        if (new URL(input.url).pathname.endsWith('/auth/community-permits'))
+            return Response.json({ token: crypto.randomUUID(), expires_in: 120 });
         sent.push(input.clone());
+        await beforeResponse?.();
         return new Response(JSON.stringify({ id: created ?? ID }), {
             status: 201,
             headers: {
@@ -39,6 +43,7 @@ describe('chaves de autoria nos pedidos', () => {
     beforeEach(() => {
         sent = [];
         created = undefined;
+        beforeResponse = undefined;
     });
     afterEach(() => {
         localStorageRepository.clear();
@@ -86,5 +91,18 @@ describe('chaves de autoria nos pedidos', () => {
             expect(request.headers.get('X-Followw-Author')).toBeNull();
             expect(request.headers.get('X-Followw-Usage')).toBeNull();
         }
+    });
+
+    test('resposta atrasada guarda autoria na conta que iniciou a publicação', async () => {
+        selectLocalAccount('251000001');
+        created = ID;
+        beforeResponse = async () => {
+            selectLocalAccount('252000002');
+        };
+        await call('POST', '/forum', { kind: 'duvida', title: 'Título bom', body: 'texto' });
+        expect(keyFor('post', ID)).toBeUndefined();
+        const key = sent[0].headers.get('X-Followw-Author');
+        selectLocalAccount('251000001');
+        expect(keyFor('post', ID)).toBe(key ?? undefined);
     });
 });

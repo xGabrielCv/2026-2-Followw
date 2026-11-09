@@ -8,6 +8,14 @@ from math import ceil
 _MAX_ROUTES = 256
 _REQUESTS: dict[tuple[str, str], dict] = {}
 _ORIGINS: dict[str, dict] = {}
+_CLIENT_EVENTS: dict[str, int] = {}
+
+
+def observe_client_event(name: str) -> None:
+    if name == "login_session_lost":
+        _CLIENT_EVENTS[name] = _CLIENT_EVENTS.get(name, 0) + 1
+
+
 # Atividade agregada, sem IP, sem identificador e sem parâmetros: só quantos pedidos, quando e se falharam.
 _MINUTES: dict[int, list[int]] = {}  # minuto -> [pedidos, erros 5xx]
 _MODULE_ERRORS: dict[tuple[int, str], int] = {}  # (hora, módulo) -> erros 5xx
@@ -97,6 +105,7 @@ def snapshot() -> dict:
         "scope": "current_process",
         "routes": sorted(routes, key=lambda row: row["requests"], reverse=True),
         "origins": dict(_ORIGINS),
+        "client_events": dict(_CLIENT_EVENTS),
     }
 
 
@@ -146,6 +155,7 @@ def activity() -> dict:
 def reset() -> None:
     _REQUESTS.clear()
     _ORIGINS.clear()
+    _CLIENT_EVENTS.clear()
     _MINUTES.clear()
     _MODULE_ERRORS.clear()
     _LATENCIES.clear()

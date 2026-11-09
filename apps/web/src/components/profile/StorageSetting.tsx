@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { HardDrive } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { MetricsInformation } from '#/components/profile/MetricsInformation';
 import { Button } from '#/components/ui/button';
 import {
     Dialog,
@@ -13,9 +14,9 @@ import {
     DialogTrigger
 } from '#/components/ui/dialog';
 import { clearOfflineData } from '#/integrations/offline/storage';
-import { setAnalyticsConsent } from '#/integrations/posthog/provider';
 import { localStorageRepository } from '#/lib/local-storage';
 import { clearAcademicData, localVault, retentionDays, RETENTION_DAYS } from '#/lib/local-vault';
+import { setAnalyticsConsent } from '#/queries/telemetry';
 
 const megabytes = (bytes: number) =>
     `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
@@ -98,15 +99,15 @@ export function StorageSetting() {
                     </span>
                 </span>
             </DialogTrigger>
-            <DialogContent>
-                <DialogHeader>
+            <DialogContent className="viewport-dialog flex min-w-0 flex-col overflow-hidden">
+                <DialogHeader className="min-w-0 shrink-0 pr-6">
                     <DialogTitle>Configurar armazenamento</DialogTitle>
                     <DialogDescription>
                         Escolha por quanto tempo suas informações acadêmicas ficam salvas neste
                         navegador. Seus dados são armazenados de forma criptografada.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col gap-4 text-sm">
+                <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1 text-sm">
                     <div className="flex flex-col gap-2">
                         <label htmlFor="retention-days" className="font-medium">
                             Guardar por
@@ -115,7 +116,7 @@ export function StorageSetting() {
                             id="retention-days"
                             value={days}
                             onChange={(event) => setDays(Number(event.target.value))}
-                            className="h-10 rounded-lg border border-input bg-background px-3"
+                            className="h-10 w-full min-w-0 shrink-0 rounded-lg border border-input bg-background px-3"
                         >
                             {RETENTION_DAYS.map((value) => (
                                 <option key={value} value={value}>
@@ -148,7 +149,7 @@ export function StorageSetting() {
                                     voltam na próxima vez que você entrar. Suas publicações e
                                     chamados não são afetados.
                                 </p>
-                                <DialogFooter>
+                                <DialogFooter className="m-0 rounded-lg p-2">
                                     <Button
                                         variant="outline"
                                         disabled={busy}
@@ -166,7 +167,11 @@ export function StorageSetting() {
                                 </DialogFooter>
                             </div>
                         ) : (
-                            <Button variant="outline" onClick={() => setConfirming(true)}>
+                            <Button
+                                variant="outline"
+                                className="h-auto min-h-10 py-2 whitespace-normal"
+                                onClick={() => setConfirming(true)}
+                            >
                                 Apagar informações acadêmicas salvas neste navegador
                             </Button>
                         )}
@@ -186,23 +191,27 @@ export function StorageSetting() {
 export function AnalyticsSetting() {
     const [on, setOn] = useState(() => localStorageRepository.get('analytics-consent') === true);
     return (
-        <label className="flex items-start gap-3 py-2.5 text-sm">
-            <input
-                type="checkbox"
-                aria-label="Ajudar com métricas de uso"
-                checked={on}
-                onChange={(event) => {
-                    setOn(event.target.checked);
-                    setAnalyticsConsent(event.target.checked);
-                }}
-                className="mt-1 size-4"
-            />
-            <span className="flex flex-col">
-                <span>Ajudar com métricas de uso</span>
-                <span className="text-xs text-muted-foreground">
-                    Desligado por padrão. Nunca envia dados acadêmicos. Vale ao reabrir o app.
+        <div className="flex min-w-0 items-start gap-1 py-2.5 text-sm">
+            <label className="flex min-w-0 flex-1 items-start gap-3">
+                <input
+                    type="checkbox"
+                    aria-label="Ajudar a melhorar o Followw"
+                    checked={on}
+                    onChange={(event) => {
+                        setOn(event.target.checked);
+                        setAnalyticsConsent(event.target.checked);
+                    }}
+                    className="mt-1 size-4"
+                />
+                <span className="flex min-w-0 flex-col">
+                    <span>Ajudar a melhorar o Followw</span>
+                    <span className="text-xs text-muted-foreground">
+                        Permite compartilhar informações gerais sobre o funcionamento e o uso do
+                        aplicativo, sem enviar seus dados acadêmicos ou credenciais.
+                    </span>
                 </span>
-            </span>
-        </label>
+            </label>
+            <MetricsInformation />
+        </div>
     );
 }

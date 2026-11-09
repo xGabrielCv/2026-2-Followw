@@ -97,6 +97,9 @@ services:
     <<: *hardening
     build: { context: .., dockerfile: deploy/Dockerfile.web }
     image: followw-web
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      RATE_LIMIT_SECRET_KEY: ${RATE_LIMIT_SECRET_KEY:-}
     networks: [internal]
     depends_on:
       api: { condition: service_healthy }

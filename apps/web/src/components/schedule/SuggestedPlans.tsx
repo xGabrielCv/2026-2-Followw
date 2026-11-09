@@ -1,19 +1,18 @@
 import { Sparkles } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import type { PlannedClass, SchedulePlan } from '#/lib/planned-schedule';
 import type { Result, Shift, Weight } from '#/lib/schedule-optimizer';
+import type { OptimizerJob } from '#/lib/schedule-optimizer.worker';
 
 import { Button } from '#/components/ui/button';
 import { Checkbox } from '#/components/ui/checkbox';
 import { createPlan, MAX_PLANS, plannedSchedule } from '#/lib/planned-schedule';
 import { describeSchedule, WEEKDAYS_SHORT } from '#/lib/schedule';
-import {
-    DEFAULT_PREFERENCES,
-    SHIFT_LABELS,
-    suggestSchedules,
-    subjectsFromPlans
-} from '#/lib/schedule-optimizer';
+import { DEFAULT_PREFERENCES, SHIFT_LABELS, subjectsFromPlans } from '#/lib/schedule-optimizer';
+import { runOptimizer } from '#/lib/schedule-optimizer-runner';
+
+const EMPTY_CODES: readonly string[] = [];
 
 const WEIGHT_LABELS: Record<Weight, string> = { 0: 'Ignorar', 1: 'Pouco', 2: 'Normal', 3: 'Muito' };
 const CRITERIA = [
@@ -36,11 +35,13 @@ const toggle = <T,>(list: T[], value: T) =>
 export function SuggestedPlans({
     plans,
     semester,
-    maxHours
+    maxHours,
+    completedCodes = EMPTY_CODES
 }: {
     plans: SchedulePlan[];
     semester: string;
     maxHours: number | null;
+    completedCodes?: readonly string[];
 }) {
     const id = useId();
     const pool = useMemo(
@@ -54,21 +55,54 @@ export function SuggestedPlans({
     const [blocked, setBlocked] = useState<number[]>([]);
     const [avoid, setAvoid] = useState<Shift[]>([]);
     const [weights, setWeights] = useState(DEFAULT_PREFERENCES.weights);
-    const [result, setResult] = useState<Result | null>(null);
     const subjects = useMemo(() => subjectsFromPlans(pool, optional), [pool, optional]);
-
-    if (subjects.length < 2) return null;
-
-    const run = () =>
-        setResult(
-            suggestSchedules(subjects, {
+    const job = useMemo<OptimizerJob>(
+        () => ({
+            subjects,
+            preferences: {
                 ...DEFAULT_PREFERENCES,
                 blockedWeekdays: blocked,
                 avoidShifts: avoid,
                 weights,
-                maxHours
-            })
-        );
+                maxHours,
+                completedCodes
+            }
+        }),
+        [subjects, blocked, avoid, weights, maxHours, completedCodes]
+    );
+    const [calculated, setCalculated] = useState<{ job: OptimizerJob; output: Result } | null>(
+        null
+    );
+    const [busyJob, setBusyJob] = useState<OptimizerJob | null>(null);
+    const [failedJob, setFailedJob] = useState<OptimizerJob | null>(null);
+    const running = useRef<{ job: OptimizerJob; controller: AbortController } | null>(null);
+    const busy = busyJob === job;
+    const failed = failedJob === job;
+    const result = !busy && calculated?.job === job ? calculated.output : null;
+    useEffect(
+        () => () => {
+            if (running.current?.job === job) running.current.controller.abort();
+        },
+        [job]
+    );
+
+    if (subjects.length < 2) return null;
+
+    const run = async () => {
+        running.current?.controller.abort();
+        const controller = new AbortController();
+        running.current = { job, controller };
+        setBusyJob(job);
+        setFailedJob(null);
+        try {
+            const output = await runOptimizer(job, controller.signal);
+            if (!controller.signal.aborted) setCalculated({ job, output });
+        } catch {
+            if (!controller.signal.aborted) setFailedJob(job);
+        } finally {
+            if (!controller.signal.aborted) setBusyJob(null);
+        }
+    };
     return (
         <section className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/8">
             <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -78,7 +112,8 @@ export function SuggestedPlans({
             <p className="text-sm text-muted-foreground">
                 Usa as turmas que você já colocou nas suas grades de {semester}: cada matéria pode
                 ter várias turmas de opção. O app monta combinações sem choque e explica a escolha.
-                Não sabe de vagas nem de pré-requisitos.
+                Verifica requisitos conhecidos com as conclusões disponíveis neste aparelho.
+                Requisitos ausentes e vagas precisam de conferência no SIGAA.
             </p>
             <fieldset className="flex flex-col gap-2">
                 <legend className="text-sm font-medium">Matérias</legend>
@@ -155,10 +190,15 @@ export function SuggestedPlans({
                     </div>
                 ))}
             </div>
-            <Button onClick={run} className="self-start">
+            <Button onClick={() => void run()} disabled={busy} className="self-start">
                 <Sparkles aria-hidden="true" />
-                Sugerir grades
+                {busy ? 'Calculando grades...' : 'Sugerir grades'}
             </Button>
+            {failed && (
+                <p role="alert" className="text-sm text-destructive">
+                    Não foi possível calcular. Tente novamente com menos opções.
+                </p>
+            )}
             {result && <Suggestions result={result} planCount={plans.length} />}
         </section>
     );

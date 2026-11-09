@@ -14,6 +14,7 @@ from api.cache import NoStore
 from api.db.context import set_context
 from api.modules.admin import auth
 from api.modules.admin.accounts import AdminAccountsDep
+from api.modules.admin.audit import AuditQuery, AuditServiceDep, LogPage
 from api.modules.admin.auth import AdminDep
 from api.modules.admin.health import pool_status, resilience_status
 from api.modules.admin.permissions import PERMISSIONS, Role
@@ -21,13 +22,10 @@ from api.modules.admin.service import (
     AdminServiceDep,
     Breakdown,
     ContentType,
-    LogEntry,
     Overview,
     Page,
-    ReportView,
     Series,
     TutorialEdit,
-    TutorialView,
 )
 from api.schemas import SearchText
 
@@ -50,10 +48,6 @@ _SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
 }
-
-
-class Decision(BaseModel):
-    action: Literal["accept", "reject"]
 
 
 class Login(BaseModel):
@@ -102,6 +96,9 @@ async def dashboard_asset(
         "dashboard-support.js",
         "dashboard-statistics.js",
         "dashboard-operations.js",
+        "dashboard-audit.js",
+        "dashboard-limits.js",
+        "dashboard-moderation.js",
     ],
 ) -> Response:
     return Response(
@@ -280,52 +277,6 @@ async def material_file(service: AdminServiceDep, material_id: UUID) -> Response
     )
 
 
-@api.get(
-    "/reports",
-    dependencies=[auth.require_permission("moderate")],
-    response_model=list[ReportView],
-)
-async def reports(
-    service: AdminServiceDep,
-    status: Annotated[Literal["pending", "accepted", "rejected"], Query()] = "pending",
-) -> list[ReportView]:
-    return await service.reports(status)
-
-
-@api.post(
-    "/reports/{report_id}",
-    dependencies=[auth.require_permission("moderate")],
-    status_code=204,
-)
-async def decide_report(
-    service: AdminServiceDep, report_id: UUID, body: Decision
-) -> None:
-    await service.resolve_report(report_id, body.action == "accept")
-
-
-@api.get(
-    "/tutorials",
-    dependencies=[auth.require_permission("moderate")],
-    response_model=list[TutorialView],
-)
-async def tutorials(
-    service: AdminServiceDep,
-    status: Annotated[Literal["pending", "approved", "rejected"], Query()] = "pending",
-) -> list[TutorialView]:
-    return await service.tutorials(status)
-
-
-@api.post(
-    "/tutorials/{tutorial_id}",
-    dependencies=[auth.require_permission("moderate")],
-    status_code=204,
-)
-async def decide_tutorial(
-    service: AdminServiceDep, tutorial_id: UUID, body: Decision
-) -> None:
-    await service.review_tutorial(tutorial_id, body.action == "accept")
-
-
 @api.put(
     "/tutorials/{tutorial_id}",
     dependencies=[auth.require_permission("moderate")],
@@ -386,10 +337,12 @@ async def maintenance(service: AdminServiceDep) -> dict[str, int]:
 @api.get(
     "/log",
     dependencies=[auth.require_permission("audit")],
-    response_model=list[LogEntry],
+    response_model=LogPage,
 )
-async def admin_log(service: AdminServiceDep) -> list[LogEntry]:
-    return await service.log_entries()
+async def admin_log(
+    service: AuditServiceDep, filters: Annotated[AuditQuery, Query()]
+) -> LogPage:
+    return await service.list(filters)
 
 
 class AccountCreate(Setup):
@@ -477,14 +430,6 @@ async def transfer_owner(
     await accounts.transfer(request.state.admin, account_id, body.password, body.code)
 
 
-@api.get("/moderation/summary", dependencies=[auth.require_permission("moderate")])
-async def moderation_summary(service: AdminServiceDep) -> dict:
-    return {
-        "reports": len(await service.reports("pending")),
-        "tutorials": len(await service.tutorials("pending")),
-    }
-
-
 @api.post("/self/recovery-codes")
 async def own_recovery(
     request: Request, body: StrongFactor, accounts: AdminAccountsDep
@@ -525,6 +470,8 @@ async def reset_metrics(service: AdminServiceDep) -> None:
     metrics.reset()
 
 
+from api.modules.admin.limits import router as limits_router
+from api.modules.admin.moderation import router as moderation_router
 from api.modules.admin.operations import router as operations_router
 from api.modules.admin.statistics import router as statistics_router
 from api.modules.support.staff import router as tickets_router
@@ -532,5 +479,7 @@ from api.modules.support.staff import router as tickets_router
 api.include_router(tickets_router, prefix="/tickets")
 api.include_router(statistics_router, prefix="/statistics")
 api.include_router(operations_router, prefix="/operations")
+api.include_router(moderation_router)
+api.include_router(limits_router, prefix="/limits")
 router.include_router(public, prefix="/api")
 router.include_router(api, prefix="/api")

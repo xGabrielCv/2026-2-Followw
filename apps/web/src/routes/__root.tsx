@@ -6,6 +6,7 @@ import {
     Outlet,
     Scripts,
     createRootRouteWithContext,
+    useRouter,
     isNotFound
 } from '@tanstack/react-router';
 import { NuqsAdapter } from 'nuqs/adapters/tanstack-router';
@@ -15,12 +16,12 @@ import { ErrorPage } from '#/components/ErrorPage';
 import { NotFoundPage } from '#/components/NotFoundPage';
 import { initializeInstallSupport } from '#/integrations/offline/install';
 import { useOfflineSupport } from '#/integrations/offline/use-offline-support';
-import PostHogProvider from '#/integrations/posthog/provider';
 import { reloadOnPreloadError } from '#/lib/chunk-reload';
 import { layoutScript } from '#/lib/layout';
-import { selectLocalAccount } from '#/lib/local-storage';
+import { observeLocalStorage, selectLocalAccount } from '#/lib/local-storage';
 import { initializeLocalVault } from '#/lib/local-vault';
 import { themeScript } from '#/lib/theme';
+import { observeViewport } from '#/lib/viewport';
 import { useSessionRefresh } from '#/queries/auth';
 import { loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
@@ -70,6 +71,14 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 
 function RootComponent() {
     useSessionRefresh();
+    useEffect(observeViewport, []);
+    useEffect(observeLocalStorage, []);
+    useEffect(() => {
+        document.body.dataset.appReady = 'true';
+        return () => {
+            delete document.body.dataset.appReady;
+        };
+    }, []);
     useEffect(() => reloadOnPreloadError(), []);
     useEffect(() => initializeInstallSupport(), []);
     const restoring = useOfflineSupport();
@@ -84,15 +93,16 @@ function RootComponent() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+    const nonce = useRouter().options.ssr?.nonce;
     return (
         <html lang="pt-BR" suppressHydrationWarning>
             <head>
-                <script dangerouslySetInnerHTML={{ __html: themeScript }} />
-                <script dangerouslySetInnerHTML={{ __html: layoutScript }} />
+                <script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} />
+                <script nonce={nonce} dangerouslySetInnerHTML={{ __html: layoutScript }} />
                 <HeadContent />
             </head>
             <body>
-                <PostHogProvider>{children}</PostHogProvider>
+                {children}
                 <Scripts />
             </body>
         </html>

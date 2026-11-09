@@ -169,14 +169,14 @@ async def community(
         await session.flush()
         track("post", post.id)
         for reply in range(index % 3):
-            session.add(
-                ForumReply(
-                    post_id=post.id,
-                    body=_REPLIES[(index + reply) % len(_REPLIES)],
-                    author_key=_DEMO_KEY if reply == 1 else f"demo-{reply}",
-                )
+            item = ForumReply(
+                post_id=post.id,
+                body=_REPLIES[(index + reply) % len(_REPLIES)],
+                author_key=_DEMO_KEY if reply == 1 else f"demo-{reply}",
             )
-            post.reply_count += 1
+            session.add(item)
+            await session.flush()
+            track("reply", item.id)
 
     for category, title, summary, body in _TUTORIALS:
         tutorial = Tutorial(

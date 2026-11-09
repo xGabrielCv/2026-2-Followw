@@ -1,5 +1,5 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,6 +22,7 @@ import {
     forumPostQueryOptions,
     useDeletePost,
     useDeleteReply,
+    useResolvePost,
     useReply
 } from '#/queries/community';
 import { meQueryOptions } from '#/queries/me';
@@ -53,6 +54,7 @@ function PostPage() {
 export function Conversation({ post, canEdit = false }: { post: PostDetails; canEdit?: boolean }) {
     const navigate = useNavigate();
     const remove = useDeletePost();
+    const resolution = useResolvePost(post.id);
     const isOwn = useIsOwn();
     return (
         <div className="flex flex-col gap-4 pb-8">
@@ -88,7 +90,38 @@ export function Conversation({ post, canEdit = false }: { post: PostDetails; can
                     </span>
                 </div>
                 <h1 className="text-lg leading-snug font-semibold">{post.title}</h1>
+                {post.resolved && (
+                    <p className="text-sm font-medium text-primary">Dúvida resolvida</p>
+                )}
                 <p className="text-sm wrap-anywhere whitespace-pre-line">{post.body}</p>
+                {post.subject && (
+                    <Link
+                        to="/materiais/$code"
+                        params={{ code: post.subject.code }}
+                        className="text-sm font-medium text-primary underline"
+                    >
+                        Ver materiais desta matéria
+                    </Link>
+                )}
+                {canEdit && post.kind === 'duvida' && isOwn('post', post.id, post.mine) && (
+                    <Button
+                        variant="outline"
+                        disabled={resolution.isPending}
+                        onClick={() =>
+                            resolution.mutate({
+                                params: { path: { post_id: post.id } },
+                                body: { resolved: !post.resolved }
+                            })
+                        }
+                    >
+                        {post.resolved ? 'Reabrir dúvida' : 'Marcar como resolvida'}
+                    </Button>
+                )}
+                {resolution.isError && (
+                    <p role="alert" className="text-sm text-destructive">
+                        {apiMessage(resolution.error, 'Não foi possível atualizar a dúvida.')}
+                    </p>
+                )}
                 <div className="flex items-center justify-end gap-1">
                     {canEdit && isOwn('post', post.id, post.mine) ? (
                         <Button

@@ -73,9 +73,16 @@ def drop_database(name: str) -> None:
 
 def server_env(name: str, log: Path, args) -> dict:
     env = dict(os.environ)
+    password = secrets.token_hex(24)
     env.update(
         ENVIRONMENT="testing",
-        DATABASE_URL=f"postgresql+asyncpg://postgres@127.0.0.1:5432/{name}",
+        DATABASE_MAINTENANCE_URL=f"postgresql+asyncpg://postgres@127.0.0.1:5432/{name}",
+        DATABASE_URL=f"postgresql+asyncpg://{name}:{password}@127.0.0.1:5432/{name}",
+        APP_DB_ROLE=name,
+        APP_DB_PASSWORD=password,
+        SESSION_LOCK_BACKEND="postgres",
+        SESSION_LOCK_POOL="5",
+        RATE_LIMIT_BACKEND="postgres",
         JWT_SECRET_KEY="chave-sintetica-exclusiva-de-carga-" + "x" * 8,
         DATA_ENCRYPTION_KEY="chave-sintetica-de-carga-do-conteudo-" + "y" * 8,
         MATERIALS_DIR=str(Path(tempfile.gettempdir()) / name),
@@ -105,7 +112,16 @@ def server_env(name: str, log: Path, args) -> dict:
 
 
 def prepare_schema(env: dict) -> None:
-    code = "import asyncio;from api.db.main import create_tables;asyncio.run(create_tables())"
+    code = """import asyncio
+from api.db.main import create_schema, maintenance_engine
+from loadtest.fixtures import seed
+async def prepare():
+    async with maintenance_engine.begin() as connection:
+        await connection.run_sync(create_schema)
+        await connection.run_sync(seed)
+    await maintenance_engine.dispose()
+asyncio.run(prepare())
+"""
     subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=env, check=True)
 
 
@@ -133,15 +149,19 @@ def start_server(env: dict, workers: int) -> subprocess.Popen:
     )
 
 
-async def wait_ready(timeout: float = 120) -> None:
-    async with httpx.AsyncClient() as client:
+async def wait_ready(timeout: float = 120, workers: int = 1) -> None:
+    ready = set()
+    async with httpx.AsyncClient(
+        timeout=1, limits=httpx.Limits(max_keepalive_connections=0), trust_env=False
+    ) as client:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                if (
-                    await client.get(f"http://127.0.0.1:{PORT}/public/config/version")
-                ).status_code == 200:
-                    return
+                response = await client.get(f"http://127.0.0.1:{PORT}/__loadtest/ready")
+                if response.status_code == 200:
+                    ready.add(response.json()["worker"])
+                    if len(ready) == workers:
+                        return
             except httpx.HTTPError:
                 pass
             await asyncio.sleep(0.5)
@@ -359,7 +379,7 @@ async def main_async(args) -> dict:
     try:
         prepare_schema(env)
         server = start_server(env, args.workers)
-        await wait_ready()
+        await wait_ready(workers=args.workers)
         proc = psutil.Process(server.pid)
         # Verifica o bloqueio ANTES de qualquer carga: se a saída externa não estiver barrada, cancela.
         async with httpx.AsyncClient() as guard:

@@ -4,7 +4,8 @@ import type { DailyMenu } from '#/queries/restaurant';
 // A prévia é pública: não encaminha cookies nem consulta dados da conta do RU.
 export async function loadSharedMenu(request: Request, selection: RestaurantSelection) {
     const { clientIpHeaders } = await import('#/queries/client-ip.server');
-    const url = new URL('/api/public/restaurant', request.url);
+    const { serverApiUrl } = await import('#/queries/api-origin.server');
+    const url = serverApiUrl('/api/public/restaurant');
     url.search = new URLSearchParams({
         campus: selection.campus,
         start_date: selection.date,

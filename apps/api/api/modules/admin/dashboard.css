@@ -114,3 +114,4 @@ dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 
 tr.clickable { cursor: pointer; }
 tr.clickable:hover, tr.clickable:focus-visible { background: var(--side); outline: none; }
+.table-scroll { max-width: 100%; overflow-x: auto; }

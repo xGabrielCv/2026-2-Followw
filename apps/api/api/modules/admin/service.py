@@ -43,7 +43,7 @@ from api.modules.admin.models import AdminAccount
 from api.modules.admin.permissions import Principal
 from api.modules.auth.account import periods
 from api.modules.materials.service import purge_expired
-from api.modules.reports.service import TARGETS, delete_target, resolve
+from api.modules.reports.service import TARGETS, delete_target
 from api.storage import material_storage
 
 _STARTED = time.time()
@@ -152,16 +152,6 @@ class TutorialEdit(BaseModel):
     summary: str
     body: str
     category: str
-
-
-class LogEntry(BaseModel):
-    action: str
-    target_type: str | None
-    target_id: str | None
-    detail: str | None
-    created_at: datetime
-    actor: str | None = None
-    actor_role: str | None = None
 
 
 async def _count(session: AsyncSession, model: Any, *where: Any) -> int:
@@ -623,83 +613,6 @@ class AdminService:
             raise HTTPException(404, "Arquivo não encontrado.")
         return material, data
 
-    async def reports(self, status: str) -> list[ReportView]:
-        async def read(session: AsyncSession) -> list[ReportView]:
-            rows = await session.scalars(
-                select(Report)
-                .where(Report.status == status)
-                .order_by(Report.created_at.desc())
-                .limit(200)
-            )
-            return [
-                ReportView(
-                    id=report.id,
-                    target_type=report.target_type,
-                    target_id=report.target_id,
-                    reason=report.reason,
-                    message=report.message,
-                    status=report.status,
-                    created_at=report.created_at,
-                    preview=await _preview(
-                        session, report.target_type, report.target_id
-                    ),
-                )
-                for report in rows
-            ]
-
-        return await self._db.read(read)
-
-    async def resolve_report(self, report_id: uuid.UUID, accept: bool) -> None:
-        async def write(session: AsyncSession) -> None:
-            await resolve(session, report_id, accept)
-            await self._log(
-                session,
-                "report.accept" if accept else "report.reject",
-                "report",
-                report_id,
-            )
-
-        await self._db.write(write)
-
-    async def tutorials(self, status: str) -> list[TutorialView]:
-        async def read(session: AsyncSession) -> list[TutorialView]:
-            rows = await session.scalars(
-                select(Tutorial)
-                .where(Tutorial.status == status)
-                .order_by(Tutorial.created_at.desc())
-                .limit(200)
-            )
-            return [
-                TutorialView(
-                    id=item.id,
-                    title=item.title,
-                    summary=item.summary,
-                    body=item.body,
-                    category=item.category,
-                    status=item.status,
-                    created_at=item.created_at,
-                )
-                for item in rows
-            ]
-
-        return await self._db.read(read)
-
-    async def review_tutorial(self, tutorial_id: uuid.UUID, approve: bool) -> None:
-        async def write(session: AsyncSession) -> None:
-            tutorial = await session.get(Tutorial, tutorial_id)
-            if tutorial is None:
-                raise HTTPException(404, "Guia não encontrado.")
-            tutorial.status = "approved" if approve else "rejected"
-            tutorial.approved_at = datetime.now(UTC) if approve else None
-            await self._log(
-                session,
-                "tutorial.approve" if approve else "tutorial.reject",
-                "tutorial",
-                tutorial_id,
-            )
-
-        await self._db.write(write)
-
     async def edit_tutorial(self, tutorial_id: uuid.UUID, body: TutorialEdit) -> None:
         async def write(session: AsyncSession) -> None:
             tutorial = await session.get(Tutorial, tutorial_id)
@@ -791,29 +704,6 @@ class AdminService:
             return result
 
         return await self._db.write(write)
-
-    async def log_entries(self) -> list[LogEntry]:
-        async def read(session: AsyncSession) -> list[LogEntry]:
-            rows = await session.execute(
-                select(AdminLog, AdminAccount.username)
-                .outerjoin(AdminAccount, AdminAccount.id == AdminLog.actor_id)
-                .order_by(AdminLog.created_at.desc())
-                .limit(200)
-            )
-            return [
-                LogEntry(
-                    action=row.action,
-                    target_type=row.target_type,
-                    target_id=row.target_id,
-                    detail=row.detail,
-                    created_at=row.created_at,
-                    actor=name,
-                    actor_role=row.actor_role,
-                )
-                for row, name in rows
-            ]
-
-        return await self._db.read(read)
 
     async def record(self, action: str) -> None:
         await self._db.write(lambda session: self._log(session, action))

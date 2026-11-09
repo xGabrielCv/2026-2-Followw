@@ -14,7 +14,6 @@ bloqueio vale para todos.
 import asyncio
 import hmac
 import random
-import time
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
@@ -53,8 +52,10 @@ class HeldLock:
             await self._connection.execute(
                 text("SELECT pg_advisory_unlock(:k)"), {"k": self._key}
             )
-        except Exception:  # noqa: BLE001 — sem certeza de que soltou: descarta a conexão inteira
+        except BaseException as error:
             await self._connection.invalidate()
+            if isinstance(error, asyncio.CancelledError):
+                raise
         finally:
             await self._connection.close()
 
@@ -64,19 +65,23 @@ async def acquire(
 ) -> HeldLock:
     """Espera até `timeout` segundos; levanta `TimeoutError` se não conseguir."""
     key = lock_key(name)
-    connection = await (engine or lock_engine()).connect()
-    # sem transação aberta enquanto segura o lock (não fica "idle in transaction" por até 90 s)
-    connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
-    deadline = time.monotonic() + timeout
+    connection = None
     try:
-        while True:
-            if await connection.scalar(
-                text("SELECT pg_try_advisory_lock(:k)"), {"k": key}
-            ):
-                return HeldLock(connection, key)
-            if time.monotonic() >= deadline:
-                raise TimeoutError(name)
-            await asyncio.sleep(0.03 + random.random() * 0.05)
+        async with asyncio.timeout(timeout):
+            connection = await (engine or lock_engine()).connect()
+            connection = await connection.execution_options(
+                isolation_level="AUTOCOMMIT"
+            )
+            while True:
+                if await connection.scalar(
+                    text("SELECT pg_try_advisory_lock(:k)"), {"k": key}
+                ):
+                    return HeldLock(connection, key)
+                await asyncio.sleep(0.03 + random.random() * 0.05)
     except BaseException:
-        await connection.close()
+        if connection is not None:
+            try:
+                await connection.invalidate()
+            finally:
+                await connection.close()
         raise

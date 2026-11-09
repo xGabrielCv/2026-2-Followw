@@ -13,7 +13,26 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Lista fechada: o nome do parâmetro entra no SQL, então nunca vem de fora.
-KEYS = ("scope", "ticket_hash", "recovery_hash", "author_key")
+KEYS = (
+    "scope",
+    "ticket_hash",
+    "recovery_hash",
+    "author_key",
+    "legacy_author_key",
+    "community_operation",
+    "material_subject",
+    "oldest_semester",
+    "forum_post",
+    "reply_limit",
+    "group_subject",
+    "group_semester",
+    "group_number",
+    "review_hash",
+    "review_id",
+    "material_id",
+    "report_target",
+    "share_keys",
+)
 _context: ContextVar[dict[str, str] | None] = ContextVar(
     "followw_db_context", default=None
 )

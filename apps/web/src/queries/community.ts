@@ -76,10 +76,15 @@ export function useDeleteMaterial(code: string) {
 }
 
 /** O arquivo como blob, para abrir ou salvar sem expor a sessão num link. */
-export async function downloadMaterial(code: string, id: string): Promise<Blob> {
+export async function downloadMaterial(
+    code: string,
+    id: string,
+    signal?: AbortSignal
+): Promise<Blob> {
     const { data } = await apiClient.GET('/materials/{code}/{material_id}', {
         params: { path: { code, material_id: id } },
-        parseAs: 'blob'
+        parseAs: 'blob',
+        signal
     });
     if (!(data instanceof Blob)) throw new Error('Não foi possível baixar o arquivo');
     return data;
@@ -120,6 +125,16 @@ export function useDeletePost() {
     const queryClient = useQueryClient();
     return api.useMutation('delete', '/forum/{post_id}', {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['get', '/forum'] })
+    });
+}
+
+export function useResolvePost(id: string) {
+    const queryClient = useQueryClient();
+    return api.useMutation('patch', '/forum/{post_id}/resolved', {
+        onSuccess: (data) => {
+            queryClient.setQueryData(forumPostQueryOptions(id).queryKey, data);
+            void queryClient.invalidateQueries({ queryKey: ['get', '/forum'] });
+        }
     });
 }
 

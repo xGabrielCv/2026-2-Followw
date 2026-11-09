@@ -9,18 +9,24 @@ import hashlib
 import re
 import unicodedata
 import uuid
+from functools import partial
 from typing import Annotated, Literal
 
+from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
 from api.anonymous import owns, resource_key
-from api.db.main import DatabaseDep
+from api.community_limits import read_limits
+from api.db.context import set_context
+from api.db.main import DatabaseDep, after_commit
 from api.db.models import Classroom, Material, Subject
 from api.db.search import contains_term
+from api.modules.community.quotas import MAX_DAILY_UPLOAD_ATTEMPTS
 from api.modules.materials.sanitize import EXTENSIONS, InvalidFile, sanitize, sniff
 from api.schemas import SubjectReference
 from api.storage import LocalStorage, material_storage
@@ -28,16 +34,16 @@ from api.storage import LocalStorage, material_storage
 MaterialKind = Literal["prova", "lista", "resumo", "anotacao", "outro"]
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
-MAX_PER_STUDENT = 10
 MAX_PER_SUBJECT = 50
 MAX_SUBJECT_BYTES = 100 * 1024 * 1024
 # O semestre atual e os cinco anteriores.
 KEEP_SEMESTERS = 6
+_SANITIZERS = CapacityLimiter(2)
 
 
 class Limits(BaseModel):
     max_file_bytes: int = MAX_FILE_BYTES
-    max_per_student: int = MAX_PER_STUDENT
+    max_daily_upload_attempts: int = MAX_DAILY_UPLOAD_ATTEMPTS
     max_per_subject: int = MAX_PER_SUBJECT
     max_subject_bytes: int = MAX_SUBJECT_BYTES
     keep_semesters: int = KEEP_SEMESTERS
@@ -133,7 +139,7 @@ async def purge_expired(session: AsyncSession, storage: LocalStorage) -> int:
         )
     )
     for material in expired:
-        await storage.delete(material.storage_key)
+        after_commit(session, partial(storage.delete, material.storage_key))
         await session.delete(material)
     await session.flush()
     return len(expired)
@@ -182,7 +188,7 @@ class MaterialService:
             return SubjectMaterials(
                 subject=SubjectReference(code=subject.code, name=subject.name),
                 oldest_semester=oldest,
-                limits=Limits(),
+                limits=await effective_limits(session),
                 usage=Usage(
                     files=len(items),
                     bytes=sum(item.size for item in items),
@@ -215,7 +221,7 @@ class MaterialService:
         if mime is None:
             raise HTTPException(415, "Envie PDF ou imagem (PNG, JPEG ou WebP).")
         try:
-            clean = sanitize(data, mime)
+            clean = await to_thread.run_sync(sanitize, data, mime, limiter=_SANITIZERS)
         except InvalidFile as error:
             raise HTTPException(422, str(error)) from error
         if len(clean) > MAX_FILE_BYTES:
@@ -223,9 +229,16 @@ class MaterialService:
         digest = hashlib.sha256(clean).hexdigest()
         key = resource_key(author)
         storage_key = uuid.uuid4().hex
+        set_context(oldest_semester=oldest_semester())
 
         async def write(session: AsyncSession) -> MaterialItem:
             await _subject(session, code)
+            configured = await effective_limits(session)
+            if max(len(data), len(clean)) > configured.max_file_bytes:
+                raise HTTPException(
+                    413,
+                    f"O limite atual por arquivo é {configured.max_file_bytes // 1024**2} MB.",
+                )
             # Um envio por vez na matéria: os limites não estouram com dois ao mesmo tempo.
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext(:scope))"),
@@ -243,12 +256,15 @@ class MaterialService:
             ).one()
             if duplicate:
                 raise HTTPException(409, "Esse arquivo já foi enviado nesta matéria.")
-            if files >= MAX_PER_SUBJECT:
+            if files >= configured.max_per_subject:
                 raise HTTPException(
-                    409, f"A matéria já tem {MAX_PER_SUBJECT} arquivos, o limite."
+                    409,
+                    f"A matéria já tem {configured.max_per_subject} arquivos, o limite.",
                 )
-            if size + len(clean) > MAX_SUBJECT_BYTES:
-                raise HTTPException(409, "A matéria não tem mais espaço (100 MB).")
+            if size + len(clean) > configured.max_subject_bytes:
+                raise HTTPException(
+                    409, "A matéria não tem mais espaço dentro do limite atual."
+                )
             professors: list[str] = []
             if meta.classroom_number:
                 classroom = await session.scalar(
@@ -282,8 +298,8 @@ class MaterialService:
         await self._storage.save(storage_key, clean)
         try:
             return await self._db.write(write)
-        except BaseException:
-            # Sem a linha no banco, o arquivo não pode ficar órfão.
+        except HTTPException, IntegrityError:
+            # Falhas confirmadamente revertidas permitem limpar; queda de conexão tem resultado incerto.
             await self._storage.delete(storage_key)
             raise
 
@@ -327,9 +343,20 @@ async def delete_material(session: AsyncSession, material_id: uuid.UUID) -> bool
     material = await session.get(Material, material_id)
     if material is None:
         return False
-    await material_storage().delete(material.storage_key)
+    after_commit(session, partial(material_storage().delete, material.storage_key))
     await session.execute(delete(Material).where(Material.id == material_id))
     return True
 
 
 MaterialServiceDep = Annotated[MaterialService, Depends()]
+
+
+async def effective_limits(session: AsyncSession) -> Limits:
+    configured = await read_limits(session)
+    return Limits(
+        max_file_bytes=min(MAX_FILE_BYTES, configured.materials_file_mb * 1024**2),
+        max_per_subject=min(MAX_PER_SUBJECT, configured.materials_per_subject),
+        max_subject_bytes=min(
+            MAX_SUBJECT_BYTES, configured.materials_subject_mb * 1024**2
+        ),
+    )

@@ -19,6 +19,15 @@
 /* Celular forçado numa tela larga: a largura de um telefone. */
 @custom-variant forced-mobile (&:where(:root[data-layout='mobile'] *));
 
+.viewport-dialog[data-slot='dialog-content'] {
+    top: calc(var(--app-viewport-top, 0px) + var(--app-viewport-height, 100dvh) / 2);
+    max-height: calc(
+        var(--app-viewport-height, 100dvh) - 2rem - env(safe-area-inset-top) -
+            env(safe-area-inset-bottom)
+    );
+    min-width: 0;
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'DM Sans Variable', sans-serif;

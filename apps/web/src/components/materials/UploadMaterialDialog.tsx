@@ -39,7 +39,7 @@ interface UploadMaterialDialogProps {
 export function UploadMaterialDialog({ open, onOpenChange, ...props }: UploadMaterialDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+            <DialogContent className="viewport-dialog overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Enviar material</DialogTitle>
                     <DialogDescription>
@@ -93,6 +93,15 @@ export function UploadForm({
             }}
         >
             <MaterialsPrivacyNote />
+            <p className="text-xs text-muted-foreground">
+                A cota é por navegador e matéria. Trocar de navegador ou apagar as chaves pode
+                reiniciá-la; o servidor não identifica o aluno para unificar essas cotas.
+            </p>
+            <p className="text-xs text-muted-foreground">
+                Até {data.limits.max_daily_upload_attempts} autorizações de envio por matéria neste
+                navegador, por dia. Tentativas canceladas ou recusadas também contam. Excluir um
+                arquivo não devolve a autorização.
+            </p>
             <div className="flex flex-col gap-2">
                 <Label htmlFor="material-file">
                     Arquivo (PDF ou imagem, até {formatBytes(data.limits.max_file_bytes)})

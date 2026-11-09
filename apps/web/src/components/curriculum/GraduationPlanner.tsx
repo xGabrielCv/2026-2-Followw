@@ -1,44 +1,95 @@
 import { GraduationCap } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useSyncExternalStore } from 'react';
 
 import type { AcademicState, CurriculumModel, FlowSubject } from '#/lib/curriculum/types';
+import type { CourseCurriculum } from '#/queries/curriculum';
+import type { UserProfile } from '#/queries/me';
 
 import { SectionHeader } from '#/components/SectionHeader';
 import { Badge } from '#/components/ui/badge';
-import { planGraduation, SCENARIOS } from '#/lib/curriculum/graduation';
+import { planningModel, planGraduation, SCENARIOS } from '#/lib/curriculum/graduation';
 import { projectedSemester } from '#/lib/curriculum/statistics';
+import { accountStore, flushLocalStorage } from '#/lib/local-storage';
+import { titleCase } from '#/lib/profile';
 
 const number = new Intl.NumberFormat('pt-BR');
 
 /**
- * Projeção dos semestres que faltam no fluxo obrigatório. É uma estimativa por regras, não uma
- * confirmação de integralização: não considera optativas, complementares, vagas nem a oferta.
+ * Cenários locais por regras, incluindo disciplinas extras escolhidas; não confirma integralização.
  */
 export function GraduationPlanner({
-    model,
+    model: requiredModel,
     state,
-    semester
+    semester,
+    registration,
+    curriculum,
+    workload,
+    maxWorkload,
+    completedCodes
 }: {
     model: CurriculumModel;
     state: (subject: FlowSubject) => AcademicState;
     // semestre regular em andamento
     semester?: string;
+    registration: string;
+    curriculum: CourseCurriculum;
+    workload: UserProfile['workload'];
+    maxWorkload: number | null;
+    completedCodes: string[];
 }) {
     const id = useId();
-    const [maxSubjects, setMaxSubjects] = useState(5);
-    const [failures, setFailures] = useState<string[]>([]);
+    const store = useMemo(
+        () =>
+            accountStore(`graduation:${registration}:${curriculum.course_id}`, {
+                maxSubjects: 5,
+                maxHours: maxWorkload,
+                failures: [] as string[],
+                extras: [] as string[]
+            }),
+        [registration, curriculum.course_id, maxWorkload]
+    );
+    const preferences = useSyncExternalStore(
+        store.subscribe,
+        store.getSnapshot,
+        store.getServerSnapshot
+    );
+    const { maxSubjects, maxHours, failures, extras } = preferences;
+    const save = (next: Partial<typeof preferences>) => {
+        store.set({ ...store.getSnapshot(), ...next });
+        void flushLocalStorage().catch(() => {});
+    };
+    const setMaxSubjects = (value: number) => save({ maxSubjects: value });
+    const setFailures = (value: string[]) => save({ failures: value });
+    const model = useMemo(
+        () => (extras.length ? planningModel(curriculum, extras) : requiredModel),
+        [curriculum, extras, requiredModel]
+    );
+    const additional = useMemo(
+        () =>
+            [
+                ...new Map(
+                    [
+                        ...curriculum.periods
+                            .filter((block) => block.period === 0)
+                            .flatMap((block) => block.subjects),
+                        ...curriculum.complementary
+                    ].map((subject) => [subject.code, subject])
+                ).values()
+            ].filter((subject) => subject.name && !requiredModel.byCode.has(subject.code)),
+        [curriculum, requiredModel]
+    );
     const plan = useMemo(
-        () => planGraduation(model, state, { maxSubjects, maxHours: null, failures }),
-        [model, state, maxSubjects, failures]
+        () => planGraduation(model, state, { maxSubjects, maxHours, failures, completedCodes }),
+        [model, state, maxSubjects, maxHours, failures, completedCodes]
     );
     const comparison = useMemo(
         () =>
             SCENARIOS.map(({ id: key, label, scenario: base }) => ({
                 key,
                 label,
-                plan: planGraduation(model, state, { ...base, failures })
+                plan: planGraduation(model, state, { ...base, maxHours, failures, completedCodes })
             })),
-        [model, state, failures]
+        [model, state, maxHours, failures, completedCodes]
     );
     // só as matérias que ainda dá para reprovar
     const retakeable = useMemo(
@@ -49,27 +100,78 @@ export function GraduationPlanner({
         [model, state]
     );
 
-    if (plan.remainingSubjects === 0)
-        return (
-            <section className="flex flex-col gap-2">
-                <SectionHeader title="Planejar a formatura" />
-                <p className="text-sm text-muted-foreground">
-                    O fluxo obrigatório está completo no seu histórico.
-                </p>
-            </section>
-        );
-
     const end = (terms: number) =>
         semester && terms > 0 ? projectedSemester(semester, terms) : undefined;
 
     return (
         <section className="flex flex-col gap-3">
             <SectionHeader title="Planejar a formatura" />
+            {plan.remainingSubjects === 0 && (
+                <p className="text-sm text-muted-foreground">
+                    O conjunto de disciplinas selecionadas está completo. Confira também as
+                    pendências do SIGAA abaixo.
+                </p>
+            )}
             <p className="text-sm text-muted-foreground">
-                Estimativa pelo fluxo obrigatório, respeitando pré-requisitos e correquisitos. Não
-                inclui optativas, complementares, vagas nem a oferta de cada semestre: não é uma
-                confirmação de integralização.
+                Estimativa pelas disciplinas selecionadas, respeitando requisitos confirmados e
+                correquisitos. Oferta, vagas e validação de atividades complementares dependem da
+                UnB. Não é uma confirmação de integralização.
             </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {[
+                    ['Obrigatórias pendentes no SIGAA', workload?.pending_mandatory],
+                    ['Optativas pendentes no SIGAA', workload?.pending_optional],
+                    ['Complementares pendentes no SIGAA', workload?.pending_complementary]
+                ].map(([label, hours]) => (
+                    <div key={label} className="rounded-xl bg-card p-3 ring-1 ring-foreground/8">
+                        <p className="text-xs text-muted-foreground">{label}</p>
+                        <p className="text-lg font-bold">
+                            {typeof hours === 'number'
+                                ? `${number.format(hours)}h`
+                                : 'Não informado'}
+                        </p>
+                    </div>
+                ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Pendências acima vêm do perfil do SIGAA e não mudam com esta simulação. Marcações
+                manuais precisam de confirmação oficial.
+            </p>
+            {additional.length > 0 && (
+                <details className="rounded-xl bg-card p-3 ring-1 ring-foreground/8">
+                    <summary className="cursor-pointer text-sm font-semibold">
+                        Incluir optativas e componentes complementares
+                    </summary>
+                    <p className="my-2 text-xs text-muted-foreground">
+                        Escolha disciplinas da matriz. Atividades sem disciplina ou carga informada
+                        não têm prazo calculável aqui.
+                    </p>
+                    <div className="flex max-h-64 flex-col gap-2 overflow-y-auto">
+                        {additional.map((subject) => (
+                            <label key={subject.code} className="flex items-start gap-2 text-sm">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1 accent-primary"
+                                    checked={extras.includes(subject.code)}
+                                    onChange={() =>
+                                        save({
+                                            extras: extras.includes(subject.code)
+                                                ? extras.filter((code) => code !== subject.code)
+                                                : [...extras, subject.code]
+                                        })
+                                    }
+                                />
+                                <span>
+                                    {titleCase(subject.name ?? subject.code)} · {subject.code} ·{' '}
+                                    {subject.hours == null
+                                        ? 'carga indisponível'
+                                        : `${subject.hours}h`}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </details>
+            )}
             <div className="grid grid-cols-3 gap-2">
                 {comparison.map(({ key, label, plan: option }) => (
                     <div
@@ -91,7 +193,34 @@ export function GraduationPlanner({
             </div>
             <p className="text-xs text-muted-foreground">
                 Faltam {plan.remainingSubjects} matérias e {number.format(plan.remainingHours)}h do
-                fluxo obrigatório.
+                conjunto de disciplinas selecionadas.
+            </p>
+            <div className="flex items-center justify-between gap-2 text-sm">
+                <label htmlFor={`${id}-hours`} className="font-medium">
+                    Horas por semestre
+                </label>
+                <input
+                    id={`${id}-hours`}
+                    type="number"
+                    min="30"
+                    max={maxWorkload ?? 1000}
+                    step="30"
+                    value={maxHours ?? ''}
+                    onChange={(event) => {
+                        const value = Number(event.target.value);
+                        if (!event.target.value) save({ maxHours: null });
+                        else if (
+                            Number.isFinite(value) &&
+                            value >= 30 &&
+                            value <= (maxWorkload ?? 1000)
+                        )
+                            save({ maxHours: value });
+                    }}
+                    className="h-8 w-24 rounded-lg border border-input bg-background px-2"
+                />
+            </div>
+            <p className="text-xs text-muted-foreground">
+                Preferências desta simulação ficam cifradas neste navegador, separadas por conta.
             </p>
             <div className="flex items-center justify-between gap-2 text-sm">
                 <label htmlFor={`${id}-load`} className="font-medium">

@@ -4,6 +4,9 @@ import { accountsView, securityView } from './dashboard-accounts.js';
 import { supportView } from './dashboard-support.js';
 import { statisticsPanel } from './dashboard-statistics.js';
 import { operationsView } from './dashboard-operations.js';
+import { auditView } from './dashboard-audit.js';
+import { limitsView } from './dashboard-limits.js';
+import { moderationView } from './dashboard-moderation.js';
 
 const LABELS = { review:"Avaliações", group:"Grupos", material:"Materiais", post:"Publicações", reply:"Respostas", tutorial:"Guias", report:"Denúncias" };
 const REASONS = { ofensivo:"Ofensivo", dados_pessoais:"Expõe alguém", spam:"Spam", falso:"Falso", direitos_autorais:"Direitos autorais", outro:"Outro" };
@@ -50,7 +53,7 @@ async function render() {
   const main = $("#main");
   main.replaceChildren(el("p", { class:"muted" }, "Carregando…"));
   try {
-    const views = { overview, usage, moderation, data, breakdown, system, accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render) };
+    const views = { overview, usage, moderation: () => moderationView(render, editTutorial), data, breakdown, system, audit: () => auditView(render), limits: () => limitsView(render), accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render) };
     const children = await views[state.view]();
     if (version !== rendering) return;
     // `null` vira o texto "null" no DOM: só entram nós de verdade
@@ -178,43 +181,6 @@ async function usage() {
   ];
 }
 
-async function moderation() {
-  const [reports, tutorials] = await Promise.all([call(`/reports?status=${state.reports}`), call(`/tutorials?status=${state.tutorials}`)]);
-  const reportTabs = el("div", { class:"tabs" }, ["pending", "accepted", "rejected"].map((s) =>
-    el("button", { "aria-pressed":String(state.reports === s), onclick:() => { state.reports = s; render(); } }, STATUS[s])));
-  const tutorialTabs = el("div", { class:"tabs" }, ["pending", "approved", "rejected"].map((s) =>
-    el("button", { "aria-pressed":String(state.tutorials === s), onclick:() => { state.tutorials = s; render(); } }, STATUS[s])));
-  const act = async (path, action, confirmText) => {
-    if (confirmText && !await confirmation('Confirmar moderação?', confirmText)) return;
-    try { await call(path, { method:"POST", body:JSON.stringify({ action }) }); render(); } catch (error) { notice(error.message, true); }
-  };
-  return [
-    header("Moderação"),
-    el("div", { class:"panel" }, el("div", { class:"toolbar" }, el("h3", { class:"grow" }, "Denúncias e pedidos de exclusão"), reportTabs),
-      reports.length ? el("div", { class:"list" }, reports.map((r) => el("div", {},
-        el("div", { class:"item" },
-          el("span", { class:"badge" }, LABELS[r.target_type] || r.target_type), el("span", { class:"badge" }, REASONS[r.reason] || r.reason),
-          el("span", { class:"muted" }, when(r.created_at)),
-          el("p", { class:"pre" }, r.preview ?? "(conteúdo já apagado)"),
-          r.message ? el("p", { class:"muted pre" }, `Mensagem: ${r.message}`) : null),
-        r.status === "pending" ? el("div", { class:"actions" },
-          el("button", { class:"danger", onclick:() => act(`/reports/${r.id}`, "accept", "Apagar o conteúdo denunciado? Não dá para desfazer.") }, "Apagar conteúdo"),
-          el("button", { onclick:() => act(`/reports/${r.id}`, "reject") }, "Manter")) : null)))
-      : el("p", { class:"muted" }, "Nada aqui.")),
-    el("div", { class:"panel" }, el("div", { class:"toolbar" }, el("h3", { class:"grow" }, "Guias da UnB"), tutorialTabs),
-      tutorials.length ? el("div", { class:"list" }, tutorials.map((t) => el("div", {},
-        el("div", { class:"item" },
-          el("strong", {}, t.title), " ", el("span", { class:"badge" }, t.category), el("span", { class:"muted" }, when(t.created_at)),
-          el("p", { class:"muted" }, t.summary),
-          el("details", {}, el("summary", {}, "Ler o guia"), el("p", { class:"pre" }, t.body))),
-        el("div", { class:"actions" },
-          el("button", { onclick:() => editTutorial(t) }, "Editar"),
-          t.status !== "approved" ? el("button", { class:"primary", onclick:() => act(`/tutorials/${t.id}`, "accept") }, "Aprovar") : null,
-          t.status !== "rejected" ? el("button", { class:"danger", onclick:() => act(`/tutorials/${t.id}`, "reject") }, t.status === "approved" ? "Despublicar" : "Recusar") : null))))
-      : el("p", { class:"muted" }, "Nada aqui.")),
-  ];
-}
-
 function editTutorial(t) {
   const title = el("input", { value:t.title, maxlength:"120" });
   const summary = el("input", { value:t.summary, maxlength:"240" });
@@ -300,7 +266,7 @@ async function breakdown() {
 }
 
 async function system() {
-  const [o, log, health] = await Promise.all([call("/overview"), call("/log"), call("/health")]);
+  const [o, health] = await Promise.all([call("/overview"), call("/health")]);
   const toggle = (key, enabled) => el("input", { type:"checkbox", checked:enabled, "aria-label":key, onchange:async (e) => {
     try { await call(`/flags/${key}`, { method:"PUT", body:JSON.stringify({ enabled:e.target.checked }) }); } catch (error) { notice(error.message, true); e.target.checked = !e.target.checked; }
   } });
@@ -366,16 +332,12 @@ async function system() {
           catch (error) { notice(error.message, true); e.target.disabled = false; }
         } }, "Rodar limpeza agora"))),
     statisticsPanel(render),
-    el("div", { class:"panel" }, el("h3", {}, "Registro do administrador"),
-      log.length ? el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Quando"), el("th", {}, "Conta / cargo"), el("th", {}, "Ação"), el("th", {}, "Alvo"), el("th", {}, "Detalhe"))),
-        el("tbody", {}, log.map((l) => el("tr", {}, el("td", {}, when(l.created_at)), el("td", {}, [l.actor || "Legado", l.actor_role].filter(Boolean).join(" · ")), el("td", {}, l.action), el("td", {}, [l.target_type, l.target_id].filter(Boolean).join(" · ")), el("td", { class:"clip" }, l.detail || "")))))
-      : el("p", { class:"muted" }, "Nada registrado ainda.")),
   ];
 }
 
 initializeAuth(() => {
     const requested = location.hash.slice(1);
-    const permissions = { overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', accounts: 'accounts', support: 'support', operations: 'operations' };
+    const permissions = { overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', audit: 'audit', limits: 'configure', accounts: 'accounts', support: 'support', operations: 'operations' };
     state.view = requested === 'security' || (requested in permissions && hasPermission(permissions[requested])) ? requested : hasPermission('operations') ? 'overview' : 'moderation';
     void render();
 });

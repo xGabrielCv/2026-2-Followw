@@ -13,9 +13,20 @@ from unb_browser import DailyMenu
 
 from api.main import app
 from api.modules.public_restaurant import service
+from loadtest.egress import async_canary, canary, install
+from loadtest.safety import validate_environment
+from loadtest.sigaa import SimulatedSigaa, install_simulated_client
+
+validate_environment(os.environ)
 
 _LOG = Path(os.environ["LOAD_ORIGIN_LOG"])
 _LATENCY = float(os.environ.get("LOAD_ORIGIN_LATENCY", "0.4"))
+
+# O mock intercepta o HTTP institucional; qualquer saída que escape dele é recusada no socket.
+install()
+if not canary():
+    raise RuntimeError("Bloqueio de saída não comprovado.")
+_SIMULATED = SimulatedSigaa(latency=_LATENCY, counter=Path(str(_LOG) + ".private"))
 
 
 class _Restaurant:
@@ -76,6 +87,8 @@ def _guarded_sync(self, request):
 httpx.AsyncHTTPTransport.handle_async_request = _guarded_async
 httpx.HTTPTransport.handle_request = _guarded_sync
 
+install_simulated_client(_SIMULATED)
+
 # SIGAA público simulado: a lista de unidades da busca de turmas (200+ itens, com latência de rede).
 from sigaa_client import Unit
 from sigaa_client.public.classrooms import PublicClassrooms
@@ -98,7 +111,25 @@ async def origin_calls() -> dict[str, int]:
     return {
         "ru": _LOG.stat().st_size if _LOG.exists() else 0,
         "sigaa_units": _SIGAA_LOG.stat().st_size if _SIGAA_LOG.exists() else 0,
+        **{
+            f"private_{key}": Path(str(_LOG) + ".private." + key).stat().st_size
+            if Path(str(_LOG) + ".private." + key).exists()
+            else 0
+            for key in (
+                "requests",
+                "logins",
+                "profile",
+                "grades",
+                "authenticated",
+                "logouts",
+            )
+        },
     }
+
+
+@app.get("/__loadtest/ready", include_in_schema=False)
+async def ready() -> dict[str, int]:
+    return {"worker": os.getpid()}
 
 
 @app.get("/__loadtest/egress_check", include_in_schema=False)
@@ -106,9 +137,14 @@ async def egress_check() -> dict[str, bool]:
     """Tenta sair para um destino externo: precisa falhar ANTES de qualquer conexão."""
     try:
         async with httpx.AsyncClient(timeout=3) as client:
-            await client.get("https://sigaa.unb.br/")
+            await client.get("https://egress-canary.invalid/")
     except EgressBlocked:
-        return {"blocked": True}
+        asynchronous = await async_canary()
+        return {
+            "blocked": canary() and asynchronous,
+            "socket_blocked": True,
+            "async_blocked": asynchronous,
+        }
     except Exception:  # noqa: BLE001 — qualquer outra falha não prova o bloqueio
         return {"blocked": False}
     return {"blocked": False}

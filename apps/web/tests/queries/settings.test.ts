@@ -2,6 +2,8 @@ import type { Middleware } from 'openapi-fetch';
 
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
+import { keyFor, newKey, rememberKey } from '#/lib/author';
+import { localStorageRepository, selectLocalAccount } from '#/lib/local-storage';
 import { apiClient } from '#/queries/client';
 import { entriesStore } from '#/queries/events';
 import { settingsStore, syncStatisticsSharing } from '#/queries/settings';
@@ -30,6 +32,8 @@ describe('configurações e lançamentos ficam no navegador', () => {
         settingsStore('251000000').clear();
         settingsStore('252000000').clear();
         entriesStore('251000000').clear();
+        localStorageRepository.clear();
+        selectLocalAccount();
     });
 
     test('cada matrícula tem as suas, guardadas no localStorage e não na API', () => {
@@ -67,5 +71,35 @@ describe('configurações e lançamentos ficam no navegador', () => {
         expect(requests[0].method).toBe('PUT');
         // nada além do pedido e das chaves de liberações anteriores (aqui, nenhuma)
         expect(await requests[0].json()).toEqual({ shared: true, keys: {} });
+    });
+
+    test('compartilhamento atrasado não transfere a chave para outra conta', async () => {
+        const key = newKey();
+        selectLocalAccount('251000000');
+        middleware.onRequest = () => {
+            selectLocalAccount('252000000');
+            return Response.json({ shared: true, classrooms: 1, keys: { turma: key } });
+        };
+        await syncStatisticsSharing(true);
+        expect(keyFor('share', 'turma')).toBeUndefined();
+        selectLocalAccount('251000000');
+        expect(keyFor('share', 'turma')).toBe(key);
+    });
+
+    test('recolhimento atrasado não apaga a chave de outra conta', async () => {
+        const a = newKey();
+        const b = newKey();
+        selectLocalAccount('252000000');
+        rememberKey('share', 'turma', b);
+        selectLocalAccount('251000000');
+        rememberKey('share', 'turma', a);
+        middleware.onRequest = () => {
+            selectLocalAccount('252000000');
+            return Response.json({ shared: false, classrooms: 0 });
+        };
+        await syncStatisticsSharing(false);
+        expect(keyFor('share', 'turma')).toBe(b);
+        selectLocalAccount('251000000');
+        expect(keyFor('share', 'turma')).toBeUndefined();
     });
 });

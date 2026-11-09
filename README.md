@@ -35,6 +35,10 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 > [!IMPORTANT]
 > O Followw é **independente** e não tem vínculo oficial com a UnB, o STI ou o SIGAA.
 
+Na instalação local, o servidor web consulta a API em `127.0.0.1:8000` (ou na porta definida por
+`API_PORT`). Se os serviços rodarem em máquinas ou contêineres diferentes, configure `API_INTERNAL_URL`
+com a origem confiável da API, sem credenciais nem caminho. O exemplo Docker já usa `http://api:8000`.
+
 ---
 
 ## ✨ Recursos

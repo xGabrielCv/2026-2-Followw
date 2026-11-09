@@ -11,6 +11,11 @@ import respx
 import uvicorn
 from psycopg import sql
 
+from loadtest.egress import async_canary, canary, install
+from loadtest.fixtures import seed
+from loadtest.restaurant import SimulatedBrowser
+from loadtest.sigaa import SimulatedSigaa
+
 
 def main():
     database = os.environ.get("FOLLOWW_E2E_DATABASE", "")
@@ -42,8 +47,9 @@ def main():
         f"postgresql+asyncpg://postgres@127.0.0.1:5432/{database}"
     )
     os.environ["APP_DB_PASSWORD"] = app_password
+    os.environ["APP_DB_ROLE"] = database
     os.environ["DATABASE_URL"] = (
-        f"postgresql+asyncpg://followw_app:{app_password}@127.0.0.1:5432/{database}"
+        f"postgresql+asyncpg://{database}:{app_password}@127.0.0.1:5432/{database}"
     )
     os.environ["MATERIALS_DIR"] = str(root / ".local" / "e2e" / database / "materials")
     from api.db.main import create_schema
@@ -52,10 +58,21 @@ def main():
     async def prepare():
         async with engine.begin() as connection:
             await connection.run_sync(create_schema)
+            await connection.run_sync(seed)
         await engine.dispose()
 
     asyncio.run(prepare())
+    from api.modules.public_restaurant import service as restaurant
+
+    restaurant.UnbBrowser = SimulatedBrowser
+    install()
+    if not canary() or not asyncio.run(async_canary()):
+        raise SystemExit("Guarda de saída não comprovada; E2E interrompido.")
     with respx.mock(assert_all_called=False) as router:
+        simulated = SimulatedSigaa(latency=0.005)
+        router.route(host__in=("sigaa.unb.br", "autenticacao.unb.br")).mock(
+            side_effect=simulated
+        )
         router.route().mock(
             return_value=httpx.Response(
                 503, text="Origem institucional substituída no E2E"

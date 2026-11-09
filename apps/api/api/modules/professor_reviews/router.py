@@ -5,6 +5,7 @@ from fastapi import APIRouter, Header
 
 from api.errors import SIGAA_ERRORS
 from api.flags import require_enabled
+from api.modules.community.permissions import CommunityWriteDep
 from api.modules.professor_reviews.service import (
     CreatedReview,
     NewReview,
@@ -12,7 +13,6 @@ from api.modules.professor_reviews.service import (
     ReviewInput,
     ReviewServiceDep,
 )
-from api.sigaa import SigaaConnectionDep
 
 router = APIRouter()
 
@@ -38,7 +38,7 @@ _NOT_FOUND = {404: {"description": "Avaliação não encontrada ou segredo errad
     dependencies=[require_enabled("reviews")],
 )
 async def create_review(
-    _: SigaaConnectionDep, service: ReviewServiceDep, body: NewReview
+    _: CommunityWriteDep, service: ReviewServiceDep, body: NewReview
 ) -> CreatedReview:
     return await service.create(body)
 
@@ -51,7 +51,7 @@ async def create_review(
     dependencies=[require_enabled("reviews")],
 )
 async def update_review(
-    _: SigaaConnectionDep,
+    _: CommunityWriteDep,
     service: ReviewServiceDep,
     review_id: UUID,
     token: Token,
@@ -67,6 +67,6 @@ async def update_review(
     responses=_NOT_FOUND,
 )
 async def delete_review(
-    _: SigaaConnectionDep, service: ReviewServiceDep, review_id: UUID, token: Token
+    _: CommunityWriteDep, service: ReviewServiceDep, review_id: UUID, token: Token
 ) -> None:
     await service.delete(review_id, token)

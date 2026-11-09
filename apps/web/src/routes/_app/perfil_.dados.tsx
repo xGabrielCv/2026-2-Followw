@@ -162,26 +162,17 @@ function DataUsagePage() {
                         nome ou conta do SIGAA.
                     </p>
                     <p>
-                        Cada publicação usa uma chave aleatória para que você possa gerenciá-la.
-                        Essa chave fica guardada neste navegador, e o servidor não guarda sua
-                        identidade acadêmica junto ao conteúdo publicado. Se você limpar os dados do
-                        navegador, perde a chave e não consegue mais editar ou apagar essa
-                        publicação.
+                        Cada publicação usa uma chave aleatória, criada sem utilizar sua matrícula,
+                        conta do SIGAA ou outras informações pessoais. Essa chave fica protegida
+                        neste navegador. O servidor guarda apenas uma verificação da chave, sem
+                        associá-la à sua identidade acadêmica.
                     </p>
                     <p>
-                        Evite escrever informações pessoais que possam revelar quem você é: o que
-                        você escreve pode identificar você (um detalhe da sua turma, seu nome num
-                        arquivo). Os detalhes técnicos e os limites estão na{' '}
-                        <Link to="/privacidade" className="font-semibold text-primary">
-                            Política de Privacidade
-                        </Link>
-                        .
+                        O Followw não guarda sua matrícula, seus dados acadêmicos pessoais ou sua
+                        identidade junto às avaliações, comentários e publicações. Os
+                        administradores não têm uma função que revele quem publicou esses conteúdos.
                     </p>
-                    <p>
-                        O que você escreve pode identificar você (um detalhe da sua turma, seu nome
-                        num arquivo). Marcar o curso num post de curso pequeno também. Releia antes
-                        de publicar.
-                    </p>
+                    <p>O que você escreve pode identificar você.</p>
                 </Card>
             </section>
 

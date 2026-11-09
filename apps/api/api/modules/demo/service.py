@@ -10,11 +10,12 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.account import Account
 from api.core.config import settings
+from api.db.context import set_context
 from api.db.main import DatabaseDep
 from api.db.models import (
     Classroom,
@@ -22,6 +23,7 @@ from api.db.models import (
     ClassroomProfessor,
     DemoRecord,
     ForumPost,
+    ForumReply,
     Professor,
     ProfessorReview,
     Report,
@@ -59,9 +61,10 @@ class DemoStatus(BaseModel):
     tutorials: int = 0
 
 
-def require_demo() -> None:
-    if not settings.demo_data:
+async def require_demo() -> None:
+    if not settings.demo_data or settings.environment == "production":
         raise HTTPException(404, "Dados de demonstração desligados.")
+    set_context(scope="demo")
 
 
 def _statistics(rng: random.Random) -> list[dict[str, object]]:
@@ -100,14 +103,14 @@ class DemoService:
         return await self._db.read(load)
 
     async def load(self, account: Account) -> DemoStatus:
+        current_status = await self.status()
+        if current_status.loaded:
+            return current_status
         # As turmas do aluno vêm do SIGAA; o banco não sabe quem cursa o quê.
         turmas = await ClassroomService(account, self._db).list_turmas("all")
         everything = [turma.row.id for turma in turmas]
         current = [turma.row.id for turma in turmas if turma.current]
-        await self.clear()
-        await self._db.write(
-            lambda session: _load(session, account.registration, everything, current)
-        )
+        await self._db.write(lambda session: _load(session, everything, current))
         return await self.status()
 
     async def clear(self) -> None:
@@ -116,11 +119,13 @@ class DemoService:
 
 async def _load(
     session: AsyncSession,
-    registration: str,
     everything: list[UUID],
     current_ids: list[UUID],
 ) -> None:
-    rng = random.Random(registration)
+    await session.execute(text("SELECT pg_advisory_xact_lock(865942120)"))
+    if await session.scalar(select(func.count()).select_from(DemoRecord)):
+        return
+    rng = random.Random()
     records: list[DemoRecord] = []
 
     def track(kind: str, record_id: UUID) -> None:
@@ -208,7 +213,27 @@ async def _load(
 
 
 async def _clear(session: AsyncSession) -> None:
+    await session.execute(text("SELECT pg_advisory_xact_lock(865942120)"))
     rows = (await session.execute(select(DemoRecord.kind, DemoRecord.record_id))).all()
+    posts = [record_id for kind, record_id in rows if kind == "post"]
+    if posts:
+        await session.execute(
+            select(ForumPost.id).where(ForumPost.id.in_(posts)).with_for_update()
+        )
+        replies = [record_id for kind, record_id in rows if kind == "reply"]
+        real_reply = await session.scalar(
+            select(ForumReply.id)
+            .where(
+                ForumReply.post_id.in_(posts),
+                ForumReply.id.not_in(replies),
+            )
+            .limit(1)
+        )
+        if real_reply:
+            raise HTTPException(
+                409,
+                "Uma publicação de demonstração recebeu respostas reais. Revise essas respostas antes de limpar a demonstração.",
+            )
     tables = {
         "group": ClassroomGroup,
         "review": ProfessorReview,

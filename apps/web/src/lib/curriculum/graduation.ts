@@ -1,11 +1,34 @@
 import type { AcademicState, CurriculumModel, FlowSubject } from '#/lib/curriculum/types';
+import type { CourseCurriculum } from '#/queries/curriculum';
+
+import { normalizeCurriculum } from '#/lib/curriculum/model';
+
+export function planningModel(
+    curriculum: CourseCurriculum,
+    extras: readonly string[]
+): CurriculumModel {
+    const selected = new Set(extras);
+    const additional = [
+        ...curriculum.periods
+            .filter((block) => block.period === 0)
+            .flatMap((block) => block.subjects),
+        ...curriculum.complementary
+    ];
+    return normalizeCurriculum({
+        ...curriculum,
+        periods: [
+            ...curriculum.periods.filter((block) => block.period > 0),
+            { period: 1, subjects: additional.filter((subject) => selected.has(subject.code)) }
+        ]
+    });
+}
 
 /**
  * Projeção dos semestres que faltam, só com o fluxo obrigatório do curso e o histórico do aluno.
  * É uma estimativa por regras: respeita pré-requisitos (qualquer grupo alternativo inteiro
  * cumprido) e correquisitos (no mesmo semestre ou antes), a carga escolhida e as reprovações que o
  * aluno quiser simular. NÃO confirma integralização, optativas, complementares, vagas, oferta por
- * semestre nem pré-requisitos de matérias fora do fluxo obrigatório (tratados como cumpridos).
+ * semestre; requisitos externos só valem quando confirmados no histórico ou manualmente.
  */
 
 export interface Scenario {
@@ -17,6 +40,7 @@ export interface Scenario {
     failures: string[];
     /** as matérias "em curso" terminam aprovadas? (padrão: sim) */
     enrolledPass?: boolean;
+    completedCodes?: readonly string[];
 }
 
 export interface Term {
@@ -43,15 +67,44 @@ export const MAX_TERMS = 20;
 
 type Groups = FlowSubject['prerequisites'];
 
-const inModel = (model: CurriculumModel, code: string) => model.byCode.has(code);
-
-/** Algum grupo inteiro cumprido; exigências fora do fluxo obrigatório não bloqueiam. */
-function groupsMet(model: CurriculumModel, groups: Groups, done: ReadonlySet<string>): boolean {
+/** Um grupo alternativo completo precisa estar confirmado. */
+function groupsMet(groups: Groups, done: ReadonlySet<string>): boolean {
     if (!groups?.length) return true;
-    return groups.some(
-        (group) =>
-            group.length > 0 && group.every(({ code }) => !inModel(model, code) || done.has(code))
-    );
+    return groups.some((group) => group.length > 0 && group.every(({ code }) => done.has(code)));
+}
+
+function companions(
+    rootCode: string,
+    candidates: ReadonlyMap<string, FlowSubject>,
+    done: ReadonlySet<string>,
+    chosen: ReadonlySet<string>,
+    fits: (items: FlowSubject[]) => boolean
+): FlowSubject[] | null {
+    let budget = 1000;
+    function expand(
+        code: string,
+        bundle: Map<string, FlowSubject>
+    ): Map<string, FlowSubject> | null {
+        if (done.has(code) || chosen.has(code) || bundle.has(code)) return bundle;
+        if (--budget < 0) return null;
+        const subject = candidates.get(code);
+        if (!subject) return null;
+        const next = new Map(bundle).set(code, subject);
+        if (!fits([...next.values()])) return null;
+        if (!subject.corequisites?.length) return next;
+        for (const group of subject.corequisites) {
+            if (!group.length) continue;
+            let branch: Map<string, FlowSubject> | null = next;
+            for (const requirement of group) {
+                branch = expand(requirement.code, branch);
+                if (!branch) break;
+            }
+            if (branch) return branch;
+        }
+        return null;
+    }
+    const result = expand(rootCode, new Map());
+    return result ? [...result.values()] : null;
 }
 
 function covers(subject: FlowSubject, done: ReadonlySet<string>) {
@@ -89,7 +142,7 @@ export function planGraduation(
     scenario: Scenario
 ): GraduationPlan {
     const chain = dependencyChains(model);
-    const done = new Set<string>();
+    const done = new Set<string>(scenario.completedCodes);
     const enrolled: FlowSubject[] = [];
     for (const subject of model.subjects) {
         const current = state(subject);
@@ -98,7 +151,16 @@ export function planGraduation(
     }
     if (scenario.enrolledPass !== false) for (const subject of enrolled) done.add(subject.code);
     // matéria coberta por um grupo de equivalências concluído vale como concluída (e libera as seguintes)
-    for (const subject of model.subjects) if (covers(subject, done)) done.add(subject.code);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        for (const subject of model.subjects) {
+            if (!done.has(subject.code) && covers(subject, done)) {
+                done.add(subject.code);
+                changed = true;
+            }
+        }
+    }
     const open = model.subjects.filter((subject) => !done.has(subject.code));
     const remainingHours = open.reduce((total, subject) => total + (subject.hours ?? 0), 0);
 
@@ -113,50 +175,30 @@ export function planGraduation(
 
     while (pending.size > 0 && terms.length < MAX_TERMS) {
         const candidates = [...pending.values()]
-            .filter((subject) => groupsMet(model, subject.prerequisites, done))
+            .filter((subject) => groupsMet(subject.prerequisites, done))
             .toSorted(priority);
         const chosen: FlowSubject[] = [];
         let hours = 0;
-        const fits = (subject: FlowSubject) =>
-            chosen.length < scenario.maxSubjects &&
-            (scenario.maxHours == null || hours + (subject.hours ?? 0) <= scenario.maxHours);
+        const available = new Map(candidates.map((subject) => [subject.code, subject]));
+        const fits = (items: FlowSubject[]) =>
+            chosen.length + items.length <= scenario.maxSubjects &&
+            (scenario.maxHours == null ||
+                hours + items.reduce((total, subject) => total + (subject.hours ?? 0), 0) <=
+                    scenario.maxHours);
         const take = (subject: FlowSubject) => {
             chosen.push(subject);
             hours += subject.hours ?? 0;
         };
         for (const subject of candidates) {
-            if (chosen.includes(subject) || !fits(subject)) continue;
-            // correquisito: precisa estar cumprido ou entrar junto neste semestre
-            const needed = (subject.corequisites ?? [])
-                .flatMap((group) => (group.length ? [group.map(({ code }) => code)] : []))
-                .filter((codes) => codes.every((code) => inModel(model, code)));
-            const together = needed.length
-                ? needed.find((codes) => codes.every((code) => done.has(code)))
-                    ? []
-                    : (needed
-                          .map((codes) =>
-                              codes
-                                  .filter(
-                                      (code) =>
-                                          !done.has(code) && !chosen.some((c) => c.code === code)
-                                  )
-                                  .map((code) => pending.get(code))
-                          )
-                          .find((list) =>
-                              list.every((item) => item && candidates.includes(item))
-                          ) ?? null)
-                : [];
-            if (together === null) continue;
-            const extra = together.filter((item): item is FlowSubject => item !== undefined);
-            const extraHours = extra.reduce((total, item) => total + (item.hours ?? 0), 0);
-            if (
-                chosen.length + 1 + extra.length > scenario.maxSubjects ||
-                (scenario.maxHours != null &&
-                    hours + (subject.hours ?? 0) + extraHours > scenario.maxHours)
-            )
-                continue;
-            take(subject);
-            for (const item of extra) take(item);
+            if (chosen.includes(subject)) continue;
+            const bundle = companions(
+                subject.code,
+                available,
+                done,
+                new Set(chosen.map((item) => item.code)),
+                fits
+            );
+            if (bundle) for (const item of bundle) take(item);
         }
         if (chosen.length === 0) break;
         const failed = chosen.filter(
@@ -174,9 +216,9 @@ export function planGraduation(
     const blocked = [...pending.values()].map((subject) => ({
         code: subject.code,
         name: subject.name,
-        reason: groupsMet(model, subject.prerequisites, done)
+        reason: groupsMet(subject.prerequisites, done)
             ? 'não coube nos semestres simulados'
-            : 'os pré-requisitos não puderam ser cumpridos no fluxo obrigatório'
+            : 'os pré-requisitos não foram confirmados nas disciplinas selecionadas'
     }));
     const bottlenecks = open
         .map((subject) => ({

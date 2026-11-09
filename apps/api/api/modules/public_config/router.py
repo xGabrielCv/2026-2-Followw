@@ -1,10 +1,13 @@
 import hashlib
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Header, HTTPException, Request, Response
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.cache import NoStore
+from api.cookies import ACCESS_COOKIE_NAME, PROFILE_COOKIE_NAME, REFRESH_COOKIE_NAME
 from api.db.main import DatabaseDep
 from api.db.models import (
     ClassroomGroup,
@@ -17,9 +20,36 @@ from api.db.models import (
     SystemText,
     Tutorial,
 )
-from api.flags import menu, texts
+from api.flags import flags, menu, texts
+from api.metrics import observe_client_event
+from api.rate_limit import publish_quota
 
 router = APIRouter()
+
+
+class TechnicalMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    event: Literal["login_session_lost"]
+
+
+@router.post(
+    "/metrics",
+    status_code=204,
+    dependencies=[NoStore, publish_quota("client_metrics", 60)],
+)
+async def receive_metric(
+    request: Request,
+    body: TechnicalMetric,
+    db: DatabaseDep,
+    consent: Annotated[Literal["1"] | None, Header(alias="X-Followw-Metrics")] = None,
+) -> None:
+    if any(
+        name in request.cookies
+        for name in (ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, PROFILE_COOKIE_NAME)
+    ):
+        raise HTTPException(400, "Envie métricas sem cookies acadêmicos.")
+    if consent == "1" and (await db.read(flags))["telemetry"]:
+        observe_client_event(body.event)
 
 
 class AppLinks(BaseModel):

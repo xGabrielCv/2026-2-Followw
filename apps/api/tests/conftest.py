@@ -43,6 +43,7 @@ os.environ["DATABASE_URL"] = (
 )
 os.environ["JWT_SECRET_KEY"] = "chave-de-teste-nao-usar-em-producao"
 os.environ["PUBLIC_URL"] = "https://api.followw.test"
+os.environ["APP_DB_ROLE"] = "followw_test_app"
 
 os.environ["QSTASH_URL"] = "https://qstash.upstash.io"
 os.environ["QSTASH_TOKEN"] = "token-de-teste"
@@ -223,7 +224,7 @@ def hoje(monkeypatch):
 
 
 @pytest.fixture(scope="session")
-def postgres():
+def postgres(worker_id, testrun_uid):
     """Banco Postgres em container para a sessão de testes."""
     from sqlalchemy import create_engine
     from testcontainers.community.postgres import PostgresContainer
@@ -231,6 +232,25 @@ def postgres():
     from api.db.main import create_schema
 
     def prepare(url: str):
+        from sqlalchemy import text
+        from sqlalchemy.engine import make_url
+
+        from api.testing_database import require_test_database
+
+        parsed = make_url(url)
+        require_test_database(parsed.database)
+        if worker_id != "master":
+            name = f"{parsed.database}_{testrun_uid[:12]}_{worker_id}"
+            require_test_database(name)
+            control = create_engine(
+                parsed.set(database="postgres"), isolation_level="AUTOCOMMIT"
+            )
+            try:
+                with control.connect() as connection:
+                    connection.execute(text(f'CREATE DATABASE "{name}"'))
+            finally:
+                control.dispose()
+            url = parsed.set(database=name)
         engine = create_engine(url)
         with engine.begin() as conn:
             create_schema(conn)
@@ -243,7 +263,9 @@ def postgres():
         engine.dispose()
         return
 
-    with PostgresContainer("postgres:18-alpine", driver="psycopg") as container:
+    with PostgresContainer(
+        "postgres:18-alpine", driver="psycopg", dbname="followw_test"
+    ) as container:
         engine = prepare(container.get_connection_url())
         yield engine
         engine.dispose()
@@ -262,6 +284,7 @@ def database(postgres):
     sessions = sessionmaker(postgres, expire_on_commit=False)
     with sessions.begin() as session:
         session.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
+        session.execute(text("TRUNCATE rate_windows"))
         session.add(Unit(id=673, code="FCTE", name="CAMPUS UNB GAMA"))
     return sessions
 
@@ -277,7 +300,7 @@ def async_database(database):
     engine = create_async_engine(
         url,
         poolclass=NullPool,
-        connect_args={"server_settings": {"role": "followw_app"}},
+        connect_args={"server_settings": {"role": "followw_test_app"}},
     )
     yield async_sessionmaker(engine, expire_on_commit=False)
     engine.sync_engine.dispose()
@@ -295,6 +318,46 @@ def maintenance_database(database):
     engine.sync_engine.dispose()
 
 
+class CommunityTestClient(TestClient):
+    """Simula o transporte do app: comprovação com cookies, publicação sem eles."""
+
+    def request(self, method, url, **kwargs):
+        from fastapi import HTTPException
+
+        from api.cookies import REFRESH_COOKIE_NAME
+        from api.modules.community.permissions import permission_action
+
+        path = str(url).split("?", 1)[0].removeprefix("/api").rstrip("/")
+        headers = dict(kwargs.get("headers") or {})
+        if (
+            any(cookie.name == REFRESH_COOKIE_NAME for cookie in self.cookies.jar)
+            and "X-Followw-Permit" not in headers
+            and headers.get("X-Test-Raw-Community") != "1"
+        ):
+            try:
+                permission_action(method.upper(), path)
+            except HTTPException:
+                pass
+            else:
+                payload = {"method": method.upper(), "path": path}
+                if method.upper() == "POST" and path.startswith("/materials/"):
+                    import secrets
+
+                    budgets = getattr(self, "_upload_budgets", {})
+                    if path not in budgets:
+                        budgets[path] = secrets.token_hex(32)
+                    self._upload_budgets = budgets
+                    payload["upload_key"] = budgets[path]
+                permission = super().request(
+                    "POST", "/auth/community-permits", json=payload
+                )
+                if permission.status_code == 200:
+                    headers["X-Followw-Permit"] = permission.json()["token"]
+                    headers["cookie"] = ""
+                    kwargs["headers"] = headers
+        return super().request(method, url, **kwargs)
+
+
 @pytest.fixture
 def client(async_database, qstash):
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -305,11 +368,11 @@ def client(async_database, qstash):
     # A app reaproveita conexões como em produção, no event loop fixo do client.
     engine = create_async_engine(
         async_database.kw["bind"].url,
-        connect_args={"server_settings": {"role": "followw_app"}},
+        connect_args={"server_settings": {"role": "followw_test_app"}},
     )
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     app.dependency_overrides[get_sessionmaker] = lambda: sessions
-    with TestClient(app) as client:
+    with CommunityTestClient(app) as client:
         # o segredo do aparelho que o app manda: a autoria anônima vem dele, não da matrícula
         client.headers["X-Followw-Author"] = AUTOR_DE_TESTE
         yield client

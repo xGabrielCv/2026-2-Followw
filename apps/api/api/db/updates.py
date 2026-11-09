@@ -7,6 +7,17 @@ from api.crypto import decrypt, encrypt
 
 def apply_updates(connection: Connection) -> None:
     connection.execute(
+        text("ALTER TABLE professor_reviews ADD COLUMN IF NOT EXISTS semester TEXT")
+    )
+    connection.execute(
+        text("ALTER TABLE professor_reviews ADD COLUMN IF NOT EXISTS criteria JSONB")
+    )
+    connection.execute(
+        text(
+            "ALTER TABLE forum_posts ADD COLUMN IF NOT EXISTS resolved BOOLEAN NOT NULL DEFAULT false"
+        )
+    )
+    connection.execute(
         text(
             "ALTER TABLE admin_accounts ADD COLUMN IF NOT EXISTS pending_nonce_hash TEXT"
         )

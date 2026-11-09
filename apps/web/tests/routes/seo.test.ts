@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { publicRouteRules } from '#/lib/http-policy';
 import { Route as FallbackRoute } from '#/routes/$';
 import { Route as RootRoute } from '#/routes/__root';
 import { Route as FlowRoute } from '#/routes/_app/cursos.$id';
@@ -10,7 +11,6 @@ import { Route as ClassroomsRoute } from '#/routes/_app/turmas';
 import { Route as ClassroomRoute } from '#/routes/_app/turmas_.$id';
 import { Route as LoginRoute } from '#/routes/login';
 
-import vercel from '../../../../vercel.json';
 import { callRoute } from '../helpers/route';
 
 type Meta = { name?: string; content?: unknown } | undefined;
@@ -129,12 +129,10 @@ describe('indexação das páginas', () => {
         expect(robots).not.toMatch(/Disallow: \/(?:assets|login|perfil|turmas)/);
     });
 
-    test('www redireciona permanentemente preservando o caminho sem afetar api.followw.app', () => {
-        expect(vercel.redirects).toContainEqual({
-            source: '/:path*',
-            has: [{ type: 'host', value: 'www.followw.app' }],
-            destination: 'https://followw.app/:path*',
-            permanent: true
-        });
+    test('servidor distribui cabeçalhos de segurança e redirecionamento do admin sem configuração privada', () => {
+        expect(publicRouteRules['/admin'].redirect).toBe('/api/admin');
+        expect(publicRouteRules['/**'].headers['Cache-Control']).toBe('private, no-store');
+        expect(publicRouteRules['/**'].headers['X-Content-Type-Options']).toBe('nosniff');
+        expect(publicRouteRules['/assets/**'].headers['Cache-Control']).toContain('immutable');
     });
 });

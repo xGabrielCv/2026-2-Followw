@@ -9,6 +9,7 @@ from api.anonymous import AuthorDep, OptionalAuthorDep
 from api.cache import NoStore
 from api.errors import SIGAA_ERRORS
 from api.flags import require_enabled
+from api.modules.community.permissions import CommunityWriteDep
 from api.modules.materials.service import (
     MAX_FILE_BYTES,
     MaterialItem,
@@ -20,7 +21,6 @@ from api.modules.materials.service import (
 )
 from api.rate_limit import publish_quota
 from api.schemas import SearchText
-from api.sigaa import SigaaConnectionDep
 
 router = APIRouter()
 
@@ -74,11 +74,11 @@ async def list_materials(
         413: {"description": "Arquivo grande demais."},
         415: {"description": "Tipo de arquivo não aceito."},
     },
-    dependencies=[require_enabled("materials"), publish_quota("materials", 10)],
+    dependencies=[require_enabled("materials"), publish_quota("materials", 60)],
 )
 async def upload_material(
     author: AuthorDep,
-    connection: SigaaConnectionDep,
+    connection: CommunityWriteDep,
     service: MaterialServiceDep,
     response: Response,
     code: Code,
@@ -151,7 +151,7 @@ async def download_material(
 )
 async def delete_material(
     author: AuthorDep,
-    connection: SigaaConnectionDep,
+    connection: CommunityWriteDep,
     service: MaterialServiceDep,
     code: Code,
     material_id: UUID,

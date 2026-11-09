@@ -6,9 +6,10 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.db.context import set_context
 from api.db.main import DatabaseDep
 from api.db.models import (
     ClassroomGroup,
@@ -59,18 +60,7 @@ async def delete_target(
         return await delete_material(session, target_id)
     model = TARGETS[target_type]
     result = await session.execute(delete(model).where(model.id == target_id))
-    if target_type == "reply" and result.rowcount:
-        await _recount_replies(session)
     return bool(result.rowcount)
-
-
-async def _recount_replies(session: AsyncSession) -> None:
-    replies = (
-        select(func.count(ForumReply.id))
-        .where(ForumReply.post_id == ForumPost.id)
-        .scalar_subquery()
-    )
-    await session.execute(update(ForumPost).values(reply_count=replies))
 
 
 class ReportService:
@@ -78,6 +68,8 @@ class ReportService:
         self._db = db
 
     async def create(self, body: ReportInput) -> ReportCreated:
+        set_context(scope="report_submit", report_target=str(body.target_id))
+
         async def write(session: AsyncSession) -> ReportCreated:
             if await session.get(TARGETS[body.target_type], body.target_id) is None:
                 raise HTTPException(404, "Conteúdo não encontrado.")

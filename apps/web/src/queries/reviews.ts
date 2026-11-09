@@ -3,9 +3,10 @@ import { useSyncExternalStore } from 'react';
 
 import type { components } from '#/queries/schema.gen';
 
-import { STORAGE_KEYS, storedValue } from '#/lib/local-storage';
+import { flushLocalStorage, localAccount, STORAGE_KEYS, storedValue } from '#/lib/local-storage';
 import { api } from '#/queries/api';
 import { apiClient } from '#/queries/client';
+import { ApiError } from '#/queries/errors';
 
 export type Rating = components['schemas']['Rating'];
 export type RatingSummary = components['schemas']['RatingSummary'];
@@ -35,11 +36,18 @@ export function useOwnReview(siape: number): OwnReview | undefined {
 // avaliações mudam pouco; voltar ao perfil não precisa refazer a consulta na hora
 const STALE_TIME = 5 * 60_000;
 
-export const professorReviewsQueryOptions = (siape: number) =>
+export interface ReviewSearch {
+    semester?: string;
+    subject?: string;
+    page?: number;
+    order?: 'recent' | 'best' | 'worst';
+}
+
+export const professorReviewsQueryOptions = (siape: number, filters?: ReviewSearch) =>
     api.queryOptions(
         'get',
         '/public/professors/{siape}/reviews',
-        { params: { path: { siape } } },
+        { params: { path: { siape }, ...(filters ? { query: filters } : {}) } },
         { staleTime: STALE_TIME }
     );
 
@@ -64,35 +72,53 @@ export const professorRankingQueryOptions = (search: RankingSearch) =>
 
 type SaveReview = { siape: number; body: ReviewInput };
 
+export async function saveReview({ siape, body }: SaveReview) {
+    const store = ownReviews.atAccount(localAccount());
+    const own = store.getSnapshot()[siape];
+    if (own) {
+        try {
+            await apiClient.PUT('/reviews/{review_id}', {
+                params: { path: { review_id: own.id }, header: { 'X-Review-Token': own.token } },
+                body
+            });
+            store.set({ ...store.getSnapshot(), [siape]: { ...own, ...body } });
+            await flushLocalStorage();
+            return;
+        } catch (error) {
+            if (!(error instanceof ApiError && error.isNotFound)) throw error;
+        }
+    }
+    const { data } = await apiClient.POST('/reviews', { body: { ...body, siape } });
+    if (!data) throw new Error('Não foi possível salvar a avaliação');
+    store.set({
+        ...store.getSnapshot(),
+        [siape]: { ...body, id: data.review.id, token: data.token }
+    });
+    await flushLocalStorage();
+}
+
+export async function deleteReview(siape: number) {
+    const store = ownReviews.atAccount(localAccount());
+    const own = store.getSnapshot()[siape];
+    if (!own) return;
+    try {
+        await apiClient.DELETE('/reviews/{review_id}', {
+            params: { path: { review_id: own.id }, header: { 'X-Review-Token': own.token } }
+        });
+    } catch (error) {
+        if (!(error instanceof ApiError && error.isNotFound)) throw error;
+    }
+    if (store.getSnapshot()[siape]?.id !== own.id) return;
+    const { [siape]: _, ...rest } = store.getSnapshot();
+    store.set(rest);
+    await flushLocalStorage();
+}
+
 /** Cria a avaliação ou, se este navegador já avaliou o docente, edita a mesma. */
 export function useSaveReview() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async ({ siape, body }: SaveReview) => {
-            const own = ownReviews.getSnapshot()[siape];
-            if (own) {
-                const { error } = await apiClient.PUT('/reviews/{review_id}', {
-                    params: {
-                        path: { review_id: own.id },
-                        header: { 'X-Review-Token': own.token }
-                    },
-                    body
-                });
-                if (!error) {
-                    ownReviews.set({ ...ownReviews.getSnapshot(), [siape]: { ...own, ...body } });
-                    return;
-                }
-                // apagada em outro lugar: vira uma avaliação nova
-            }
-            const { data, error } = await apiClient.POST('/reviews', {
-                body: { ...body, siape }
-            });
-            if (error || !data) throw new Error('Não foi possível salvar a avaliação');
-            ownReviews.set({
-                ...ownReviews.getSnapshot(),
-                [siape]: { ...body, id: data.review.id, token: data.token }
-            });
-        },
+        mutationFn: saveReview,
         onSettled: () => invalidateReviews(queryClient)
     });
 }
@@ -100,17 +126,7 @@ export function useSaveReview() {
 export function useDeleteReview() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (siape: number) => {
-            const own = ownReviews.getSnapshot()[siape];
-            if (!own) return;
-            const { error, response } = await apiClient.DELETE('/reviews/{review_id}', {
-                params: { path: { review_id: own.id }, header: { 'X-Review-Token': own.token } }
-            });
-            if (error && response.status !== 404)
-                throw new Error('Não foi possível apagar a avaliação');
-            const { [siape]: _, ...rest } = ownReviews.getSnapshot();
-            ownReviews.set(rest);
-        },
+        mutationFn: deleteReview,
         onSettled: () => invalidateReviews(queryClient)
     });
 }

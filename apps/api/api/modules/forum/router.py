@@ -2,14 +2,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Response
-from pydantic import StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
-from api.account import AccountDep
 from api.anonymous import AuthorDep, OptionalAuthorDep
 from api.cache import NoStore
 from api.errors import SIGAA_ERRORS
 from api.flags import require_enabled
 from api.modules.class_groups.service import Campus
+from api.modules.community.permissions import CommunityWriteDep
 from api.modules.forum.service import (
     FORUM_PAGE_SIZE,
     ForumServiceDep,
@@ -22,9 +22,30 @@ from api.modules.forum.service import (
 )
 from api.rate_limit import publish_quota
 from api.schemas import SearchText
-from api.sigaa import SigaaConnectionDep
 
 router = APIRouter()
+
+
+class ResolutionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    resolved: bool
+
+
+@router.patch(
+    "/{post_id}/resolved",
+    response_model=PostDetails,
+    dependencies=[NoStore, require_enabled("forum"), publish_quota("forum", 40)],
+)
+async def set_resolved(
+    post_id: UUID,
+    body: ResolutionInput,
+    author: AuthorDep,
+    _permission: CommunityWriteDep,
+    service: ForumServiceDep,
+) -> PostDetails:
+    return await service.set_resolved(post_id, author, body.resolved)
+
+
 _NOT_FOUND = {**SIGAA_ERRORS, 404: {"description": "Não encontrado."}}
 
 
@@ -79,14 +100,12 @@ async def list_posts(
 )
 async def create_post(
     author: AuthorDep,
-    account: AccountDep,
+    _permission: CommunityWriteDep,
     service: ForumServiceDep,
     body: PostInput,
     response: Response,
 ) -> PostDetails:
-    # O curso vem do perfil cifrado no navegador: o cliente não escolhe a marcação.
-    profile = await account.profile() if body.tag_course else None
-    details = await service.create(author, body, profile)
+    details = await service.create(author, body)
     response.headers["X-Created-Id"] = str(details.id)
     return details
 
@@ -116,7 +135,7 @@ async def get_post(
 )
 async def reply_post(
     author: AuthorDep,
-    connection: SigaaConnectionDep,
+    connection: CommunityWriteDep,
     service: ForumServiceDep,
     post_id: UUID,
     body: ReplyInput,
@@ -138,7 +157,7 @@ async def reply_post(
 )
 async def delete_post(
     author: AuthorDep,
-    connection: SigaaConnectionDep,
+    connection: CommunityWriteDep,
     service: ForumServiceDep,
     post_id: UUID,
 ) -> None:
@@ -153,7 +172,7 @@ async def delete_post(
 )
 async def delete_reply(
     author: AuthorDep,
-    connection: SigaaConnectionDep,
+    connection: CommunityWriteDep,
     service: ForumServiceDep,
     post_id: UUID,
     reply_id: UUID,

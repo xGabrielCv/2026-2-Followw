@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/auth/community-permits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue Academic Permission */
+        post: operations["issue_academic_permission_auth_community_permits_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sigaa": {
         parameters: {
             query?: never;
@@ -404,6 +421,23 @@ export interface paths {
         get: operations["search_public_search_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/config/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Receive Metric */
+        post: operations["receive_metric_public_config_metrics_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -878,6 +912,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/forum/{post_id}/resolved": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set Resolved */
+        patch: operations["set_resolved_forum__post_id__resolved_patch"];
         trace?: never;
     };
     "/forum": {
@@ -1712,10 +1763,10 @@ export interface components {
              */
             max_file_bytes: number;
             /**
-             * Max Per Student
+             * Max Daily Upload Attempts
              * @default 10
              */
-            max_per_student: number;
+            max_daily_upload_attempts: number;
             /**
              * Max Per Subject
              * @default 50
@@ -1827,6 +1878,9 @@ export interface components {
         };
         /** NewReview */
         NewReview: {
+            /** Semester */
+            semester?: string | null;
+            criteria?: components["schemas"]["ReviewCriteria"] | null;
             /** Rating */
             rating: number;
             /** Comment */
@@ -1903,6 +1957,28 @@ export interface components {
             grade?: components["schemas"]["Grade"] | null;
             status?: components["schemas"]["ClassroomStatus"] | null;
         };
+        /** PermissionRequest */
+        PermissionRequest: {
+            /**
+             * Method
+             * @enum {string}
+             */
+            method: "POST" | "PUT" | "PATCH" | "DELETE";
+            /** Path */
+            path: string;
+            /** Upload Key */
+            upload_key?: string | null;
+        };
+        /** PermissionResponse */
+        PermissionResponse: {
+            /** Token */
+            token: string;
+            /**
+             * Expires In
+             * @default 120
+             */
+            expires_in: number;
+        };
         /** PostDetails */
         PostDetails: {
             /**
@@ -1915,6 +1991,8 @@ export interface components {
              * @enum {string}
              */
             kind: "duvida" | "post";
+            /** Resolved */
+            resolved: boolean;
             /** Title */
             title: string;
             /** Excerpt */
@@ -1957,11 +2035,8 @@ export interface components {
             campus?: ("darcy" | "gama" | "ceilandia" | "planaltina") | null;
             /** Subject */
             subject?: string | null;
-            /**
-             * Tag Course
-             * @default false
-             */
-            tag_course: boolean;
+            /** Course Id */
+            course_id?: number | null;
         };
         /** PostItem */
         PostItem: {
@@ -1975,6 +2050,8 @@ export interface components {
              * @enum {string}
              */
             kind: "duvida" | "post";
+            /** Resolved */
+            resolved: boolean;
             /** Title */
             title: string;
             /** Excerpt */
@@ -2115,6 +2192,12 @@ export interface components {
             summary: components["schemas"]["RatingSummary"] | null;
             /** Reviews */
             reviews: components["schemas"]["Review"][];
+            /** Total */
+            total: number;
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
         };
         /**
          * PublicClassroom
@@ -2247,6 +2330,11 @@ export interface components {
             /** Message */
             message?: string | null;
         };
+        /** ResolutionInput */
+        ResolutionInput: {
+            /** Resolved */
+            resolved: boolean;
+        };
         /** RestaurantCredentials */
         RestaurantCredentials: {
             /** Token */
@@ -2260,7 +2348,7 @@ export interface components {
         /** RestaurantStatement */
         RestaurantStatement: {
             /** Balance */
-            balance?: string | null;
+            balance: string;
             /** Group */
             group?: (1 | 2 | 3 | 4) | null;
             /**
@@ -2290,6 +2378,9 @@ export interface components {
             id: string;
             /** Rating */
             rating: number;
+            /** Semester */
+            semester: string | null;
+            criteria: components["schemas"]["ReviewCriteria"] | null;
             /** Comment */
             comment: string | null;
             /** Attendance */
@@ -2298,8 +2389,20 @@ export interface components {
             /** Month */
             month: string;
         };
+        /** ReviewCriteria */
+        ReviewCriteria: {
+            /** Clarity */
+            clarity?: number | null;
+            /** Organization */
+            organization?: number | null;
+            /** Assessment */
+            assessment?: number | null;
+        };
         /** ReviewInput */
         ReviewInput: {
+            /** Semester */
+            semester?: string | null;
+            criteria?: components["schemas"]["ReviewCriteria"] | null;
             /** Rating */
             rating: number;
             /** Comment */
@@ -2523,6 +2626,14 @@ export interface components {
              * @description Nome do componente; nulo fora do catálogo.
              */
             name: string | null;
+        };
+        /** TechnicalMetric */
+        TechnicalMetric: {
+            /**
+             * Event
+             * @constant
+             */
+            event: "login_session_lost";
         };
         /** TicketCreated */
         TicketCreated: {
@@ -2751,6 +2862,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    issue_academic_permission_auth_community_permits_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PermissionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PermissionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sigaa_login_auth_sigaa_post: {
         parameters: {
             query?: never;
@@ -3588,7 +3732,13 @@ export interface operations {
     };
     get_professor_reviews_public_professors__siape__reviews_get: {
         parameters: {
-            query?: never;
+            query?: {
+                subject?: string | null;
+                semester?: string | null;
+                order?: "recent" | "best" | "worst";
+                page?: number;
+                page_size?: number;
+            };
             header?: never;
             path: {
                 siape: number;
@@ -3710,6 +3860,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    receive_metric_public_config_metrics_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Followw-Metrics"?: "1" | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TechnicalMetric"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -5080,6 +5263,41 @@ export interface operations {
             };
         };
     };
+    set_resolved_forum__post_id__resolved_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolutionInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_posts_forum_get: {
         parameters: {
             query?: {
@@ -5090,7 +5308,7 @@ export interface operations {
                 /** @description Só destas matérias (ex.: as que o aluno cursa, que o navegador conhece). */
                 subjects?: string[];
                 q?: string | null;
-                order?: "recent" | "active" | "unanswered";
+                order?: "recent" | "active" | "unanswered" | "resolved" | "unresolved";
                 page?: number;
                 page_size?: number;
             };
@@ -5137,10 +5355,7 @@ export interface operations {
     create_post_forum_post: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
-                "Cache-Control"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };

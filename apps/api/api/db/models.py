@@ -21,6 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from api.crypto import Encrypted
 from api.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from api.modules.admin.models import AdminAccount, AdminSession  # noqa: F401 — registra tabelas administrativas
+from api.modules.community.models import UploadBudget, UsedCommunityPermission  # noqa: F401 — registra controles efêmeros
 from api.modules.support.models import Ticket, TicketMessage  # noqa: F401 — registra os chamados
 
 type Requirements = list[list[str]]
@@ -311,6 +312,10 @@ class ProfessorReview(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 
     __tablename__ = "professor_reviews"
 
+    semester: Mapped[str | None] = mapped_column()
+    criteria: Mapped[dict[str, int | None] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )
     professor_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("professors.id", ondelete="CASCADE"), index=True
     )
@@ -389,6 +394,7 @@ class ForumPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (Index("ix_forum_posts_activity", "last_activity_at"),)
 
     kind: Mapped[str] = mapped_column()
+    resolved: Mapped[bool] = mapped_column(default=False, server_default="false")
     title: Mapped[str] = mapped_column(Encrypted("forum.title"))
     body: Mapped[str] = mapped_column(Encrypted("forum.body"))
     campus: Mapped[str | None] = mapped_column()

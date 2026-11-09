@@ -42,9 +42,15 @@ class GroupLink(BaseModel):
     def _platform_link(self) -> Self:
         parts = urlsplit(self.url)
         host = (parts.hostname or "").lower()
-        if parts.scheme != "https" or not any(
-            host == allowed or host.endswith(f".{allowed}")
-            for allowed in _HOSTS[self.platform]
+        if (
+            parts.username
+            or parts.password
+            or parts.port not in (None, 443)
+            or parts.scheme != "https"
+            or not any(
+                host == allowed or host.endswith(f".{allowed}")
+                for allowed in _HOSTS[self.platform]
+            )
         ):
             raise ValueError("O link precisa ser https e da plataforma escolhida.")
         if self.platform != "aprender3" or not self.password:
@@ -54,6 +60,17 @@ class GroupLink(BaseModel):
 
 class GroupsInput(BaseModel):
     groups: list[GroupLink] = Field(max_length=MAX_GROUPS)
+
+    @model_validator(mode="after")
+    def unique_links(self) -> Self:
+        seen = set()
+        for group in self.groups:
+            parts = urlsplit(group.url)
+            key = (parts.hostname, parts.path.rstrip("/"), parts.query)
+            if key in seen:
+                raise ValueError("O mesmo link de grupo está repetido.")
+            seen.add(key)
+        return self
 
 
 class ClassroomRef(BaseModel):

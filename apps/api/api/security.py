@@ -2,15 +2,22 @@
 
 from urllib.parse import urlsplit
 
-from starlette.responses import JSONResponse
+from anyio import CapacityLimiter, WouldBlock
+from starlette.exceptions import HTTPException
+from starlette.formparsers import MultiPartParser
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from api.cookies import clear_cookies
 from api.core.config import settings
 
 _UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 # Material: 20 MB de arquivo mais o envelope do multipart. O resto é JSON pequeno.
 _MAX_UPLOAD = 21 * 1024 * 1024
 _MAX_BODY = 256 * 1024
+# O corpo já tem limite; evita que o parser grave conteúdo ainda não cifrado no diretório temporário.
+MultiPartParser.spool_max_size = _MAX_UPLOAD
+_UPLOADS = CapacityLimiter(4)
 _HEADERS = {
     b"x-content-type-options": b"nosniff",
     b"referrer-policy": b"no-referrer",
@@ -44,6 +51,7 @@ class SecurityMiddleware:
             return
         headers = dict(scope["headers"])
         method = scope["method"]
+        upload_slot = False
         if method in _UNSAFE:
             # Contra CSRF além do SameSite: escrita só vem do próprio app.
             origin = headers.get(b"origin", b"").decode("latin-1")
@@ -66,11 +74,38 @@ class SecurityMiddleware:
                     scope, receive, send
                 )
                 return
-            if length is None and headers.get(b"transfer-encoding"):
-                receive = _capped(receive, limit)
+            receive = _capped(receive, limit)
+            if content_type.startswith(b"multipart/"):
+                try:
+                    _UPLOADS.acquire_nowait()
+                    upload_slot = True
+                except WouldBlock:
+                    await JSONResponse(
+                        {"detail": "Envios ocupados. Tente novamente em instantes."},
+                        503,
+                        headers={"Retry-After": "5", "Cache-Control": "no-store"},
+                    )(scope, receive, send)
+                    return
 
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
+                if scope.get("state", {}).get("clear_academic_cookies"):
+                    expired = Response()
+                    clear_cookies(expired)
+                    message["headers"] = [
+                        *message.get("headers", []),
+                        *[
+                            (key, value)
+                            for key, value in expired.raw_headers
+                            if key == b"set-cookie"
+                        ],
+                    ]
+                if message["status"] >= 400:
+                    message["headers"] = [
+                        (key, value)
+                        for key, value in message.get("headers", [])
+                        if key.lower() != b"cache-control"
+                    ] + [(b"cache-control", b"no-store")]
                 present = {key.lower() for key, _ in message.get("headers", [])}
                 extra = [(k, v) for k, v in _HEADERS.items() if k not in present]
                 if settings.environment == "production":
@@ -78,15 +113,20 @@ class SecurityMiddleware:
                 message["headers"] = [*message.get("headers", []), *extra]
             await send(message)
 
-        await self.app(scope, receive, send_with_headers)
+        try:
+            await self.app(scope, receive, send_with_headers)
+        finally:
+            if upload_slot:
+                _UPLOADS.release()
 
 
-class BodyTooLarge(Exception):
-    pass
+class BodyTooLarge(HTTPException):
+    def __init__(self):
+        super().__init__(413, "Corpo grande demais.")
 
 
 def _capped(receive: Receive, limit: int) -> Receive:
-    """Corpo sem tamanho declarado (chunked): corta ao passar do limite."""
+    """Confere os bytes efetivos, mesmo com Content-Length ausente ou incorreto."""
     total = 0
 
     async def wrapped() -> Message:

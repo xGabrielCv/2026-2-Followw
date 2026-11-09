@@ -248,7 +248,7 @@ describe('compartilhamento do cardápio', () => {
         }
     );
 
-    test('consulta somente o cardápio público na origem da requisição e sem cookies', async () => {
+    test('consulta somente o cardápio público no destino interno e sem cookies', async () => {
         mockMenu();
         const request = new Request('https://followw.app/share/ru.png', {
             headers: { cookie: 'session=privada' }
@@ -256,7 +256,7 @@ describe('compartilhamento do cardápio', () => {
         expect(await loadSharedMenu(request, selection)).toEqual(sections);
         const [url, options] = fetchSpy!.mock.calls[0];
         expect(url instanceof URL ? url.href : null).toBe(
-            'https://followw.app/api/public/restaurant?campus=Gama&start_date=2026-10-19&end_date=2026-10-19'
+            `${process.env.API_INTERNAL_URL ?? `http://127.0.0.1:${process.env.API_PORT ?? '8000'}`}/api/public/restaurant?campus=Gama&start_date=2026-10-19&end_date=2026-10-19`
         );
         expect(new Headers(options?.headers).get('cookie')).toBeNull();
     });

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api import academic_calendar
 from api.account import Account
 from api.anonymous import anonymous_key
+from api.db.context import apply_context, set_context
 from api.db.main import Database
 from api.db.models import ActiveUser
 from api.flags import flags
@@ -32,6 +33,8 @@ async def record_activity(
     session: AsyncSession, usage: dict[str, str], day: date | None = None
 ) -> None:
     """Uma chave aleatória por período: conta alunos únicos sem ligar um dia ao outro."""
+    set_context(scope="usage_record")
+    await apply_context(session)
     rows = [
         {"period": period, "key": anonymous_key(usage[period[0]], f"active:{period}")}
         for period in periods(day or academic_calendar.today())

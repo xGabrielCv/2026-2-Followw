@@ -2,7 +2,7 @@ import { get, update } from 'idb-keyval';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
-const VAULT_KEY = 'followw:encrypted-vault';
+export const VAULT_KEY = 'followw:encrypted-vault';
 const KEY_ID = 'followw-device-key-v1';
 export const RETENTION_KEY = 'followw:retention-days';
 export const RETENTION_DAYS = [7, 30, 90, 400] as const;
@@ -13,11 +13,16 @@ const PUBLIC_KEYS = new Set([
     'followw:layout',
     'followw:install-dismissed',
     'followw:analytics-consent',
+    'followw:cache-epoch',
+    'followw:session-version',
     RETENTION_KEY
 ]);
 
 export const publicStorageKey = (key: string) => PUBLIC_KEYS.has(key);
-const credentialKey = (key: string) => /^followw:(author|reviews|support)(:|$)/.test(key);
+const credentialKey = (key: string) =>
+    /^followw:(author|reviews|support|material-quota)(:|$)/.test(
+        key.replace(/^followw:recovery:/, '')
+    );
 
 export function retentionDays(storage?: Storage): number {
     try {
@@ -81,6 +86,15 @@ interface Entry {
 type Values = Record<string, Entry>;
 type Change = { key: string; entry?: Entry } | { clear: true };
 
+function applyChanges(values: Values, changes: Change[]) {
+    for (const change of changes) {
+        if ('clear' in change) values = {};
+        else if (change.entry) values[change.key] = change.entry;
+        else delete values[change.key];
+    }
+    return values;
+}
+
 function validValues(value: unknown): value is Values {
     return (
         typeof value === 'object' &&
@@ -107,7 +121,19 @@ export class LocalVault {
     private changes: Change[] = [];
     private queue = Promise.resolve();
     private key?: CryptoKey;
+    private listeners = new Set<() => void>();
     error = false;
+    subscribe = (listener: () => void) => {
+        this.listeners.add(listener);
+        return () => {
+            this.listeners.delete(listener);
+        };
+    };
+    private setError(value: boolean) {
+        if (this.error === value) return;
+        this.error = value;
+        for (const listener of this.listeners) listener();
+    }
     get ready() {
         return this.initialized;
     }
@@ -148,7 +174,11 @@ export class LocalVault {
                     if (!values[key]) values[key] = { value, savedAt: Date.now() };
                     legacy.push(key);
                 } catch {
-                    /* Preserva registros antigos ilegíveis para recuperação manual. */
+                    values[`followw:recovery:${key}`] = {
+                        savedAt: Date.now(),
+                        value: { sourceKey: key, raw: this.storage.getItem(key) }
+                    };
+                    legacy.push(key);
                 }
             }
             this.values = { ...values, ...this.values };
@@ -158,7 +188,7 @@ export class LocalVault {
             for (const key of legacy) this.storage.removeItem(key);
             await this.flush();
         } catch {
-            this.error = true;
+            this.setError(true);
             throw new Error(
                 'Não foi possível abrir o armazenamento protegido. Os dados existentes foram preservados.'
             );
@@ -214,25 +244,25 @@ export class LocalVault {
         this.queue = this.queue
             .then(() => this.write())
             .catch(() => {
-                this.error = true;
+                this.setError(true);
             });
     }
 
     private async write(migration?: Values) {
         const persist = async () => {
             const count = this.changes.length;
-            let values = { ...(await this.read()), ...migration };
-            for (const change of this.changes.slice(0, count)) {
-                if ('clear' in change) values = {};
-                else if (change.entry) values[change.key] = change.entry;
-                else delete values[change.key];
-            }
+            const values = applyChanges(
+                { ...(await this.read()), ...migration },
+                this.changes.slice(0, count)
+            );
             const oldest = Date.now() - retentionDays(this.storage) * DAY;
             for (const [key, entry] of Object.entries(values))
                 if (!credentialKey(key) && entry.savedAt <= oldest) delete values[key];
             const sealed = await sealLocal(values, 'preferences', this.key);
             this.storage.setItem(VAULT_KEY, sealed);
             this.changes.splice(0, count);
+            this.values = applyChanges(values, this.changes);
+            this.setError(false);
         };
         if (typeof navigator !== 'undefined' && navigator.locks)
             await navigator.locks.request(VAULT_KEY, persist);
@@ -243,6 +273,16 @@ export class LocalVault {
         if (this.initialized && this.changes.length) this.schedule();
         await this.queue;
         if (this.error) throw new Error('Falha ao salvar dados protegidos');
+    }
+
+    async refresh() {
+        if (!this.initialized) return;
+        await this.queue;
+        try {
+            this.values = applyChanges(await this.read(), this.changes);
+        } catch {
+            this.setError(true);
+        }
     }
 }
 

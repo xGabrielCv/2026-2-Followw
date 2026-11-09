@@ -13,6 +13,7 @@ import {
     DialogHeader,
     DialogTitle
 } from '#/components/ui/dialog';
+import { Input } from '#/components/ui/input';
 import { Label } from '#/components/ui/label';
 import {
     Select,
@@ -25,6 +26,7 @@ import { Textarea } from '#/components/ui/textarea';
 import { titleCase } from '#/lib/profile';
 import { ATTENDANCE_LABELS, ATTENDANCE_OPTIONS, ratingLabel } from '#/lib/reviews';
 import { cn } from '#/lib/shadcn';
+import { apiMessage } from '#/queries/community';
 import { useDeleteReview, useOwnReview, useSaveReview } from '#/queries/reviews';
 
 export interface ReviewedProfessor {
@@ -139,6 +141,8 @@ function ReviewFields({
     onDone: () => void;
 }) {
     const [rating, setRating] = useState(own?.rating ?? 70);
+    const [semester, setSemester] = useState(own?.semester ?? '');
+    const [criteria, setCriteria] = useState(own?.criteria ?? {});
     const [attendance, setAttendance] = useState<Attendance | null>(own?.attendance ?? null);
     const [comment, setComment] = useState(own?.comment ?? '');
     const save = useSaveReview();
@@ -156,6 +160,8 @@ function ReviewFields({
                         siape: professor.siape,
                         body: {
                             rating,
+                            semester: semester || null,
+                            criteria: Object.keys(criteria).length ? criteria : null,
                             attendance,
                             comment: comment.trim() || null,
                             subject: own?.subject ?? subject ?? null
@@ -219,9 +225,52 @@ function ReviewFields({
                     </span>
                 </p>
             </div>
+            <div className="flex flex-col gap-2">
+                <Label htmlFor="review-semester">Semestre da experiência (opcional)</Label>
+                <Input
+                    id="review-semester"
+                    value={semester}
+                    placeholder="2026.2"
+                    pattern="20[0-9]{2}\.[12]"
+                    maxLength={6}
+                    onChange={(event) => setSemester(event.target.value)}
+                />
+            </div>
+            <fieldset className="flex flex-col gap-3">
+                <legend className="mb-2 text-sm font-medium">Critérios opcionais · 1 a 5</legend>
+                {(
+                    [
+                        ['clarity', 'Clareza das explicações'],
+                        ['organization', 'Organização das aulas'],
+                        ['assessment', 'Clareza dos critérios de avaliação']
+                    ] as const
+                ).map(([key, label]) => (
+                    <label key={key} className="flex items-center justify-between gap-3 text-sm">
+                        {label}
+                        <Input
+                            type="number"
+                            min={1}
+                            max={5}
+                            step={1}
+                            className="w-20"
+                            aria-label={label}
+                            value={criteria[key] ?? ''}
+                            onChange={(event) =>
+                                setCriteria({
+                                    ...criteria,
+                                    [key]: event.target.value ? Number(event.target.value) : null
+                                })
+                            }
+                        />
+                    </label>
+                ))}
+            </fieldset>
             {(save.isError || remove.isError) && (
                 <p role="alert" className="text-xs text-destructive">
-                    Não foi possível salvar. Verifique a conexão e tente novamente.
+                    {apiMessage(
+                        save.error ?? remove.error,
+                        'Não foi possível salvar. Verifique a conexão e tente novamente.'
+                    )}
                 </p>
             )}
             <DialogFooter>

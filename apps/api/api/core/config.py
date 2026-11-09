@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     database_maintenance_url: str | None = Field(default=None, repr=False)
     # Senha do papel `followw_app` (cria o login ao rodar db-init); sem ela o papel não faz login.
     app_db_password: str | None = Field(default=None, min_length=16, repr=False)
+    app_db_role: str = Field(
+        default="followw_app",
+        pattern=r"^followw_(?:app|test_app|(?:e2e|load)_[a-f0-9]{12})$",
+    )
 
     # Pool do PostgreSQL: por processo. Total máximo = (db_pool_size + db_max_overflow) x workers;
     # deixe a soma abaixo de max_connections do banco.

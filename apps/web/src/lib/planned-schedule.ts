@@ -1,5 +1,5 @@
 import type { AgendaItem } from '#/lib/agenda';
-import type { SubjectClassroom } from '#/queries/subjects';
+import type { CatalogSubject, SubjectClassroom } from '#/queries/subjects';
 
 import { groupBySemester } from '#/lib/classroom-details';
 import { localStorageRepository, STORAGE_KEYS, storedValue } from '#/lib/local-storage';
@@ -9,6 +9,9 @@ export interface PlannedClass extends SubjectClassroom {
     code: string;
     name: string;
     hours: number | null;
+    prerequisites?: CatalogSubject['prerequisites'];
+    corequisites?: CatalogSubject['corequisites'];
+    equivalences?: CatalogSubject['equivalences'];
 }
 
 const EMPTY: PlannedClass[] = [];

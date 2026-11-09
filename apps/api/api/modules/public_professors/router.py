@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Path, Query
 from pydantic import Field
@@ -121,5 +121,17 @@ async def get_professor_outcomes(
 async def get_professor_reviews(
     service: ReviewServiceDep,
     siape: Annotated[int, Path(gt=0, le=2**31 - 1)],
+    subject: Annotated[str | None, Query(pattern=r"^[A-Za-z0-9]{3,16}$")] = None,
+    semester: Annotated[str | None, Query(pattern=r"^20[0-9]{2}\.[12]$")] = None,
+    order: Annotated[Literal["recent", "best", "worst"], Query()] = "recent",
+    page: Annotated[int, Query(ge=1, le=100000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=200)] = 20,
 ) -> ProfessorReviews:
-    return await service.professor(siape)
+    return await service.professor(
+        siape,
+        subject=subject,
+        semester=semester,
+        order=order,
+        page=page,
+        page_size=page_size,
+    )

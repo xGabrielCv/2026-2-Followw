@@ -23,6 +23,7 @@ import { CAMPUS_LABELS, CAMPUSES } from '#/lib/campus';
 import { useOnline } from '#/lib/online';
 import { classroomsQueryOptions } from '#/queries/classrooms';
 import { apiMessage, useCreatePost } from '#/queries/community';
+import { meQueryOptions } from '#/queries/me';
 
 export const POST_KIND_LABELS: Record<PostKind, string> = { duvida: 'Dúvida', post: 'Post' };
 const NONE = 'none';
@@ -61,6 +62,7 @@ export function NewPostForm({
     const [subject, setSubject] = useState('');
     const [tagCourse, setTagCourse] = useState(false);
     const create = useCreatePost();
+    const { data: user } = useQuery(meQueryOptions);
     const online = useOnline();
     const code = subject.trim().toUpperCase();
     // as matérias que o aluno cursa vêm das turmas salvas no navegador
@@ -83,7 +85,7 @@ export function NewPostForm({
                             body: body.trim(),
                             campus: campus === NONE ? null : campus,
                             subject: code || null,
-                            tag_course: tagCourse
+                            course_id: tagCourse ? (user?.course?.id ?? null) : null
                         }
                     },
                     {

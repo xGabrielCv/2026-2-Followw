@@ -1,5 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // Windows distingue PATH/Path nos subprocessos do Node; evita perder ferramentas instaladas pelo usuário.
@@ -8,6 +10,16 @@ const runtimePath = Object.entries(process.env)
     .map(([, value]) => value)
     .filter(Boolean)
     .join(process.platform === 'win32' ? ';' : ':');
+
+function executable(name: string) {
+    const suffix = process.platform === 'win32' ? '.exe' : '';
+    const found = runtimePath
+        .split(delimiter)
+        .map((directory) => join(directory.replace(/^"|"$/g, ''), name + suffix))
+        .find((candidate) => existsSync(candidate));
+    if (!found || /["\r\n]/.test(found)) throw new Error(`Ferramenta de E2E indisponível: ${name}`);
+    return `"${found}"`;
+}
 
 const database =
     (process.env.FOLLOWW_E2E_DATABASE ??= `followw_e2e_${randomUUID().replaceAll('-', '').slice(0, 12)}`);
@@ -29,7 +41,7 @@ export default defineConfig({
     },
     webServer: [
         {
-            command: 'uv run --no-sync python tests/e2e_server.py',
+            command: `${executable('uv')} run --no-sync python tests/e2e_server.py`,
             cwd: fileURLToPath(new URL('../api/', import.meta.url)),
             url: 'http://127.0.0.1:8011/api/admin/api/session',
             reuseExistingServer: false,
@@ -48,15 +60,24 @@ export default defineConfig({
                 UPSTASH_REDIS_REST_URL: '',
                 UPSTASH_REDIS_REST_TOKEN: '',
                 DEMO_DATA: 'false',
+                RATE_LIMIT_REQUESTS: '100000',
                 CORS_ORIGINS: '["http://127.0.0.1:3011","http://127.0.0.1:8011"]'
             }
         },
         {
-            command: 'bun run dev --host 127.0.0.1 --port 3011',
+            command:
+                process.env.FOLLOWW_E2E_PRODUCTION === '1'
+                    ? `${executable('bun')} e2e/production-server.ts`
+                    : `${executable('bun')} run dev --host 127.0.0.1 --port 3011`,
             url: 'http://127.0.0.1:3011',
             reuseExistingServer: false,
             timeout: 60_000,
-            env: { API_PORT: '8011', VITE_POSTHOG_KEY: '', PATH: runtimePath, Path: runtimePath }
+            env: {
+                API_PORT: '8011',
+                API_INTERNAL_URL: 'http://127.0.0.1:8011',
+                PATH: runtimePath,
+                Path: runtimePath
+            }
         }
     ]
 });

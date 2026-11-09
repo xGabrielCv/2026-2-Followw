@@ -1,4 +1,4 @@
-import { localVault, publicStorageKey } from '#/lib/local-vault';
+import { localVault, publicStorageKey, VAULT_KEY } from '#/lib/local-vault';
 
 export const STORAGE_PREFIX = 'followw:';
 
@@ -39,6 +39,7 @@ export function isStorageBlocked(): boolean {
 
 const SCOPED_KEYS = new Set<string>([STORAGE_KEYS.SCHEDULE_PLANS, STORAGE_KEYS.REVIEWS, 'author']);
 let activeAccount: string | undefined;
+export const localAccount = () => activeAccount ?? 'visitor';
 function formatKey(key: string): string {
     const scope = activeAccount ?? 'visitor';
     return `${STORAGE_PREFIX}${SCOPED_KEYS.has(key) ? `${key}:${scope}` : key}`;
@@ -162,6 +163,19 @@ export function storedValue<T>(key: string, empty: T) {
             localStorageRepository.set(key, value);
             update(value);
         },
+        atAccount(account: string): { getSnapshot: () => T; set: (value: T) => void } {
+            if (!SCOPED_KEYS.has(key)) throw new Error('Este valor não é separado por conta');
+            return {
+                getSnapshot: (): T =>
+                    account === localAccount()
+                        ? store.getSnapshot()
+                        : (localStorageRepository.get<T>(`${key}:${account}`) ?? empty),
+                set: (value: T): void => {
+                    if (account === localAccount()) store.set(value);
+                    else localStorageRepository.set(`${key}:${account}`, value);
+                }
+            };
+        },
         clear: () => {
             localStorageRepository.remove(key);
             update(empty);
@@ -180,6 +194,27 @@ export function clearAccountStorage() {
         for (const key of ACCOUNT_KEYS) stores.get(key)?.clear();
     }
     selectLocalAccount();
+}
+
+export async function flushLocalStorage() {
+    const storage = getStorage();
+    if (storage) await localVault(storage).flush();
+}
+
+export function observeLocalStorage() {
+    const storage = getStorage();
+    if (!storage) return () => {};
+    const refresh = (event: StorageEvent) => {
+        if (event.key !== VAULT_KEY && event.key !== null) return;
+        void localVault(storage)
+            .refresh()
+            .then(() => {
+                for (const store of stores.values()) store.reset();
+                return undefined;
+            });
+    };
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
 }
 
 /** Troca a conta sem apagar cenários ou segredos de autoria da conta anterior. */

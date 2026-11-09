@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.anonymous import AuthorDep, anonymous_key, resource_key, same_key
 from api.cache import NoStore
+from api.db.context import apply_context, set_context
 from api.db.main import DatabaseDep
 from api.db.models import ForumPost, ForumReply, Material, SharedStatistics, Tutorial
 from api.modules.forum.service import _scope as forum_scope
@@ -46,7 +47,21 @@ def _fresh() -> str:
     return secrets.token_hex(32)
 
 
+async def _claim(session: AsyncSession, secret: str, scope: str, new_key: str):
+    set_context(
+        scope="community_migrate",
+        author_key=resource_key(new_key),
+        legacy_author_key=anonymous_key(secret, scope),
+    )
+    await apply_context(session)
+
+
 async def migrate(session: AsyncSession, secret: str) -> MigrationResult:
+    set_context(
+        scope="community_migrate",
+        legacy_author_key=anonymous_key(secret, TUTORIAL_SCOPE),
+    )
+    await apply_context(session)
     items: list[Migrated] = []
 
     owned_posts: set[uuid.UUID] = set()
@@ -61,6 +76,7 @@ async def migrate(session: AsyncSession, secret: str) -> MigrationResult:
             owned_posts.add(post_id)
             key = _fresh()
             items.append(Migrated(kind="post", id=post_id, key=key))
+            await _claim(session, secret, forum_scope(post_id), key)
             await session.execute(
                 update(ForumPost)
                 .where(ForumPost.id == post_id)
@@ -78,6 +94,7 @@ async def migrate(session: AsyncSession, secret: str) -> MigrationResult:
             continue
         key = _fresh()
         items.append(Migrated(kind="reply", id=reply_id, key=key))
+        await _claim(session, secret, forum_scope(post_id), key)
         # resposta do mesmo segredo no post que ele abriu: guarda o selo "quem abriu a conversa"
         await session.execute(
             update(ForumReply)
@@ -98,12 +115,15 @@ async def migrate(session: AsyncSession, secret: str) -> MigrationResult:
         if same_key(stored, secret, material_scope(code)):
             key = _fresh()
             items.append(Migrated(kind="material", id=material_id, key=key))
+            await _claim(session, secret, material_scope(code), key)
             await session.execute(
                 update(Material)
                 .where(Material.id == material_id)
                 .values(uploader_key=resource_key(key))
             )
 
+    set_context(legacy_author_key=anonymous_key(secret, TUTORIAL_SCOPE))
+    await apply_context(session)
     for tutorial_id, stored in (
         await session.execute(
             select(Tutorial.id, Tutorial.author_key)
@@ -114,6 +134,7 @@ async def migrate(session: AsyncSession, secret: str) -> MigrationResult:
         if same_key(stored, secret, TUTORIAL_SCOPE):
             key = _fresh()
             items.append(Migrated(kind="tutorial", id=tutorial_id, key=key))
+            await _claim(session, secret, TUTORIAL_SCOPE, key)
             await session.execute(
                 update(Tutorial)
                 .where(Tutorial.id == tutorial_id)
@@ -133,6 +154,16 @@ async def migrate(session: AsyncSession, secret: str) -> MigrationResult:
         ):
             key = _fresh()
             statistics[classroom_id] = key
+            set_context(
+                scope="community_migrate",
+                share_keys=",".join(
+                    [
+                        anonymous_key(secret, statistics_scope(classroom_id)),
+                        resource_key(key),
+                    ]
+                ),
+            )
+            await apply_context(session)
             await session.execute(
                 update(SharedStatistics)
                 .where(

@@ -13,8 +13,8 @@ from api.modules.class_groups.service import (
     GroupServiceDep,
     GroupsInput,
 )
+from api.modules.community.permissions import CommunityWriteDep
 from api.schemas import SearchText
-from api.sigaa import SigaaConnectionDep
 
 router = APIRouter()
 
@@ -71,7 +71,7 @@ async def get_groups(
     dependencies=[require_enabled("groups")],
 )
 async def put_groups(
-    _: SigaaConnectionDep,
+    _: CommunityWriteDep,
     service: GroupServiceDep,
     code: Code,
     semester: Semester,

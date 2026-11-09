@@ -30,6 +30,25 @@ const materia = (code: string, required: boolean, ...options: PlannedClass[]): S
     options
 });
 
+test('pré-requisito conhecido não pode ser cumprido na mesma grade e correquisito precisa estar junto', () => {
+    const a = turma('A', '01', '24M12');
+    const b = { ...turma('B', '01', '35M12'), prerequisites: [[{ code: 'A' }]] };
+    const input = [materia('A', true, a), materia('B', true, b)];
+    const blocked = suggestSchedules(input);
+    expect(blocked.suggestions).toEqual([]);
+    expect(blocked.impossible.map((item) => item.code)).toContain('B');
+    expect(
+        suggestSchedules(input, { ...DEFAULT_PREFERENCES, completedCodes: ['A'] }).suggestions
+            .length
+    ).toBeGreaterThan(0);
+    const corequisite = { ...b, prerequisites: null, corequisites: [[{ code: 'A' }]] };
+    const plans = suggestSchedules([materia('A', false, a), materia('B', true, corequisite)]);
+    expect(plans.suggestions.length).toBeGreaterThan(0);
+    expect(plans.suggestions.every((plan) => plan.items.some((item) => item.code === 'A'))).toBe(
+        true
+    );
+});
+
 const prefs = (extra: Partial<Preferences> = {}): Preferences => ({
     ...DEFAULT_PREFERENCES,
     ...extra

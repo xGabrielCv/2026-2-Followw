@@ -1,4 +1,5 @@
-import { createFileRoute, Link, redirect, useNavigate } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { createFileRoute, Link, Navigate, redirect, useNavigate } from '@tanstack/react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 
@@ -36,6 +37,7 @@ export const Route = createFileRoute('/login')({
 const subscribeNever = () => () => {};
 
 function LoginPage() {
+    const { data: user } = useQuery({ ...meQueryOptions, enabled: false });
     const navigate = useNavigate();
     const login = useLogin();
     const online = useOnline();
@@ -46,6 +48,7 @@ function LoginPage() {
     const storageBlocked = useSyncExternalStore(subscribeNever, isStorageBlocked, () => false);
 
     if (storageBlocked) return <CookiesBlockedPage />;
+    if (user) return <Navigate to="/perfil" replace />;
 
     let error: string | undefined;
     if (!online) error = OFFLINE_MESSAGE;

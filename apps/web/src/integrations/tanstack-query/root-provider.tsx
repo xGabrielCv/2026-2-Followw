@@ -13,11 +13,15 @@ import { ApiError } from '#/queries/errors.ts';
 
 initializeQueryTimers();
 
+function discardExpiredSession(queryClient: QueryClient) {
+    void clearSession(queryClient).catch(() => {});
+}
+
 export function getContext() {
     const isServer = environmentManager.isServer();
     // sessão expirou enquanto o /me ainda estava em cache
     const onError = (error: Error) => {
-        if (error instanceof ApiError && error.isUnauthorized) void clearSession(queryClient);
+        if (error instanceof ApiError && error.isUnauthorized) discardExpiredSession(queryClient);
     };
     const queryClient: QueryClient = new QueryClient({
         queryCache: new QueryCache({ onError }),

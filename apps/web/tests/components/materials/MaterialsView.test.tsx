@@ -34,7 +34,7 @@ const data = (
     oldest_semester: '2024.1',
     limits: {
         max_file_bytes: 20 * 1024 * 1024,
-        max_per_student: 10,
+        max_daily_upload_attempts: 10,
         max_per_subject: 50,
         max_subject_bytes: 100 * 1024 * 1024,
         keep_semesters: 6

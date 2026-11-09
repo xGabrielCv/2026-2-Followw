@@ -69,6 +69,8 @@ test('envia só a nota, a chamada, o comentário e a matéria, e guarda o segred
                 body: {
                     siape: 111,
                     rating: 85,
+                    semester: null,
+                    criteria: null,
                     attendance: 'cobra',
                     comment: 'Boa didática.',
                     subject: 'FGA0211'

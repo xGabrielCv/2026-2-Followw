@@ -25,7 +25,7 @@ function PrivacyPage() {
                         <h1 className="text-2xl font-bold tracking-tight">Privacidade e termos</h1>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                        Atualizado em <time dateTime="2026-11-08">8 de novembro de 2026</time>
+                        Atualizado em <time dateTime="2026-11-09">9 de novembro de 2026</time>
                     </p>
                     <nav
                         aria-label="Nesta página"
@@ -75,24 +75,30 @@ function PrivacyPage() {
                         <div>
                             <h3 className="font-semibold text-foreground">Comunidade</h3>
                             <p>
-                                Avaliações, grupos, materiais, dúvidas, guias e denúncias não exigem
-                                login para publicar, editar ou apagar, mas a leitura é pública. Não
-                                associamos nome nem matrícula às publicações. Cada publicação nasce
-                                com uma chave aleatória própria, gerada e guardada no seu navegador;
-                                o servidor guarda só um verificador dela, sem relação com as demais
-                                publicações, com a sua conta ou com o seu aparelho. Os limites
-                                contra abuso usam a origem de rede só durante a janela de cada cota,
-                                sem gravá-la junto ao conteúdo. Isso reduz muito, mas não elimina, a
-                                possibilidade de alguém ligar publicações: o servidor ainda recebe,
-                                no momento de cada pedido, dados de conexão (como o endereço de
-                                rede) e o texto que você envia; publicações antigas ficam como
-                                estavam até você abrir o app e migrá-las automaticamente. O conteúdo
-                                fica cifrado no banco (AES-256-GCM) e os arquivos ficam cifrados e
-                                sem metadados removidos na preparação do arquivo. A API e a
-                                moderação conseguem decifrar esse conteúdo; não se trata de
-                                criptografia de ponta a ponta. Textos, imagens e arquivos podem
-                                identificar pessoas pelo próprio conteúdo: não publique dados
-                                pessoais ou convites privados.
+                                A leitura é pública. Publicar e responder exige uma sessão válida do
+                                SIGAA. A sessão é conferida numa requisição separada; a publicação
+                                usa uma autorização curta e de uso único, sem o cookie acadêmico.
+                                Não associamos nome nem matrícula às publicações. Cada contribuição
+                                própria usa uma credencial aleatória independente, criada sem dados
+                                pessoais e guardada cifrada neste navegador; o servidor guarda só
+                                seu verificador para permitir edição e exclusão. Os grupos têm
+                                edição colaborativa entre alunos autenticados. Denúncias e chamados
+                                também podem ser enviados sem login. Os limites contra abuso usam a
+                                origem de rede só durante a janela de cada cota, sem gravá-la junto
+                                ao conteúdo. Isso reduz muito, mas não elimina, a possibilidade de
+                                alguém ligar publicações: o servidor ainda recebe, no momento de
+                                cada pedido, dados de conexão (como o endereço de rede), horários e
+                                o texto que você envia. Esses elementos podem ser correlacionados
+                                por quem opera o serviço; não prometemos anonimato absoluto.
+                                Verificadores antigos são trocados por credenciais independentes
+                                quando o app consegue apresentar a chave anterior, sem apagar o
+                                conteúdo. O conteúdo fica cifrado no banco (AES-256-GCM) e os
+                                arquivos ficam cifrados e têm metadados comuns removidos na
+                                preparação. Isso não garante que dados embutidos ou escritos nas
+                                páginas tenham sido removidos. A API e a moderação conseguem
+                                decifrar esse conteúdo; não se trata de criptografia de ponta a
+                                ponta. Textos, imagens e arquivos podem identificar pessoas pelo
+                                próprio conteúdo: não publique dados pessoais ou convites privados.
                             </p>
                         </div>
                         <div>
@@ -122,12 +128,18 @@ function PrivacyPage() {
                         <div>
                             <h3 className="font-semibold text-foreground">Análise de uso</h3>
                             <p>
-                                Quando configurado pelo responsável pela instância, o PostHog recebe
-                                métricas de navegação (páginas e interações), sem gravação de sessão
-                                e sem os textos da tela. A API registra dados técnicos das
-                                requisições, como rota, status e duração, sem matrícula, para
-                                diagnóstico. A contagem de uso do painel só existe se você ligar as
-                                métricas e usa uma chave aleatória nova por dia, semana e mês.
+                                As métricas opcionais ficam desligadas por padrão. Não usamos
+                                rastreador externo nem gravação de sessão. Com seu consentimento e a
+                                função habilitada na instância, a própria API pode contar uma falha
+                                técnica de manutenção do login, sem cookies, identificação, URL da
+                                tela, textos ou dados acadêmicos nesse envio. Desligar a opção
+                                cancela envios pendentes e impede novos envios; não desfaz contagens
+                                agregadas anteriores. A API registra dados técnicos das requisições,
+                                como rota, status e duração, sem matrícula, para diagnóstico. A
+                                contagem de uso do painel só existe se você ligar as métricas e usa
+                                chaves aleatórias independentes por dia, semana e mês, sem relação
+                                com suas publicações. Esses números aproximam o uso por navegador e
+                                podem variar quando você troca de aparelho ou limpa os dados.
                             </p>
                         </div>
                         <div>
@@ -138,8 +150,10 @@ function PrivacyPage() {
                                 comunidade pode ser apagado no próprio item, com login e a chave de
                                 publicação guardada neste navegador. Qualquer pessoa pode solicitar
                                 revisão ou remoção pelo botão de denúncia, inclusive sem login. Para
-                                limpar o dispositivo, use Perfil, Uso de dados, ou remova os dados
-                                do site no navegador.
+                                acompanhar um pedido ou recorrer de uma decisão, abra um chamado
+                                anônimo no suporte e guarde sua chave de acesso. Para limpar o
+                                dispositivo, use Perfil, Uso de dados, ou remova os dados do site no
+                                navegador.
                             </p>
                         </div>
                     </section>

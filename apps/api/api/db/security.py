@@ -17,6 +17,9 @@ Classificação das tabelas:
 
 from sqlalchemy import Connection, text
 
+from api.db.community_security import install_functions
+from api.db.community_security import policies as community_policies
+
 APP_ROLE = "followw_app"
 
 _ADMIN = "current_setting('app.scope', true) = 'admin'"
@@ -28,6 +31,18 @@ _TICKET_EXISTS = "EXISTS (SELECT 1 FROM tickets t WHERE t.id = {table}.ticket_id
 
 # (tabela, comando, USING, WITH CHECK)
 _POLICIES: list[tuple[str, str, str | None, str | None]] = [
+    (
+        "community_upload_budgets",
+        "ALL",
+        "current_setting('app.scope', true) = 'upload_budget'",
+        "current_setting('app.scope', true) = 'upload_budget'",
+    ),
+    (
+        "community_permission_uses",
+        "ALL",
+        "current_setting('app.scope', true) = 'community_write'",
+        "current_setting('app.scope', true) = 'community_write'",
+    ),
     ("admin_accounts", "ALL", _ADMIN, _ADMIN),
     ("admin_sessions", "ALL", _ADMIN, _ADMIN),
     ("admin_log", "SELECT", _ADMIN, None),
@@ -67,6 +82,7 @@ _POLICIES: list[tuple[str, str, str | None, str | None]] = [
         f"{_TICKET_EXISTS.format(table='ticket_messages')} AND ({_ADMIN} OR sender = 'student')",
     ),
 ]
+_POLICIES += community_policies()
 GUARDED = tuple(dict.fromkeys(table for table, *_ in _POLICIES))
 # a aplicação só acrescenta nestas (auditoria e mensagens não se reescrevem)
 APPEND_ONLY = ("admin_log", "ticket_messages")
@@ -81,54 +97,61 @@ NO_DELETE = (
 )
 
 
-def secure(connection: Connection, password: str | None = None) -> None:
+def secure(
+    connection: Connection, password: str | None = None, *, role: str = APP_ROLE
+) -> None:
     """Idempotente; roda dentro da transação de `create_schema`, com a conta de manutenção."""
+    import re
+
+    if not re.fullmatch(r"followw_(?:app|test_app|(?:e2e|load)_[a-f0-9]{12})", role):
+        raise ValueError("Papel de banco inválido")
     exists = connection.execute(
-        text("SELECT 1 FROM pg_roles WHERE rolname = :role"), {"role": APP_ROLE}
+        text("SELECT 1 FROM pg_roles WHERE rolname = :role"), {"role": role}
     ).first()
     if not exists:
         connection.execute(
             text(
-                f"CREATE ROLE {APP_ROLE} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT"
+                f"CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOINHERIT"
             )
         )
     if password:
         literal = connection.execute(
             text("SELECT quote_literal(:p)"), {"p": password}
         ).scalar_one()
-        connection.execute(text(f"ALTER ROLE {APP_ROLE} LOGIN PASSWORD {literal}"))
+        connection.execute(text(f"ALTER ROLE {role} LOGIN PASSWORD {literal}"))
     connection.execute(
         text(
             "DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO "
-            + APP_ROLE
+            + role
             + "', current_database()); END $$"
         )
     )
-    connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}"))
+    connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {role}"))
     connection.execute(
         text(
-            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {APP_ROLE}"
+            f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {role}"
         )
     )
     connection.execute(
-        text(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE}")
+        text(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {role}")
     )
     for table in APPEND_ONLY:
-        connection.execute(text(f"REVOKE UPDATE, DELETE ON {table} FROM {APP_ROLE}"))
+        connection.execute(text(f"REVOKE UPDATE, DELETE ON {table} FROM {role}"))
     connection.execute(
-        text(f"REVOKE INSERT, UPDATE, DELETE ON schema_updates FROM {APP_ROLE}")
+        text(f"REVOKE INSERT, UPDATE, DELETE ON schema_updates FROM {role}")
     )
     for table in NO_DELETE:
-        connection.execute(text(f"REVOKE DELETE ON {table} FROM {APP_ROLE}"))
+        connection.execute(text(f"REVOKE DELETE ON {table} FROM {role}"))
     for table in GUARDED:
         connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
         connection.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
     for table, command, using, check in _POLICIES:
         name = f"{table}_{command.lower()}"
         connection.execute(text(f"DROP POLICY IF EXISTS {name} ON {table}"))
-        clauses = f"FOR {command} TO {APP_ROLE}"
+        clauses = f"FOR {command} TO {role}"
         if using:
             clauses += f" USING ({using})"
         if check:
             clauses += f" WITH CHECK ({check})"
         connection.execute(text(f"CREATE POLICY {name} ON {table} {clauses}"))
+    install_functions(connection, role)

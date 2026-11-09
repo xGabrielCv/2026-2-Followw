@@ -7,6 +7,7 @@ import { ApiError, toApiError } from '#/queries/errors';
 let ssr: { url: string; cookie?: string; ip?: string; setCookie?: string[] } | null = null;
 const originalSecret = process.env.RATE_LIMIT_SECRET_KEY;
 const originalVercel = process.env.VERCEL;
+const originalApi = process.env.API_INTERNAL_URL;
 
 function inRequest() {
     if (!ssr) throw new Error('fora de uma requisição');
@@ -34,6 +35,8 @@ beforeAll(async () => {
 
 afterEach(() => {
     ssr = null;
+    if (originalApi === undefined) delete process.env.API_INTERNAL_URL;
+    else process.env.API_INTERNAL_URL = originalApi;
     if (originalSecret === undefined) delete process.env.RATE_LIMIT_SECRET_KEY;
     else process.env.RATE_LIMIT_SECRET_KEY = originalSecret;
     if (originalVercel === undefined) delete process.env.VERCEL;
@@ -58,12 +61,13 @@ describe('cliente da API', () => {
         expect(request.headers.get('cookie')).toBeNull();
     });
 
-    test('no SSR usa a origem e o cookie da requisição recebida', async () => {
+    test('no SSR usa destino configurado e somente o cookie da requisição recebida', async () => {
+        process.env.API_INTERNAL_URL = 'http://127.0.0.1:8011';
         ssr = { url: 'https://followw.app/turmas?semestre=2026.2', cookie: 'access=abc' };
 
         const request = await getMe();
 
-        expect(request.url).toBe('https://followw.app/api/me');
+        expect(request.url).toBe('http://127.0.0.1:8011/api/me');
         expect(request.headers.get('cookie')).toBe('access=abc');
     });
 

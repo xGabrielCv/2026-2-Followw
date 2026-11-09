@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-import { STORAGE_KEYS, storedValue } from '#/lib/local-storage';
+import { localAccount, STORAGE_KEYS, storedValue } from '#/lib/local-storage';
 
 /**
  * Credenciais de autoria: cada publicação (post, resposta, material, guia, liberação de índices) nasce
@@ -29,8 +29,8 @@ export const validAuthor = (value: unknown): value is string =>
 
 const credentials = storedValue<Credentials | string>(STORAGE_KEYS.AUTHOR, EMPTY);
 
-function read(): Credentials {
-    const value = credentials.getSnapshot();
+function read(source: Pick<typeof credentials, 'getSnapshot'> = credentials): Credentials {
+    const value = source.getSnapshot();
     if (typeof value === 'string') return validAuthor(value) ? { legacy: value, keys: {} } : EMPTY;
     return value && typeof value === 'object' && value.keys ? value : EMPTY;
 }
@@ -50,6 +50,14 @@ export function rememberKey(kind: AuthorKind, id: string, key: string) {
     if (!validAuthor(key)) return;
     const current = read();
     write({ ...current, keys: { ...current.keys, [`${kind}:${id}`]: key } });
+}
+
+/** Respostas em trânsito pertencem à conta que iniciou a operação. */
+export function rememberKeyAt(account: string, kind: AuthorKind, id: string, key: string) {
+    if (!validAuthor(key)) return;
+    const store = credentials.atAccount(account);
+    const value = read(store);
+    store.set({ ...value, keys: { ...value.keys, [`${kind}:${id}`]: key } });
 }
 
 export function forgetKey(kind: AuthorKind, id: string) {
@@ -79,12 +87,17 @@ export function shareKeys(): Record<string, string> {
     return out;
 }
 
-export function rememberShareKeys(keys: Record<string, string>) {
-    for (const [classroom, key] of Object.entries(keys)) rememberKey('share', classroom, key);
+export function rememberShareKeys(keys: Record<string, string>, account = localAccount()) {
+    for (const [classroom, key] of Object.entries(keys))
+        rememberKeyAt(account, 'share', classroom, key);
 }
 
-export function forgetShareKeys(classrooms: string[]) {
-    for (const classroom of classrooms) forgetKey('share', classroom);
+export function forgetShareKeys(classrooms: string[], account = localAccount()) {
+    const store = credentials.atAccount(account);
+    const value = read(store);
+    const keys = { ...value.keys };
+    for (const classroom of classrooms) delete keys[`share:${classroom}`];
+    store.set({ ...value, keys });
 }
 
 /** Reativo: a tela decide "é minha" só pelo que este navegador sabe; o servidor não diz quem publicou. */

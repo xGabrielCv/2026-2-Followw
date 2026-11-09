@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 
 import { pwaPlugins } from '#/integrations/offline/pwa';
+import { publicRouteRules } from '#/lib/http-policy';
 
 const BUILD_ID = Date.now().toString(36);
 // o cache persistido do TanStack Query só é descartado quando o contrato da API muda
@@ -17,6 +18,8 @@ const QUERY_CACHE_BUSTER = createHash('sha256')
 
 const config = defineConfig({
     resolve: { tsconfigPaths: true },
+    optimizeDeps: { exclude: ['@resvg/resvg-js'] },
+    ssr: { external: ['@resvg/resvg-js'] },
     define: {
         'import.meta.env.VITE_BUILD_ID': JSON.stringify(BUILD_ID),
         'import.meta.env.VITE_QUERY_CACHE_BUSTER': JSON.stringify(QUERY_CACHE_BUSTER)
@@ -25,21 +28,7 @@ const config = defineConfig({
         nitro({
             rollupConfig: { external: [/^@sentry\//] },
             // fora da Vercel (ex.: numa VPS), o próprio servidor manda os cabeçalhos de segurança
-            routeRules: {
-                '/admin': { redirect: '/api/admin' },
-                '/**': {
-                    headers: {
-                        'X-Content-Type-Options': 'nosniff',
-                        'Cache-Control': 'private, no-store',
-                        'Referrer-Policy': 'strict-origin-when-cross-origin',
-                        'X-Frame-Options': 'DENY',
-                        'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()'
-                    }
-                },
-                '/assets/**': {
-                    headers: { 'Cache-Control': 'public, max-age=31536000, immutable' }
-                }
-            },
+            routeRules: publicRouteRules,
             // só no dev; na Vercel, o vercel.json faz o mesmo. API_PORT vem do run.ps1 (-ApiPort)
             devProxy: { '/api/**': `http://127.0.0.1:${process.env.API_PORT ?? 8000}` }
         }),

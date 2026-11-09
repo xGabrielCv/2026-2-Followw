@@ -73,9 +73,7 @@ class SigaaConnection:
                 with operation("sigaa.connect", reused_session=self.authenticated):
                     token = self._session_token or await client.authenticate()
             except BaseException:
-                await client.aclose()
-                await self._release_shared()
-                self._release()
+                await self._close_client(client)
                 raise
             self._client = client
             self._renew(token)
@@ -91,9 +89,16 @@ class SigaaConnection:
                 with suppress(SigaaError, httpx.HTTPError), operation("sigaa.logout"):
                     await client.logout()
         finally:
+            await self._close_client(client)
+
+    async def _close_client(self, client: SigaaClient) -> None:
+        try:
             await client.aclose()
-            await self._release_shared()
-            self._release()
+        finally:
+            try:
+                await self._release_shared()
+            finally:
+                self._release()
 
     async def _acquire(self) -> None:
         # Só a sessão do navegador é compartilhada; os jobs logam numa sessão própria.

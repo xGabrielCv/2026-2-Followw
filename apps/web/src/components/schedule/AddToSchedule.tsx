@@ -18,7 +18,10 @@ export function AddToSchedule({
         ...classroom,
         code: subject.code,
         name: subject.name,
-        hours: subject.hours ?? null
+        hours: subject.hours ?? null,
+        prerequisites: subject.prerequisites ?? null,
+        corequisites: subject.corequisites ?? null,
+        equivalences: subject.equivalences ?? null
     };
     const selected = has(item);
 

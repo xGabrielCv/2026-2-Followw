@@ -129,9 +129,24 @@ describe('planejamento de formatura', () => {
         expect(dependencyChains(fluxo).get('A')).toBe(3);
     });
 
-    test('pré-requisito fora do fluxo obrigatório não trava o plano', () => {
+    test('pré-requisito externo exige confirmação em vez de presumir conclusão', () => {
         const fora = model([materia('A', 1, { pre: [['OPTATIVA-X']] })]);
-        expect(codes(planGraduation(fora, nada, cenario()))).toEqual([['A']]);
+        expect(planGraduation(fora, nada, cenario()).blocked.map((item) => item.code)).toEqual([
+            'A'
+        ]);
+        expect(
+            codes(planGraduation(fora, nada, cenario({ completedCodes: ['OPTATIVA-X'] })))
+        ).toEqual([['A']]);
+    });
+
+    test('cadeia de correquisitos não coloca par incompleto por falta de espaço', () => {
+        const co = model([
+            materia('A', 1, { co: [['B']] }),
+            materia('B', 1, { co: [['C']] }),
+            materia('C', 1)
+        ]);
+        const plan = planGraduation(co, nada, cenario({ maxSubjects: 2 }));
+        expect(codes(plan)).toEqual([['B', 'C'], ['A']]);
     });
 
     test('dado com ciclo termina e aponta o que ficou bloqueado', () => {

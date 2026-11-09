@@ -1,32 +1,28 @@
-"""Comunidade: dúvidas e publicações anônimas, com respostas.
-
-Ninguém aparece com nome. Cada conversa tem a sua chave de autor (HMAC da matrícula com a
-conversa): marca as respostas de quem perguntou e deixa apagar, mas não liga uma conversa a
-outra do mesmo aluno.
-"""
+"""Conversas públicas com credenciais aleatórias independentes por publicação."""
 
 import uuid
 from collections.abc import Collection
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-import sigaa_client
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel, StringConstraints
-from sqlalchemy import or_, select
+from pydantic import BaseModel, Field, StringConstraints
+from sqlalchemy import or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.anonymous import owns, resource_key
+from api.community_limits import read_limits
 from api.crypto import matches
+from api.db.context import apply_context, set_context
 from api.db.main import DatabaseDep
 from api.db.models import Course, ForumPost, ForumReply, Subject
 from api.db.pagination import paginate
 from api.modules.class_groups.service import Campus
-from api.modules.me.profile import enrollment
 from api.schemas import SubjectReference
 
 PostKind = Literal["duvida", "post"]
-PostOrder = Literal["recent", "active", "unanswered"]
+PostOrder = Literal["recent", "active", "unanswered", "resolved", "unresolved"]
 FORUM_PAGE_SIZE = 20
 MAX_REPLIES = 500
 
@@ -57,8 +53,8 @@ class PostInput(BaseModel):
         ]
         | None
     ) = None
-    # Marca o curso do aluno (lido do perfil), para quem filtra pelo próprio curso.
-    tag_course: bool = False
+    # Curso público indicado voluntariamente; nunca valida identidade ou vínculo.
+    course_id: int | None = Field(default=None, gt=0, le=2**31 - 1)
 
 
 class ReplyInput(BaseModel):
@@ -75,6 +71,7 @@ class CourseTag(BaseModel):
 class PostItem(BaseModel):
     id: uuid.UUID
     kind: PostKind
+    resolved: bool
     title: str
     excerpt: str
     campus: Campus | None
@@ -160,6 +157,7 @@ def _item(
         if post.subject_code
         else None,
         reply_count=post.reply_count,
+        resolved=post.resolved,
         created_at=post.created_at,
         last_activity_at=post.last_activity_at,
         mine=owns(post.author_key, author, _scope(post.id)),
@@ -201,6 +199,13 @@ class ForumService:
             conditions.append(ForumPost.subject_code.in_(subjects))
         if order == "unanswered":
             conditions.append(ForumPost.reply_count == 0)
+        if order in ("resolved", "unresolved"):
+            conditions.extend(
+                [
+                    ForumPost.kind == "duvida",
+                    ForumPost.resolved == (order == "resolved"),
+                ]
+            )
         sort = (
             ForumPost.last_activity_at.desc()
             if order == "active"
@@ -267,16 +272,42 @@ class ForumService:
         self,
         author: str,
         body: PostInput,
-        profile: sigaa_client.UserProfile | None = None,
     ) -> PostDetails:
         post_id = uuid.uuid4()
 
         async def write(session: AsyncSession) -> None:
-            course_id = None
-            if profile is not None:
-                course_id = (await enrollment(session, profile)).course_id
+            await session.execute(text("SELECT pg_advisory_xact_lock(865942121)"))
+            course_id = body.course_id
+            if course_id is not None and await session.get(Course, course_id) is None:
+                raise HTTPException(422, "Curso não encontrado.")
             if body.subject and await session.get(Subject, body.subject) is None:
                 raise HTTPException(422, "Matéria não encontrada.")
+            if len(body.body) >= 40:
+                recent = await session.scalars(
+                    select(ForumPost)
+                    .where(
+                        ForumPost.kind == body.kind,
+                        ForumPost.subject_code.is_not_distinct_from(body.subject),
+                        ForumPost.campus.is_not_distinct_from(body.campus),
+                        ForumPost.course_id.is_not_distinct_from(course_id),
+                        ForumPost.created_at >= datetime.now(UTC) - timedelta(days=1),
+                    )
+                    .order_by(ForumPost.created_at.desc())
+                    .limit(_SEARCH_WINDOW)
+                )
+
+                def normalize(value):
+                    return " ".join(value.casefold().split())
+
+                if any(
+                    normalize(row.title) == normalize(body.title)
+                    and normalize(row.body) == normalize(body.body)
+                    for row in recent
+                ):
+                    raise HTTPException(
+                        409,
+                        "Esta publicação já apareceu aqui nas últimas 24 horas. Confira a conversa existente.",
+                    )
             session.add(
                 ForumPost(
                     id=post_id,
@@ -293,6 +324,22 @@ class ForumService:
         await self._db.write(write)
         return await self.get(post_id, author)
 
+    async def set_resolved(
+        self, post_id: uuid.UUID, author: str, resolved: bool
+    ) -> PostDetails:
+        async def write(session: AsyncSession):
+            post = await session.get(ForumPost, post_id)
+            if post is None or not owns(post.author_key, author, _scope(post_id)):
+                raise HTTPException(404, "Publicação não encontrada.")
+            if post.kind != "duvida":
+                raise HTTPException(
+                    422, "Somente dúvidas podem ser marcadas como resolvidas."
+                )
+            post.resolved = resolved
+
+        await self._db.write(write)
+        return await self.get(post_id, author)
+
     async def reply(
         self,
         post_id: uuid.UUID,
@@ -301,13 +348,32 @@ class ForumService:
         op_key: str | None = None,
     ) -> tuple[PostDetails, uuid.UUID]:
         reply_id = uuid.uuid4()
+        set_context(reply_limit=str(MAX_REPLIES))
 
         async def write(session: AsyncSession) -> None:
-            post = await session.get(ForumPost, post_id, with_for_update=True)
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"),
+                {"key": post_id.int % (2**63 - 1)},
+            )
+            post = await session.get(ForumPost, post_id)
             if post is None:
                 raise HTTPException(404, "Publicação não encontrada.")
-            if post.reply_count >= MAX_REPLIES:
+            limit = min(MAX_REPLIES, (await read_limits(session)).forum_replies)
+            set_context(reply_limit=str(limit))
+            await apply_context(session)
+            if post.reply_count >= limit:
                 raise HTTPException(409, "A conversa chegou ao limite de respostas.")
+            if len(body.body) >= 40:
+                recent = await session.scalars(
+                    select(ForumReply.body)
+                    .where(ForumReply.post_id == post_id)
+                    .limit(MAX_REPLIES)
+                )
+                normalized = " ".join(body.body.casefold().split())
+                if any(
+                    " ".join(value.casefold().split()) == normalized for value in recent
+                ):
+                    raise HTTPException(409, "Esta resposta já existe na conversa.")
             session.add(
                 ForumReply(
                     id=reply_id,
@@ -317,10 +383,16 @@ class ForumService:
                     by_op=owns(post.author_key, op_key, _scope(post_id)),
                 )
             )
-            post.reply_count += 1
-            post.last_activity_at = datetime.now(UTC)
 
-        await self._db.write(write)
+        try:
+            await self._db.write(write)
+        except IntegrityError as error:
+            cause = getattr(error.orig, "__cause__", None)
+            if getattr(cause, "constraint_name", None) == "forum_reply_limit":
+                raise HTTPException(
+                    409, "A conversa chegou ao limite de respostas."
+                ) from None
+            raise
         return await self.get(post_id, author), reply_id
 
     async def delete_post(self, post_id: uuid.UUID, author: str) -> None:
@@ -344,9 +416,6 @@ class ForumService:
             ):
                 raise HTTPException(404, "Resposta não encontrada.")
             await session.delete(reply)
-            post = await session.get(ForumPost, post_id, with_for_update=True)
-            if post is not None:
-                post.reply_count = max(0, post.reply_count - 1)
 
         await self._db.write(write)
 

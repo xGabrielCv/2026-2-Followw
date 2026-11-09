@@ -8,15 +8,16 @@ import {
     keyFor,
     legacySecret,
     newKey,
-    rememberKey,
+    rememberKeyAt,
     usageHeader
 } from '#/lib/author';
-import { localStorageRepository } from '#/lib/local-storage';
+import { flushLocalStorage, localAccount, localStorageRepository } from '#/lib/local-storage';
 import { initializeLocalVault } from '#/lib/local-vault';
+import { communityRequest } from '#/queries/community-permissions';
 import { toApiError } from '#/queries/errors.ts';
 
 // a API fica em /api da mesma origem; no SSR o fetch exige URL absoluta, e a origem provisória é
-// trocada pela da requisição recebida (veja `ssrMiddleware`)
+// trocada pelo destino interno configurado (veja `ssrMiddleware`)
 const baseUrl = createIsomorphicFn()
     .client(() => '/api')
     .server(() => 'http://localhost/api')();
@@ -40,13 +41,9 @@ const getSsrHeaders = createIsomorphicFn()
 const toSsrOrigin = createIsomorphicFn()
     .client((request: Request) => request)
     .server(async (request: Request) => {
-        const { getRequestUrl } = await import('@tanstack/react-start/server');
-        try {
-            const { pathname, search } = new URL(request.url);
-            return new Request(new URL(pathname + search, getRequestUrl()), request);
-        } catch {
-            return request;
-        }
+        const { serverApiUrl } = await import('#/queries/api-origin.server');
+        const { pathname, search } = new URL(request.url);
+        return new Request(serverApiUrl(pathname + search), request);
     });
 
 const forwardSsrSetCookie = createIsomorphicFn()
@@ -85,6 +82,7 @@ const errorHandlingMiddleware: Middleware = {
 
 export const apiClient = createClient<paths>({
     baseUrl,
+    fetch: (request) => globalThis.fetch(request),
     credentials: 'include'
 });
 
@@ -103,7 +101,11 @@ function authorKey({ method, parts }: ReturnType<typeof route>): string | undefi
     if (method === 'POST' && root === 'forum') {
         if (parts.length === 1 || (parts.length === 3 && child === 'replies')) return newKey();
     }
-    if (method === 'DELETE' && root === 'forum' && id) {
+    if (
+        (method === 'DELETE' || (method === 'PATCH' && child === 'resolved')) &&
+        root === 'forum' &&
+        id
+    ) {
         const stored =
             child === 'replies' && childId ? keyFor('reply', childId) : keyFor('post', id);
         return stored ?? legacySecret();
@@ -119,11 +121,15 @@ const KIND_BY_ROOT: Record<string, AuthorKind | undefined> = {
     tutorials: 'tutorial'
 };
 
+const pendingAuthors = new Map<string, string>();
+
 const authorMiddleware: Middleware = {
-    async onRequest({ request }) {
+    async onRequest({ request, id }) {
+        const account = localAccount();
         if (typeof indexedDB !== 'undefined') await initializeLocalVault();
         const where = route(request);
         const key = authorKey(where);
+        if (key && where.method === 'POST') pendingAuthors.set(id, account);
         if (key) request.headers.set('X-Followw-Author', key);
         // quem abriu a conversa prova isso ao responder (a chave do post nunca sai de outro jeito)
         if (where.method === 'POST' && where.parts[0] === 'forum' && where.parts[2] === 'replies') {
@@ -141,19 +147,37 @@ const authorMiddleware: Middleware = {
         }
         return request;
     },
-    async onResponse({ request, response }) {
+    async onResponse({ request, response, id }) {
+        const account = pendingAuthors.get(id);
+        pendingAuthors.delete(id);
         const created = response.headers.get('X-Created-Id');
         const key = request.headers.get('X-Followw-Author');
-        if (!response.ok || !created || !key) return;
+        if (!response.ok || !created || !key || account === undefined) return;
         const { method, parts } = route(request);
         if (method !== 'POST') return;
         // o id novo vem do servidor; a chave só existe aqui
         const kind =
             parts[0] === 'forum' && parts[2] === 'replies' ? 'reply' : KIND_BY_ROOT[parts[0]];
-        if (kind) rememberKey(kind, created, key);
+        if (kind) {
+            rememberKeyAt(account, kind, created, key);
+            await flushLocalStorage();
+        }
+    },
+    onError({ id }) {
+        pendingAuthors.delete(id);
     }
 };
 
 apiClient.use(errorHandlingMiddleware);
 apiClient.use(authorMiddleware);
 apiClient.use(ssrMiddleware);
+apiClient.use({
+    async onRequest({ request, options, id }) {
+        try {
+            return await communityRequest(request, options.fetch);
+        } catch (error) {
+            pendingAuthors.delete(id);
+            throw error;
+        }
+    }
+});

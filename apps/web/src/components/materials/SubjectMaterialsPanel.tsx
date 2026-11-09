@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
     Download,
-    ExternalLink,
+    Eye,
     FileText,
     Image as ImageIcon,
     ShieldCheck,
@@ -14,6 +14,8 @@ import type { MaterialItem, SubjectMaterials } from '#/queries/community';
 
 import { ReportButton } from '#/components/community/ReportButton';
 import { LoadingText } from '#/components/LoadingText';
+import { FilteredMaterials } from '#/components/materials/FilteredMaterials';
+import { MaterialPreview } from '#/components/materials/MaterialPreview';
 import { UploadMaterialDialog } from '#/components/materials/UploadMaterialDialog';
 import { Button } from '#/components/ui/button';
 import { useIsOwn } from '#/lib/author';
@@ -91,7 +93,6 @@ export function MaterialsView({
     const { usage, limits } = data;
     // o servidor não sabe quem enviou: o limite por matéria vale para todos
     const full = usage.files >= limits.max_per_subject || usage.bytes >= limits.max_subject_bytes;
-    const semesters = [...new Set(data.items.map((item) => item.semester))];
 
     return (
         <section aria-label="Material da matéria" className="flex flex-col gap-3">
@@ -131,26 +132,30 @@ export function MaterialsView({
                     Ninguém compartilhou material desta matéria ainda.
                 </p>
             ) : (
-                semesters.map((semester) => (
-                    <div key={semester} className="flex flex-col gap-2">
-                        <h4 className="px-1 text-xs font-semibold text-muted-foreground">
-                            {semester}
-                        </h4>
-                        <ul className="flex flex-col gap-2">
-                            {data.items
-                                .filter((item) => item.semester === semester)
-                                .map((item) => (
-                                    <MaterialRow
-                                        key={item.id}
-                                        item={item}
-                                        canEdit={Boolean(onUpload)}
-                                        code={code}
-                                        classroom={classroom}
-                                    />
-                                ))}
-                        </ul>
-                    </div>
-                ))
+                <FilteredMaterials items={data.items}>
+                    {(items) =>
+                        [...new Set(items.map((item) => item.semester))].map((semester) => (
+                            <div key={semester} className="flex flex-col gap-2">
+                                <h4 className="px-1 text-xs font-semibold text-muted-foreground">
+                                    {semester}
+                                </h4>
+                                <ul className="flex flex-col gap-2">
+                                    {items
+                                        .filter((item) => item.semester === semester)
+                                        .map((item) => (
+                                            <MaterialRow
+                                                key={item.id}
+                                                item={item}
+                                                canEdit={Boolean(onUpload)}
+                                                code={code}
+                                                classroom={classroom}
+                                            />
+                                        ))}
+                                </ul>
+                            </div>
+                        ))
+                    }
+                </FilteredMaterials>
             )}
             {children}
         </section>
@@ -223,6 +228,7 @@ function MaterialRow({
     const mine = isOwn('material', item.id, item.mine);
     const [busy, setBusy] = useState(false);
     const [failed, setFailed] = useState(false);
+    const [previewing, setPreviewing] = useState(false);
     const origin = originLabel(item, classroom);
     const Icon = item.mime === 'application/pdf' ? FileText : ImageIcon;
 
@@ -236,16 +242,6 @@ function MaterialRow({
         } finally {
             setBusy(false);
         }
-    };
-    const open = () => {
-        // a aba abre no clique (senão o navegador bloqueia) e recebe o arquivo depois
-        const tab = window.open('', '_blank');
-        void fetchFile((blob) => {
-            const url = URL.createObjectURL(blob);
-            if (tab) tab.location.href = url;
-            else saveFile(blob, item.filename);
-            setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        });
     };
 
     return (
@@ -282,8 +278,13 @@ function MaterialRow({
                     </span>
                 )}
                 <div className="mt-1 flex flex-wrap items-center gap-1">
-                    <Button size="sm" variant="outline" disabled={busy} onClick={open}>
-                        <ExternalLink aria-hidden="true" />
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={busy}
+                        onClick={() => setPreviewing(true)}
+                    >
+                        <Eye aria-hidden="true" />
                         Abrir
                     </Button>
                     <Button
@@ -315,6 +316,12 @@ function MaterialRow({
                     )}
                 </div>
             </div>
+            <MaterialPreview
+                code={code}
+                item={item}
+                open={previewing}
+                onOpenChange={setPreviewing}
+            />
         </li>
     );
 }
@@ -324,9 +331,9 @@ export function MaterialsPrivacyNote() {
         <p className="flex gap-2 rounded-xl bg-primary/10 p-3 text-xs">
             <ShieldCheck className="size-4 shrink-0 text-primary" aria-hidden="true" />
             <span>
-                <strong className="font-semibold">Envio anônimo.</strong> Ninguém vê quem enviou. O
-                arquivo é regravado sem metadados (autor, aparelho, localização da foto). Mesmo
-                assim, não envie nada com seu nome, matrícula ou rosto.
+                <strong className="font-semibold">Envio sem seu nome de conta.</strong> O arquivo é
+                regravado para remover metadados comuns, como autor e localização da foto. O próprio
+                conteúdo ainda pode identificar você: não envie nome, matrícula ou rosto.
             </span>
         </p>
     );

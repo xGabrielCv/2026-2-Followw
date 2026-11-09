@@ -16,7 +16,10 @@ const SUMMARY_DAYS = 30;
 const isBalanceRow = (description: string) => /^saldo\b/i.test(description.trim());
 
 /** Movimentações da mais recente à mais antiga, com o saldo reconstruído a partir do atual. */
-export function statementLines({ entries, balance }: RestaurantStatement): StatementLine[] {
+export function statementLines({
+    entries,
+    balance
+}: Pick<RestaurantStatement, 'entries'> & { balance?: string | null }): StatementLine[] {
     const lines = entries
         .filter((entry) => !isBalanceRow(entry.description))
         .map((entry): StatementLine => ({

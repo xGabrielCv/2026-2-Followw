@@ -42,6 +42,8 @@ async function render(reviews: Reviews) {
 const review = (id: string, rating: number, comment: string | null) => ({
     id,
     rating,
+    semester: null,
+    criteria: null,
     comment,
     attendance: 'cobra' as const,
     subject: { code: 'FGA0211', name: 'FUNDAMENTOS DE REDES' },
@@ -50,6 +52,9 @@ const review = (id: string, rating: number, comment: string | null) => ({
 
 test('mostra a nota média e a chamada; os textos ficam no pop-up', async () => {
     const page = await render({
+        total: 3,
+        page: 1,
+        page_size: 20,
         summary: { count: 3, average: 81.7, attendance: { cobra: 2, nao_cobra: 0, varia: 1 } },
         reviews: [
             review('a', 90, 'Explica muito bem.'),
@@ -70,7 +75,7 @@ test('mostra a nota média e a chamada; os textos ficam no pop-up', async () => 
     expect(page.getByRole('link', { name: 'Entre para avaliar' })).toBeDefined();
 });
 
-test('o pop-up lista as avaliações com nota, matéria e chamada, as com texto primeiro', () => {
+test('o pop-up lista as avaliações com nota, matéria e chamada, mantendo a ordem selecionada', () => {
     const page = dom.testing.render(
         <ReviewList
             reviews={[
@@ -82,16 +87,16 @@ test('o pop-up lista as avaliações com nota, matéria e chamada, as com texto 
     );
     const items = page.getAllByRole('listitem');
     expect(items.map((item) => item.textContent?.includes('Sem comentário.'))).toEqual([
+        true,
         false,
-        false,
-        true
+        false
     ]);
-    expect(items[0]?.textContent).toContain('Nota 90');
+    expect(items[0]?.textContent).toContain('Nota 75');
     expect(items[0]?.textContent).toContain('FGA0211');
     expect(items[0]?.textContent).toContain('Chamada: Cobra');
 });
 
 test('sem avaliações, explica que ainda não há nenhuma', async () => {
-    const page = await render({ summary: null, reviews: [] });
+    const page = await render({ summary: null, reviews: [], total: 0, page: 1, page_size: 20 });
     expect(await page.findByText(/Ninguém avaliou este docente ainda/)).toBeDefined();
 });

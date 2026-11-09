@@ -55,6 +55,7 @@ def set_refresh_cookie(
         {
             "registration": credentials.registration,
             "password": credentials.password.get_secret_value(),
+            "session_version": 2,
         },
         settings.refresh_token_expire_minutes,
         expires_at=expires_at,
@@ -63,18 +64,25 @@ def set_refresh_cookie(
 
 def read_refresh_cookie(request: Request) -> Credentials | None:
     payload = _read_cookie(request, REFRESH_COOKIE_NAME)
-    if (
-        payload
-        and payload["exp"]
-        > int(datetime.now(UTC).timestamp())
-        + settings.refresh_token_expire_minutes * 60
-        + 5
-    ):
-        return None
+    valid = payload is not None and payload.get("session_version") == 2
+    if valid:
+        valid = (
+            payload["exp"]
+            <= int(datetime.now(UTC).timestamp())
+            + settings.refresh_token_expire_minutes * 60
+            + 5
+        )
     try:
-        return Credentials.model_validate(payload) if payload else None
+        if valid:
+            return Credentials.model_validate(payload)
     except ValidationError:
-        return None
+        pass
+    if any(
+        name in request.cookies
+        for name in (ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME, PROFILE_COOKIE_NAME)
+    ):
+        request.state.clear_academic_cookies = True
+    return None
 
 
 def refresh_deadline(request: Request) -> int | None:

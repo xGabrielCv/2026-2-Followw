@@ -6,10 +6,11 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.anonymous import resource_key
+from api.community_limits import read_limits
 from api.crypto import matches
 from api.db.main import DatabaseDep
 from api.db.models import Tutorial
@@ -98,10 +99,11 @@ class TutorialService:
         key = resource_key(author)
 
         async def write(session: AsyncSession) -> TutorialSubmitted:
-            pending = await session.scalar(
-                select(func.count(Tutorial.id)).where(Tutorial.status == "pending")
-            )
-            if (pending or 0) >= MAX_PENDING_TOTAL:
+            await session.execute(text("SELECT pg_advisory_xact_lock(865942118)"))
+            pending = await session.scalar(select(func.followw_pending_tutorials()))
+            if (pending or 0) >= min(
+                MAX_PENDING_TOTAL, (await read_limits(session)).tutorials_pending
+            ):
                 raise HTTPException(
                     409,
                     "Há guias demais esperando aprovação. Tente de novo mais tarde.",

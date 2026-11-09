@@ -14,6 +14,7 @@ from api.db.context import apply_context
 from api.db.security import secure
 from api.db.seed.run import seed_database
 from api.db.updates import apply_updates
+from api.logger import event
 
 # A instância da Vercel congela entre requisições: a conexão parada pode ter caído.
 engine = create_async_engine(
@@ -40,6 +41,11 @@ maintenance_engine = (
 maintenance_session = async_sessionmaker(maintenance_engine, expire_on_commit=False)
 
 _WRITE_ATTEMPTS = 3
+
+
+def after_commit(session: AsyncSession, action: Callable[[], Awaitable[None]]) -> None:
+    """Efeitos externos só depois da confirmação da transação, nunca durante uma tentativa."""
+    session.info.setdefault("after_commit", []).append(action)
 
 
 def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
@@ -70,6 +76,15 @@ class Database:
                     await apply_context(session)
                     result = await write(session)
                     await session.commit()
+                    for action in session.info.pop("after_commit", []):
+                        try:
+                            await action()
+                        except Exception as error:  # noqa: BLE001 — limpeza não desfaz um commit já confirmado
+                            # Uma falha de limpeza deixa um órfão cifrado, sem desfazer conteúdo confirmado.
+                            event(
+                                "storage.cleanup_failed",
+                                error_type=type(error).__name__,
+                            )
                     return result
             except IntegrityError:
                 if attempt == _WRITE_ATTEMPTS:
@@ -92,7 +107,7 @@ def create_schema(conn: Connection) -> None:
     for table in Base.metadata.sorted_tables:
         for index in table.indexes:
             index.create(conn, checkfirst=True)
-    secure(conn, settings.app_db_password)
+    secure(conn, settings.app_db_password, role=settings.app_db_role)
 
 
 async def create_tables() -> None:
