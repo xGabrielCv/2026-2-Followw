@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 
 import { CourseSummary } from '#/components/curriculum/CourseSummary';
 import { FlowStatisticsView } from '#/components/curriculum/FlowStatistics';
+import { GraduationPlanner } from '#/components/curriculum/GraduationPlanner';
 import { ErrorState } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { QueryState } from '#/components/QueryState';
@@ -56,11 +57,15 @@ function FlowStatisticsPage() {
     });
     const history = useQuery({ ...allClassroomsQueryOptions, enabled });
     const { codes } = useCompletedSubjects();
-    const flow = useMemo(() => {
+    const planning = useMemo(() => {
         if (!matrix.data || !history.data) return null;
         const model = normalizeCurriculum(matrix.data);
-        return flowStatistics(model, academicState(history.data, currentPeriod, codes));
+        return { model, state: academicState(history.data, currentPeriod, codes) };
     }, [matrix.data, history.data, currentPeriod, codes]);
+    const flow = useMemo(
+        () => (planning ? flowStatistics(planning.model, planning.state) : null),
+        [planning]
+    );
     const past = useMemo(
         () => (history.data ? historyStatistics(history.data) : undefined),
         [history.data]
@@ -109,6 +114,13 @@ function FlowStatisticsPage() {
                     user={user}
                     semester={currentRegularSemester(nowInBrasilia().date)}
                     manualCount={codes.size}
+                />
+            )}
+            {planning && (
+                <GraduationPlanner
+                    model={planning.model}
+                    state={planning.state}
+                    semester={currentRegularSemester(nowInBrasilia().date)}
                 />
             )}
         </div>

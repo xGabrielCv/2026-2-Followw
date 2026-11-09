@@ -9,6 +9,7 @@ import type { SchedulePlan } from '#/lib/planned-schedule';
 import { useProfessorRatings } from '#/components/community/RatingBadge';
 import { BackHeader } from '#/components/HeaderBar';
 import { PlannedClassList } from '#/components/schedule/PlannedClassList';
+import { SuggestedPlans } from '#/components/schedule/SuggestedPlans';
 import { usePlannedSchedule } from '#/components/schedule/usePlannedSchedule';
 import { WeeklyTable } from '#/components/schedule/WeeklyTable';
 import { TabFilter } from '#/components/TabFilter';
@@ -192,6 +193,9 @@ function SimuladorPage() {
                         </p>
                     )}
                 </section>
+            )}
+            {semester && (
+                <SuggestedPlans plans={value.plans} semester={semester} maxHours={maxHours} />
             )}
             {semester && value.plans.length > 1 && (
                 <Comparison plans={value.plans} semester={semester} activeId={active?.id} />
