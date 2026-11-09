@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -32,6 +34,7 @@ from api.modules.public_search.router import router as public_search_router
 from api.modules.public_subjects.router import router as public_subjects_router
 from api.modules.reports.router import router as reports_router
 from api.modules.support.router import router as support_router
+from api.modules.sync.scheduler import get_scheduler
 from api.modules.tutorials.router import router as tutorials_router
 from api.rate_limit import RateLimitMiddleware
 from api.security import BodyTooLarge, SecurityMiddleware
@@ -134,7 +137,24 @@ tags_metadata = [
     },
 ]
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """O agendador de sincronização vive com o processo; nos testes fica desligado."""
+    enabled = settings.sync_scheduler_enabled
+    if enabled is None:
+        enabled = settings.environment != "testing"
+    scheduler = get_scheduler()
+    if enabled:
+        await scheduler.start(settings.sync_tick_seconds)
+    try:
+        yield
+    finally:
+        await scheduler.stop()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Followw UnB API",
     description=(
         "Cliente alternativo e open-source para o ecossistema de sistemas da Universidade "

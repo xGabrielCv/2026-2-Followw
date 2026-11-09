@@ -24,6 +24,9 @@ class Settings(BaseSettings):
         Path(__file__).resolve().parents[4] / ".local" / "materials"
     )
     docs_url: str = "https://docs.followw.app"
+    # Sincronização agendada do catálogo público e do cardápio; `None` liga fora dos testes.
+    sync_scheduler_enabled: bool | None = None
+    sync_tick_seconds: float = Field(default=30, ge=1, le=300)
 
     cors_origins: list[str] = ["https://followw.app"]
 

@@ -13,6 +13,7 @@ Classificação das tabelas:
   contas e sessões admin .. RLS: só no escopo `/admin`
   log de auditoria ........ RLS e sem UPDATE/DELETE: só se acrescenta
   flags e textos .......... leitura pública; escrita só no escopo `/admin`
+  sincronização agendada .. RLS: só os escopos `/admin` e `sync` (o agendador interno)
 """
 
 from sqlalchemy import Connection, text
@@ -23,6 +24,7 @@ from api.db.community_security import policies as community_policies
 APP_ROLE = "followw_app"
 
 _ADMIN = "current_setting('app.scope', true) = 'admin'"
+_SYNC = "current_setting('app.scope', true) IN ('admin', 'sync')"
 _TICKET_PROOF = (
     "secret_hash = current_setting('app.ticket_hash', true)"
     " OR recovery_hash = current_setting('app.recovery_hash', true)"
@@ -43,6 +45,8 @@ _POLICIES: list[tuple[str, str, str | None, str | None]] = [
         "current_setting('app.scope', true) = 'community_write'",
         "current_setting('app.scope', true) = 'community_write'",
     ),
+    ("sync_state", "ALL", _SYNC, _SYNC),
+    ("sync_runs", "ALL", _SYNC, _SYNC),
     ("admin_accounts", "ALL", _ADMIN, _ADMIN),
     ("admin_sessions", "ALL", _ADMIN, _ADMIN),
     ("admin_log", "SELECT", _ADMIN, None),

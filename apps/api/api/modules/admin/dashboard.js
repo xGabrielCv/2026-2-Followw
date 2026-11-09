@@ -7,6 +7,7 @@ import { operationsView } from './dashboard-operations.js';
 import { auditView } from './dashboard-audit.js';
 import { limitsView } from './dashboard-limits.js';
 import { moderationView } from './dashboard-moderation.js';
+import { syncView } from './dashboard-sync.js';
 
 const LABELS = { review:"Avaliações", group:"Grupos", material:"Materiais", post:"Publicações", reply:"Respostas", tutorial:"Guias", report:"Denúncias" };
 const REASONS = { ofensivo:"Ofensivo", dados_pessoais:"Expõe alguém", spam:"Spam", falso:"Falso", direitos_autorais:"Direitos autorais", outro:"Outro" };
@@ -53,7 +54,7 @@ async function render() {
   const main = $("#main");
   main.replaceChildren(el("p", { class:"muted" }, "Carregando…"));
   try {
-    const views = { overview, usage, moderation: () => moderationView(render, editTutorial), data, breakdown, system, audit: () => auditView(render), limits: () => limitsView(render), accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render) };
+    const views = { overview, usage, moderation: () => moderationView(render, editTutorial), data, breakdown, system, audit: () => auditView(render), limits: () => limitsView(render), accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render), sync: () => syncView(render) };
     const children = await views[state.view]();
     if (version !== rendering) return;
     // `null` vira o texto "null" no DOM: só entram nós de verdade

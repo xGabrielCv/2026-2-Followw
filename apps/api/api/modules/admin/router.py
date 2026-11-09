@@ -99,6 +99,7 @@ async def dashboard_asset(
         "dashboard-audit.js",
         "dashboard-limits.js",
         "dashboard-moderation.js",
+        "dashboard-sync.js",
     ],
 ) -> Response:
     return Response(
@@ -474,6 +475,7 @@ from api.modules.admin.limits import router as limits_router
 from api.modules.admin.moderation import router as moderation_router
 from api.modules.admin.operations import router as operations_router
 from api.modules.admin.statistics import router as statistics_router
+from api.modules.admin.sync import router as sync_router
 from api.modules.support.staff import router as tickets_router
 
 api.include_router(tickets_router, prefix="/tickets")
@@ -481,5 +483,6 @@ api.include_router(statistics_router, prefix="/statistics")
 api.include_router(operations_router, prefix="/operations")
 api.include_router(moderation_router)
 api.include_router(limits_router, prefix="/limits")
+api.include_router(sync_router, prefix="/sync")
 router.include_router(public, prefix="/api")
 router.include_router(api, prefix="/api")

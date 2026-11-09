@@ -126,6 +126,13 @@ class RestaurantService:
             _MENU.dump_python(tuple(d for d in days if start <= d.date <= end))
         )
 
+    async def refresh(self, campus: Campus) -> tuple[DailyMenu, ...]:
+        """Atualização agendada: uma consulta à UnB, com o mesmo circuito e a mesma fila dos pedidos."""
+        days, _fetched_at, _saved = await RESTAURANT_ORIGIN.fetch(
+            f"menu:{campus}", lambda: self._refresh(campus)
+        )
+        return days
+
     async def _refresh(
         self, campus: Campus
     ) -> tuple[tuple[DailyMenu, ...], datetime, bool]:
