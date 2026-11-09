@@ -47,7 +47,7 @@ def catalog_files() -> list[Path]:
     return files + ([PROFESSORS] if PROFESSORS.exists() else [])
 
 
-def catalog_fingerprint() -> tuple[str, int]:
+def catalog_content_hash() -> tuple[str, int]:
     digest = hashlib.sha256()
     records = 0
     for file in catalog_files():
@@ -103,8 +103,8 @@ async def run_catalog(timeout: int) -> Outcome:
     if process.returncode != 0:
         detail = summarize(output.decode("utf-8", "replace"))
         return Outcome("failed", error=f"Código {process.returncode}: {detail}")
-    fingerprint, records = await asyncio.to_thread(catalog_fingerprint)
-    return Outcome("success", records=records, fingerprint=fingerprint)
+    content_hash, records = await asyncio.to_thread(catalog_content_hash)
+    return Outcome("success", records=records, content_hash=content_hash)
 
 
 async def run_restaurant(
@@ -130,4 +130,4 @@ async def run_restaurant(
         days_total += len(days)
     if failures == len(campuses):
         return Outcome("failed", error=f"Site do RU indisponível ({last_error}).")
-    return Outcome("success", records=days_total, fingerprint=digest.hexdigest())
+    return Outcome("success", records=days_total, content_hash=digest.hexdigest())

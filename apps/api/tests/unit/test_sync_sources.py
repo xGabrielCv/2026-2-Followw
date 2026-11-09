@@ -28,7 +28,7 @@ async def test_sucesso_devolve_resumo_e_contagem(script):
     resultado = await sources.run_catalog(30)
     assert resultado.status == "success"
     assert resultado.records == 2
-    assert len(resultado.fingerprint) == 64
+    assert len(resultado.content_hash) == 64
 
 
 async def test_resumo_muda_so_quando_o_arquivo_muda(script, tmp_path):
@@ -37,7 +37,7 @@ async def test_resumo_muda_so_quando_o_arquivo_muda(script, tmp_path):
     igual = await sources.run_catalog(30)
     (tmp_path / "data" / "classrooms.csv").write_text("a,b\n1,2\n", encoding="utf-8")
     diferente = await sources.run_catalog(30)
-    assert primeiro.fingerprint == igual.fingerprint != diferente.fingerprint
+    assert primeiro.content_hash == igual.content_hash != diferente.content_hash
 
 
 async def test_falha_guarda_codigo_e_ultima_linha_sem_credencial(script):

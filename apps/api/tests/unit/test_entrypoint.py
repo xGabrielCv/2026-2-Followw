@@ -1,4 +1,11 @@
+import importlib
+
 import api
+
+
+def _entrada():
+    # `api.main` vira o módulo da aplicação depois de importado; recarrega para pegar a função do comando
+    return importlib.reload(api).main
 
 
 def test_comando_api_so_escuta_na_propria_maquina_por_padrao(monkeypatch):
@@ -8,7 +15,7 @@ def test_comando_api_so_escuta_na_propria_maquina_por_padrao(monkeypatch):
     )
     monkeypatch.delenv("API_HOST", raising=False)
     monkeypatch.delenv("ENVIRONMENT", raising=False)
-    api.main()
+    _entrada()()
     assert chamadas[0]["host"] == "127.0.0.1"
     assert chamadas[0]["reload"] is True
 
@@ -20,6 +27,6 @@ def test_bind_aberto_exige_escolha_explicita_e_producao_nao_recarrega(monkeypatc
     )
     monkeypatch.setenv("API_HOST", "0.0.0.0")
     monkeypatch.setenv("ENVIRONMENT", "production")
-    api.main()
+    _entrada()()
     assert chamadas[0]["host"] == "0.0.0.0"
     assert chamadas[0]["reload"] is False

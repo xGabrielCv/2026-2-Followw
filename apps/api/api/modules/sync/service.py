@@ -20,7 +20,7 @@ Status = str  # success | unchanged | failed | skipped
 class Outcome:
     status: Status
     records: int | None = None
-    fingerprint: str | None = None
+    content_hash: str | None = None
     error: str | None = None
 
 
@@ -128,8 +128,8 @@ async def finish(
     mine = state.lease_owner == owner
     changed = (
         outcome.status == "success"
-        and outcome.fingerprint is not None
-        and outcome.fingerprint != state.fingerprint
+        and outcome.content_hash is not None
+        and outcome.content_hash != state.content_hash
     )
     status = outcome.status
     if outcome.status == "success" and not changed:
@@ -158,7 +158,7 @@ async def finish(
             state.records = outcome.records
             if changed:
                 state.last_change_at = now
-                state.fingerprint = outcome.fingerprint
+                state.content_hash = outcome.content_hash
             # Manual não adianta o horário seguinte, mas não deixa um vencimento antigo repetir a rodada.
             overdue = state.next_run_at is None or state.next_run_at <= now
             if trigger != "manual" or overdue:

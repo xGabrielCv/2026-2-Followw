@@ -221,7 +221,7 @@ async def test_falha_mantem_o_ultimo_dado_e_espera_cada_vez_mais(
     assert atual.last_status == "failed"
     assert atual.consecutive_failures == 3
     # dado válido anterior permanece
-    assert atual.fingerprint == valido.fingerprint
+    assert atual.content_hash == valido.content_hash
     assert atual.records == 10
     assert atual.last_success_at == valido.last_success_at
     assert [round(e.total_seconds() / 60) for e in esperas] == [15, 30, 60]

@@ -22,7 +22,7 @@ class SyncState(Base, TimestampMixin):
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
     last_status: Mapped[str | None] = mapped_column()
     records: Mapped[int | None] = mapped_column(Integer)
-    fingerprint: Mapped[str | None] = mapped_column()
+    content_hash: Mapped[str | None] = mapped_column()
 
 
 class SyncRun(Base, UUIDPrimaryKeyMixin, TimestampMixin):

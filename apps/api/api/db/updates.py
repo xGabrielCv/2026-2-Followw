@@ -6,6 +6,14 @@ from api.crypto import decrypt, encrypt
 
 
 def apply_updates(connection: Connection) -> None:
+    # O resumo do conteúdo (sincronização) teve outro nome: renomeia só se o banco ainda tiver o antigo.
+    connection.execute(
+        text(
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'sync_state' AND column_name = 'fingerprint') THEN "
+            "ALTER TABLE sync_state RENAME COLUMN fingerprint TO content_hash; END IF; END $$"
+        )
+    )
     connection.execute(
         text("ALTER TABLE professor_reviews ADD COLUMN IF NOT EXISTS semester TEXT")
     )
