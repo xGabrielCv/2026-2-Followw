@@ -16,49 +16,85 @@ from sqlalchemy import Text
 from sqlalchemy.engine import Dialect
 from sqlalchemy.types import TypeDecorator
 
-from api.cookies import _hkdf, derive_key
+from api.cookies import _hkdf
 from api.core.config import settings
 
-_PREFIX = "v1:"
 _NONCE = 12
+_FILE_HEADER = b"FWENC2\x00"
+
+
+def _secret(key_id: str | None) -> str:
+    if key_id is None and "legacy" in settings.data_encryption_previous_keys:
+        return settings.data_encryption_previous_keys["legacy"]
+    if key_id is None or key_id == settings.data_encryption_key_id:
+        return settings.data_encryption_key or settings.jwt_secret_key
+    if key_id in settings.data_encryption_previous_keys:
+        return settings.data_encryption_previous_keys[key_id]
+    raise ValueError("Versão da chave indisponível; restaure o chaveiro da instalação")
 
 
 @cache
-def _cipher() -> AESGCM:
-    if settings.data_encryption_key:
-        key = _hkdf(settings.data_encryption_key, "followw:data-at-rest")
-    else:
-        # Sem chave própria, deriva do segredo dos cookies (bom para dev; em produção, separe).
-        key = derive_key("followw:data-at-rest")
-    return AESGCM(key)
+def _cipher(secret: str) -> AESGCM:
+    return AESGCM(_hkdf(secret, "followw:data-at-rest"))
+
+
+def _aad(context: str, key_id: str | None) -> bytes:
+    return context.encode() if key_id is None else f"v2:{key_id}:{context}".encode()
+
+
+def _seal(data: bytes, context: str, key_id: str) -> bytes:
+    nonce = os.urandom(_NONCE)
+    return nonce + _cipher(_secret(key_id)).encrypt(nonce, data, _aad(context, key_id))
+
+
+def _open(data: bytes, context: str, key_id: str | None) -> bytes:
+    if len(data) < _NONCE + 16:
+        raise ValueError("Conteúdo cifrado incompleto")
+    try:
+        return _cipher(_secret(key_id)).decrypt(
+            data[:_NONCE], data[_NONCE:], _aad(context, key_id)
+        )
+    except InvalidTag as error:
+        raise ValueError("Conteúdo adulterado, chave ou contexto errado") from error
 
 
 def encrypt(value: str, context: str) -> str:
-    nonce = os.urandom(_NONCE)
-    sealed = _cipher().encrypt(nonce, value.encode(), context.encode())
-    return _PREFIX + base64.urlsafe_b64encode(nonce + sealed).decode()
+    key_id = settings.data_encryption_key_id
+    return (
+        f"v2:{key_id}:"
+        + base64.urlsafe_b64encode(_seal(value.encode(), context, key_id)).decode()
+    )
 
 
 def decrypt(value: str, context: str) -> str:
-    if not value.startswith(_PREFIX):
+    if value.startswith("v1:"):
+        key_id, encoded = None, value[3:]
+    elif value.startswith("v2:"):
+        try:
+            _, key_id, encoded = value.split(":", 2)
+        except ValueError:
+            raise ValueError("Formato cifrado inválido") from None
+    else:
         raise ValueError("Valor sem cifra")
-    raw = base64.urlsafe_b64decode(value.removeprefix(_PREFIX))
-    try:
-        return _cipher().decrypt(raw[:_NONCE], raw[_NONCE:], context.encode()).decode()
-    except InvalidTag as error:
-        raise ValueError("Chave ou contexto errado") from error
+    raw = base64.b64decode(encoded, altchars=b"-_", validate=True)
+    return _open(raw, context, key_id).decode()
 
 
 def encrypt_bytes(data: bytes, context: str) -> bytes:
-    nonce = os.urandom(_NONCE)
-    return nonce + _cipher().encrypt(nonce, data, context.encode())
+    key_id = settings.data_encryption_key_id
+    label = key_id.encode("ascii")
+    return _FILE_HEADER + bytes([len(label)]) + label + _seal(data, context, key_id)
 
 
 def decrypt_bytes(data: bytes, context: str) -> bytes:
-    try:
-        return _cipher().decrypt(data[:_NONCE], data[_NONCE:], context.encode())
-    except InvalidTag as error:
-        raise ValueError("Arquivo adulterado ou chave errada") from error
+    if not data.startswith(_FILE_HEADER):
+        return _open(data, context, None)
+    offset = len(_FILE_HEADER)
+    if len(data) <= offset or not 1 <= data[offset] <= 32:
+        raise ValueError("Formato do arquivo inválido")
+    size = data[offset]
+    key_id = data[offset + 1 : offset + 1 + size].decode("ascii")
+    return _open(data[offset + 1 + size :], context, key_id)
 
 
 class Encrypted(TypeDecorator[str]):

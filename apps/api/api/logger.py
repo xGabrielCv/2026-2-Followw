@@ -10,6 +10,8 @@ from uuid import uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from api.metrics import observe_origin, observe_request
+
 _context: ContextVar[dict | None] = ContextVar("log_context", default=None)
 _log = logging.getLogger("followw")
 _log.setLevel(logging.INFO)
@@ -57,6 +59,14 @@ def error_fields(error: BaseException) -> dict:
 
 
 def event(name: str, *, level: int = logging.INFO, **fields) -> None:
+    observe_origin(
+        name,
+        {
+            key: value
+            for key, value in fields.items()
+            if key in {"duration_ms", "error_type"} and type(value) in (str, int, float)
+        },
+    )
     context = {
         key: value
         for key, value in ((_context.get() or {}) | fields).items()
@@ -126,6 +136,9 @@ class RequestLoggingMiddleware:
             # Routers incluídos no FastAPI guardam o caminho completo neste contexto.
             matched = scope.get("fastapi", {}).get("effective_route_context")
             route = getattr(matched or scope.get("route"), "path_format", None)
+            observe_request(
+                scope["method"], route, status_code, (perf_counter() - started) * 1000
+            )
             event(
                 "request.completed",
                 route=route,

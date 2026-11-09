@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { setAuthorSecret } from '#/lib/author';
 import { backupSummary, exportBackup, importBackup, parseBackup } from '#/lib/backup';
 import { marksStore } from '#/lib/lesson-marks';
 import { schedulePlans } from '#/lib/planned-schedule';
@@ -18,6 +19,32 @@ afterEach(() => {
 });
 
 describe('backup do que fica só no aparelho', () => {
+    test('exportação nova não leva segredos nem campos desconhecidos das configurações', () => {
+        setAuthorSecret('a'.repeat(64));
+        ownReviews.set({
+            p: {
+                id: '00000000-0000-4000-8000-000000000001',
+                token: 'segredo-de-avaliacao',
+                rating: 4
+            }
+        });
+        const settings = {
+            displayName: 'Ana',
+            password: 'senha-sintetica',
+            token: 'token-sintetico'
+        };
+        settingsStore(REG).set(settings);
+        const backup = exportBackup(REG);
+        const text = JSON.stringify(backup);
+        expect(backup.version).toBe(2);
+        for (const secret of [
+            'a'.repeat(64),
+            'segredo-de-avaliacao',
+            'senha-sintetica',
+            'token-sintetico'
+        ])
+            expect(text).not.toContain(secret);
+    });
     test('exporta e importa configurações, calendário, marcações, grades e avaliações', () => {
         settingsStore(REG).set({ displayName: 'Ana', completedSubjects: ['FGA0146'] });
         entriesStore(REG).set([

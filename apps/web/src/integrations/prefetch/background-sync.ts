@@ -8,8 +8,17 @@ import {
     classroomStatisticsQueryOptions,
     classroomsQueryOptions
 } from '#/queries/classrooms';
+import { ApiError } from '#/queries/errors';
 import { internshipsQueryOptions } from '#/queries/internships';
 import { latestNewsQueryOptions } from '#/queries/posts';
+
+export type SyncOutcome =
+    | 'updated'
+    | 'cached'
+    | 'cancelled'
+    | 'authentication'
+    | 'unavailable'
+    | 'temporary';
 
 /**
  * Deixa pronto, em segundo plano, o que o aluno vai abrir: a API busca no SIGAA na hora (nada fica
@@ -24,22 +33,30 @@ export interface SyncStep {
     ms: number;
     ok: boolean;
     cached: boolean;
+    outcome: SyncOutcome;
 }
 
 // pausa entre os passos: o pedido que o aluno faz na tela passa na frente
 const GAP_MS = 250;
 
-const sleep = (ms: number, signal: AbortSignal) =>
+export const syncPause = (ms: number, signal: AbortSignal) =>
     new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, ms);
-        signal.addEventListener('abort', () => {
-            clearTimeout(timer);
+        if (signal.aborted) {
             resolve();
-        });
+            return;
+        }
+        const finish = () => {
+            clearTimeout(timer);
+            signal.removeEventListener('abort', finish);
+            resolve();
+        };
+        const timer = setTimeout(finish, ms);
+        signal.addEventListener('abort', finish, { once: true });
     });
 
 class Runner {
     readonly log: SyncStep[] = [];
+    private halted = false;
 
     constructor(
         private readonly queryClient: QueryClient,
@@ -50,7 +67,7 @@ class Runner {
         name: string,
         options: QueryExecuteOptions<TData, TError, TData, TData, TQueryKey>
     ): Promise<TData | undefined> {
-        if (this.signal.aborted) return undefined;
+        if (this.signal.aborted || this.halted) return undefined;
         const state = this.queryClient.getQueryState(options.queryKey);
         const stale = options.staleTime;
         const fresh =
@@ -64,18 +81,30 @@ class Runner {
                 name,
                 ms: Math.round(performance.now() - start),
                 ok: true,
-                cached: fresh
+                cached: fresh,
+                outcome: this.signal.aborted ? 'cancelled' : fresh ? 'cached' : 'updated'
             });
-            if (!fresh) await sleep(GAP_MS, this.signal);
+            if (!fresh) await syncPause(GAP_MS, this.signal);
             return data;
-        } catch {
+        } catch (error) {
+            const outcome: SyncOutcome = this.signal.aborted
+                ? 'cancelled'
+                : error instanceof ApiError && error.isUnauthorized
+                  ? 'authentication'
+                  : error instanceof ApiError && error.status === 502
+                    ? 'unavailable'
+                    : 'temporary';
+            if (outcome === 'authentication') this.halted = true;
             this.log.push({
                 name,
                 ms: Math.round(performance.now() - start),
                 ok: false,
-                cached: false
+                cached: false,
+                outcome
             });
-            return undefined;
+            return this.signal.aborted || this.halted
+                ? undefined
+                : this.queryClient.getQueryData<TData>(options.queryKey);
         }
     }
 

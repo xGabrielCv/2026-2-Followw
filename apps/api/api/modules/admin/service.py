@@ -14,7 +14,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 import psutil
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,12 +39,17 @@ from api.db.models import (
     Tutorial,
 )
 from api.flags import FLAGS, MENU, TEXTS, flags, menu, texts
+from api.modules.admin.models import AdminAccount
+from api.modules.admin.permissions import Principal
 from api.modules.auth.account import periods
 from api.modules.materials.service import purge_expired
 from api.modules.reports.service import TARGETS, delete_target, resolve
 from api.storage import material_storage
 
 _STARTED = time.time()
+_PROCESS = psutil.Process(os.getpid())
+_PROCESS.cpu_percent(interval=None)
+psutil.cpu_percent(interval=None)
 ContentType = Literal[
     "review", "group", "material", "post", "reply", "tutorial", "report"
 ]
@@ -62,11 +67,6 @@ _LABELS = {
 _ACTIVITY_DAYS = 400
 _RESOLVED_REPORTS_DAYS = 180
 _SEARCH_WINDOW = 5000
-# Peso do Followw no aparelho do aluno (cache do app + armazenamento local), medido num navegador
-# real com 5 turmas atuais e o histórico completo; o resto cresce com o número de turmas.
-DEVICE_BASE_BYTES = 450 * 1024
-DEVICE_PER_CLASSROOM_BYTES = 140 * 1024
-DEVICE_TYPICAL_CLASSROOMS = 6
 
 
 class Overview(BaseModel):
@@ -89,7 +89,6 @@ class Overview(BaseModel):
     flags: dict[str, bool]
     menu: list[dict[str, Any]]
     texts: list[dict[str, Any]]
-    device: dict[str, Any]
 
 
 class Series(BaseModel):
@@ -161,6 +160,8 @@ class LogEntry(BaseModel):
     target_id: str | None
     detail: str | None
     created_at: datetime
+    actor: str | None = None
+    actor_role: str | None = None
 
 
 async def _count(session: AsyncSession, model: Any, *where: Any) -> int:
@@ -263,6 +264,8 @@ async def log(
     target_type: str | None = None,
     target_id: object = None,
     detail: str | None = None,
+    *,
+    actor: Principal | AdminAccount | None = None,
 ) -> None:
     session.add(
         AdminLog(
@@ -270,6 +273,8 @@ async def log(
             target_type=target_type,
             target_id=str(target_id) if target_id is not None else None,
             detail=detail,
+            actor_id=actor.id if actor else None,
+            actor_role=actor.role if actor else None,
         )
     )
 
@@ -280,11 +285,15 @@ def _day_range(days: int) -> list[date]:
 
 
 class AdminService:
-    def __init__(self, db: DatabaseDep) -> None:
+    def __init__(self, db: DatabaseDep, request: Request) -> None:
         self._db = db
+        self._actor = getattr(request.state, "admin", None)
+
+    async def _log(self, session: AsyncSession, *args, **kwargs) -> None:
+        await log(session, *args, **kwargs, actor=self._actor)
 
     async def overview(self) -> Overview:
-        process = psutil.Process(os.getpid())
+        process = _PROCESS
         with process.oneshot():
             memory = process.memory_info().rss
             cpu = process.cpu_percent(interval=None)
@@ -401,13 +410,6 @@ class AdminService:
                 {"key": key, "label": label, "value": links[key]}
                 for key, (label, _) in TEXTS.items()
             ],
-            device={
-                "base_bytes": DEVICE_BASE_BYTES,
-                "per_classroom_bytes": DEVICE_PER_CLASSROOM_BYTES,
-                "typical_bytes": DEVICE_BASE_BYTES
-                + DEVICE_PER_CLASSROOM_BYTES * DEVICE_TYPICAL_CLASSROOMS,
-                "typical_classrooms": DEVICE_TYPICAL_CLASSROOMS,
-            },
         )
 
     async def series(self, days: int) -> Series:
@@ -608,7 +610,7 @@ class AdminService:
                 found = await delete_target(session, kind, content_id)
             if not found:
                 raise HTTPException(404, "Conteúdo não encontrado.")
-            await log(session, "delete", kind, content_id, reason)
+            await self._log(session, "delete", kind, content_id, reason)
 
         await self._db.write(write)
 
@@ -650,7 +652,7 @@ class AdminService:
     async def resolve_report(self, report_id: uuid.UUID, accept: bool) -> None:
         async def write(session: AsyncSession) -> None:
             await resolve(session, report_id, accept)
-            await log(
+            await self._log(
                 session,
                 "report.accept" if accept else "report.reject",
                 "report",
@@ -689,7 +691,7 @@ class AdminService:
                 raise HTTPException(404, "Guia não encontrado.")
             tutorial.status = "approved" if approve else "rejected"
             tutorial.approved_at = datetime.now(UTC) if approve else None
-            await log(
+            await self._log(
                 session,
                 "tutorial.approve" if approve else "tutorial.reject",
                 "tutorial",
@@ -707,7 +709,7 @@ class AdminService:
             tutorial.summary = body.summary
             tutorial.body = body.body
             tutorial.category = body.category
-            await log(session, "tutorial.edit", "tutorial", tutorial_id)
+            await self._log(session, "tutorial.edit", "tutorial", tutorial_id)
 
         await self._db.write(write)
 
@@ -721,7 +723,7 @@ class AdminService:
                 session.add(SystemFlag(key=key, enabled=enabled))
             else:
                 flag.enabled = enabled
-            await log(session, "flag.on" if enabled else "flag.off", "flag", key)
+            await self._log(session, "flag.on" if enabled else "flag.off", "flag", key)
             await session.flush()
             return await flags(session)
 
@@ -737,7 +739,9 @@ class AdminService:
                 session.add(SystemFlag(key=f"menu.{key}", enabled=visible))
             else:
                 flag.enabled = visible
-            await log(session, "menu.show" if visible else "menu.hide", "menu", key)
+            await self._log(
+                session, "menu.show" if visible else "menu.hide", "menu", key
+            )
             await session.flush()
             return await menu(session)
 
@@ -753,7 +757,7 @@ class AdminService:
                 session.add(SystemText(key=key, value=value))
             else:
                 text_row.value = value
-            await log(session, "text.set", "text", key, value or "(vazio)")
+            await self._log(session, "text.set", "text", key, value or "(vazio)")
             await session.flush()
             return await texts(session)
 
@@ -783,15 +787,18 @@ class AdminService:
                 "registros de uso antigos": activity.rowcount or 0,
                 "denúncias resolvidas antigas": reports.rowcount or 0,
             }
-            await log(session, "maintenance", detail=str(result))
+            await self._log(session, "maintenance", detail=str(result))
             return result
 
         return await self._db.write(write)
 
     async def log_entries(self) -> list[LogEntry]:
         async def read(session: AsyncSession) -> list[LogEntry]:
-            rows = await session.scalars(
-                select(AdminLog).order_by(AdminLog.created_at.desc()).limit(200)
+            rows = await session.execute(
+                select(AdminLog, AdminAccount.username)
+                .outerjoin(AdminAccount, AdminAccount.id == AdminLog.actor_id)
+                .order_by(AdminLog.created_at.desc())
+                .limit(200)
             )
             return [
                 LogEntry(
@@ -800,14 +807,16 @@ class AdminService:
                     target_id=row.target_id,
                     detail=row.detail,
                     created_at=row.created_at,
+                    actor=name,
+                    actor_role=row.actor_role,
                 )
-                for row in rows
+                for row, name in rows
             ]
 
         return await self._db.read(read)
 
     async def record(self, action: str) -> None:
-        await self._db.write(lambda session: log(session, action))
+        await self._db.write(lambda session: self._log(session, action))
 
 
 AdminServiceDep = Annotated[AdminService, Depends()]

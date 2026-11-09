@@ -5,7 +5,7 @@ import { pagesCacheName } from '#/integrations/offline/pages-cache';
 import {
     clearOfflineData,
     persistQueryCache,
-    PERSIST_MAX_AGE,
+    localRetentionMs,
     shouldPersistQuery,
     warmPages
 } from '#/integrations/offline/storage';
@@ -72,7 +72,7 @@ describe('cache de páginas offline', () => {
             pages[url] = new Response(url);
 
         await warmPages(true);
-        expect(cached()).toEqual(['/', '/perfil', '/ru', '/turmas']);
+        expect(cached()).toEqual(['/', '/login', '/ru', '/turmas']);
 
         stores.clear();
         await warmPages(false);
@@ -133,11 +133,24 @@ describe('shouldPersistQuery', () => {
     const now = Date.parse('2026-10-10T12:00:00Z');
 
     test('salva a query atualizada dentro da validade', () => {
-        expect(shouldPersistQuery(queryAt(now - PERSIST_MAX_AGE + 1), now)).toBe(true);
+        expect(shouldPersistQuery(queryAt(now - localRetentionMs() + 1), now)).toBe(true);
     });
 
     test('descarta a query sem atualização há mais que a validade', () => {
-        expect(shouldPersistQuery(queryAt(now - PERSIST_MAX_AGE), now)).toBe(false);
+        expect(shouldPersistQuery(queryAt(now - localRetentionMs()), now)).toBe(false);
+    });
+
+    test('nunca salva chamados de suporte: a chave secreta está nos parâmetros', () => {
+        const client = new QueryClient();
+        const key = [
+            'get',
+            '/support/tickets/{ticket_id}',
+            { params: { header: { 'X-Ticket-Key': 'segredo' } } }
+        ];
+        client.setQueryData(key, { ok: true }, { updatedAt: now });
+        expect(shouldPersistQuery(client.getQueryCache().find({ queryKey: key })!, now)).toBe(
+            false
+        );
     });
 
     test('não salva query sem dado', () => {

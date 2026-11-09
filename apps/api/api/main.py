@@ -29,10 +29,10 @@ from api.modules.public_restaurant.router import router as public_restaurant_rou
 from api.modules.public_search.router import router as public_search_router
 from api.modules.public_subjects.router import router as public_subjects_router
 from api.modules.reports.router import router as reports_router
+from api.modules.support.router import router as support_router
 from api.modules.tutorials.router import router as tutorials_router
 from api.rate_limit import RateLimitMiddleware
 from api.security import BodyTooLarge, SecurityMiddleware
-from api.sync.router import router as jobs_router
 
 # desativa logs "HTTP Request: ..." que o httpx emite pra cada chamada ao SIGAA
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -115,6 +115,10 @@ tags_metadata = [
         "description": "Denúncias e pedidos de exclusão de conteúdo, para a moderação.",
     },
     {
+        "name": "Support",
+        "description": "Chamados de suporte anônimos: a chave de cada chamado fica só no aparelho do aluno.",
+    },
+    {
         "name": "Demo",
         "description": "Dados fictícios para testar o app localmente; desligado em produção.",
     },
@@ -179,6 +183,7 @@ def custom_openapi() -> dict[str, Any]:
                     "Forum",
                     "Tutorials",
                     "Reports",
+                    "Support",
                     "Demo",
                 ],
             },
@@ -267,5 +272,5 @@ app.include_router(materials_router, prefix="/materials", tags=["Materials"])
 app.include_router(forum_router, prefix="/forum", tags=["Forum"])
 app.include_router(tutorials_router, prefix="/tutorials", tags=["Tutorials"])
 app.include_router(reports_router, prefix="/reports", tags=["Reports"])
+app.include_router(support_router, prefix="/support", tags=["Support"])
 app.include_router(admin_router, prefix="/admin")
-app.include_router(jobs_router, prefix="/jobs", tags=["Jobs"])

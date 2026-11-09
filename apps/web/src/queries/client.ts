@@ -4,6 +4,8 @@ import createClient, { type Middleware } from 'openapi-fetch';
 import type { paths } from '#/queries/schema.gen.ts';
 
 import { authorSecret } from '#/lib/author';
+import { localStorageRepository } from '#/lib/local-storage';
+import { initializeLocalVault } from '#/lib/local-vault';
 import { toApiError } from '#/queries/errors.ts';
 
 // a API fica em /api da mesma origem; no SSR o fetch exige URL absoluta, e a origem provisória é
@@ -81,9 +83,12 @@ export const apiClient = createClient<paths>({
 
 // a autoria anônima vem do segredo do aparelho, nunca da matrícula
 const authorMiddleware: Middleware = {
-    onRequest({ request }) {
+    async onRequest({ request }) {
+        if (typeof indexedDB !== 'undefined') await initializeLocalVault();
         const secret = authorSecret();
         if (secret) request.headers.set('X-Followw-Author', secret);
+        if (localStorageRepository.get('analytics-consent') === true)
+            request.headers.set('X-Followw-Metrics', '1');
         return request;
     }
 };

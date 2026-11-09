@@ -30,10 +30,14 @@ const config = defineConfig({
                 '/**': {
                     headers: {
                         'X-Content-Type-Options': 'nosniff',
+                        'Cache-Control': 'private, no-store',
                         'Referrer-Policy': 'strict-origin-when-cross-origin',
                         'X-Frame-Options': 'DENY',
                         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()'
                     }
+                },
+                '/assets/**': {
+                    headers: { 'Cache-Control': 'public, max-age=31536000, immutable' }
                 }
             },
             // só no dev; na Vercel, o vercel.json faz o mesmo. API_PORT vem do run.ps1 (-ApiPort)

@@ -5,7 +5,6 @@ from sigaa_client.config import PUBLIC_CLASSROOMS_PATH, PUBLIC_HOME_PATH
 
 from api.db.main import get_sessionmaker
 from api.modules.public_classrooms.repository import UnitIndexRepository
-from api.sync.queue import get_job_queue
 
 SEARCH_FORM = """
 <form id="formTurma" method="post" action="/sigaa/public/turmas/listar.jsf">
@@ -78,15 +77,11 @@ def public_sigaa():
 
 @pytest.mark.parametrize("unit", ["673", " 673 ", "fcte", " FCTE "])
 def test_busca_publica_sem_login_preserva_defaults_do_sigaa(client, public_sigaa, unit):
-    def dependency_proibida():
-        pytest.fail("Busca pública não deve usar fila")
-
     def sessao_proibida(*args, **kwargs):
         pytest.fail("Busca por unidade não deve consultar o banco")
 
     if unit.strip().isdigit():
         client.app.dependency_overrides[get_sessionmaker] = lambda: sessao_proibida
-    client.app.dependency_overrides[get_job_queue] = dependency_proibida
     response = client.get("/public/classrooms", params={"unit": unit})
 
     assert response.status_code == 200

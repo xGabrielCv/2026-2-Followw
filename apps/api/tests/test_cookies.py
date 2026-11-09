@@ -164,6 +164,27 @@ def test_cookie_carrega_exp_do_lado_de_dentro(ler_cookies):
     assert exp[REFRESH_COOKIE_NAME] > exp[ACCESS_COOKIE_NAME]
 
 
+def test_renovacao_nao_prolonga_prazo_absoluto_das_credenciais(ler_cookies):
+    deadline = int(datetime.now(UTC).timestamp()) + 60
+    response = Response()
+    set_refresh_cookie(response, CREDENCIAIS, expires_at=deadline)
+    token = _cookies(response, ler_cookies)[REFRESH_COOKIE_NAME]
+    assert decrypt_cookie(REFRESH_COOKIE_NAME, token)["exp"] == deadline
+    assert int(ler_cookies(response)[REFRESH_COOKIE_NAME]["max-age"]) <= 60
+
+
+def test_credenciais_legadas_de_400_dias_nao_sao_aceitas():
+    token = encrypt_cookie(
+        REFRESH_COOKIE_NAME,
+        {
+            "registration": CREDENCIAIS.registration,
+            "password": "sintetica123",
+            "exp": int(datetime.now(UTC).timestamp()) + 400 * 86400,
+        },
+    )
+    assert read_refresh_cookie(_request(**{REFRESH_COOKIE_NAME: token})) is None
+
+
 def test_cookies_sao_httponly_e_lax(ler_cookies):
     response = Response()
     set_access_cookie(response, "app14~TOKEN1", CREDENCIAIS.registration)

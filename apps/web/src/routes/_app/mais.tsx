@@ -5,6 +5,7 @@ import {
     BookOpenText,
     Bot,
     BriefcaseBusiness,
+    LifeBuoy,
     CalendarRange,
     ChartColumn,
     ChevronRight,
@@ -136,6 +137,17 @@ function MaisPage() {
                     />
                 )}
             </MenuGroup>
+            {show('suporte') && (
+                <MenuGroup title="Ajuda">
+                    <MenuCard
+                        link={{ to: '/suporte' }}
+                        icon={<LifeBuoy className="size-5" aria-hidden="true" />}
+                        tone="bg-info/10 text-info"
+                        title="Suporte e ajuda"
+                        description="Envie sugestões, relate problemas e acompanhe seus pedidos."
+                    />
+                </MenuGroup>
+            )}
             {tools.length > 0 && (
                 <MenuGroup title="Ferramentas">
                     {tools.map((key) => (

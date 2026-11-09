@@ -19,6 +19,7 @@ FLAGS: dict[str, str] = {
     "groups": "Edição dos grupos das turmas",
     "tutorials": "Envio de guias",
     "reports": "Denúncias e pedidos de exclusão",
+    "telemetry": "Contagem de uso com consentimento",
 }
 
 # Cartões do menu Mais: (rótulo, visível por padrão).
@@ -32,6 +33,7 @@ MENU: dict[str, tuple[str, bool]] = {
     "comunidade": ("Dúvidas e posts", True),
     "guias": ("Guias da UnB", True),
     "estagios": ("Estágios", True),
+    "suporte": ("Suporte e ajuda", True),
     # ferramentas de matrícula extraordinária: só aparecem quando o admin liga
     "automatricula": ("Automatrícula UnB", True),
     "monitor": ("Monitor de vagas (Telegram)", True),
@@ -50,7 +52,7 @@ async def flags(session: AsyncSession) -> dict[str, bool]:
     saved = dict(
         (await session.execute(select(SystemFlag.key, SystemFlag.enabled))).all()
     )
-    return {key: saved.get(key, True) for key in FLAGS}
+    return {key: saved.get(key, key != "telemetry") for key in FLAGS}
 
 
 async def menu(session: AsyncSession) -> dict[str, bool]:

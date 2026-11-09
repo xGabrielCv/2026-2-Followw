@@ -19,7 +19,7 @@ const fallbackToParentPage = async ({ request }: { request: Request }) => {
     return (await caches.match(parent, options)) ?? (await caches.match('/', options));
 };
 
-// O HTML do SSR é cacheado em runtime, por URL.
+// Só shells obtidos sem cookies pelo warmPages ficam no Cache Storage.
 export const pwaPlugins = (buildId: string) =>
     clientOnly(
         VitePWA({
@@ -44,12 +44,10 @@ export const pwaPlugins = (buildId: string) =>
                 runtimeCaching: [
                     {
                         urlPattern: ({ request }) => request.mode === 'navigate',
-                        handler: 'NetworkFirst',
+                        handler: 'NetworkOnly',
                         options: {
                             cacheName: pagesCacheName(buildId),
-                            networkTimeoutSeconds: 3,
                             matchOptions: { ignoreSearch: true },
-                            cacheableResponse: { statuses: [200] },
                             plugins: [{ handlerDidError: fallbackToParentPage }]
                         }
                     }

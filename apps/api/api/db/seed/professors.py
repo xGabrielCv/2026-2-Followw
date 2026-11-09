@@ -157,9 +157,9 @@ def main() -> None:
     args = parser.parse_args()
 
     async def load() -> None:
-        from api.db.main import async_session
+        from api.db.main import maintenance_session
 
-        async with async_session.begin() as session:
+        async with maintenance_session.begin() as session:
             await seed_professors(session, args.csv, replace_all=args.replace_all)
 
     asyncio.run(load())

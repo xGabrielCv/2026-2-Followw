@@ -7,8 +7,23 @@ from api.db.main import DatabaseDep
 from api.db.units import find_unit
 from api.modules.public_classrooms.code import classroom_code_prefix
 from api.modules.public_classrooms.repository import UnitIndexRepository
+from api.resilience import OriginGuard, TTLCache
 from api.schemas import UnitRef
 from api.sigaa import SigaaPublicClientDep
+
+# As unidades da busca pública mudam raramente: uma consulta por hora por processo, não uma por aluno.
+UNITS_CACHE = TTLCache(ttl=3600, stale_ttl=24 * 3600)
+UNITS_ORIGIN = OriginGuard(
+    "sigaa_units", max_concurrent=1, failure_threshold=3, reset_seconds=120
+)
+
+
+# Turmas por unidade e semestre: as vagas mudam na matrícula, então a validade é curta (3 min); com o
+# SIGAA fora do ar, a cópia de até 1 h ainda atende. Só dado público entra na chave.
+CLASSROOMS_CACHE = TTLCache(ttl=180, stale_ttl=3600, max_entries=512)
+CLASSROOMS_ORIGIN = OriginGuard(
+    "sigaa_classrooms", max_concurrent=3, failure_threshold=5, reset_seconds=60
+)
 
 
 class PublicClassroomService:
@@ -53,7 +68,15 @@ class PublicClassroomService:
         classrooms = []
         for selected in units:
             classrooms.extend(
-                await self._client.classrooms.search(selected, year=year, period=period)
+                await CLASSROOMS_CACHE.get(
+                    f"{selected}:{year}:{period}",
+                    lambda selected=selected: CLASSROOMS_ORIGIN.fetch(
+                        f"{selected}:{year}:{period}",
+                        lambda: self._client.classrooms.search(
+                            selected, year=year, period=period
+                        ),
+                    ),
+                )
             )
         if code is not None:
             classrooms = list(
@@ -124,7 +147,16 @@ class PublicClassroomService:
         ]
 
     async def list_units(self, q: str | None = None) -> list[UnitRef]:
-        units = await self._client.classrooms.list_units(q)
+        # A lista inteira vem do cache compartilhado; o filtro por nome é local, igual ao do SIGAA client.
+        units = await UNITS_CACHE.get(
+            "units",
+            lambda: UNITS_ORIGIN.fetch(
+                "units", lambda: self._client.classrooms.list_units()
+            ),
+        )
+        if q is not None:
+            needle = lookup_key(q)
+            units = [unit for unit in units if needle in lookup_key(unit.name)]
         codes = await self._db.read(
             lambda session: UnitIndexRepository(session).unit_codes(
                 [unit.id for unit in units]

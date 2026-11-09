@@ -27,6 +27,7 @@ import { Route as AppMateriaisRouteImport } from './routes/_app/materiais'
 import { Route as AppPerfilRouteImport } from './routes/_app/perfil'
 import { Route as AppRuRouteImport } from './routes/_app/ru'
 import { Route as AppSimuladorRouteImport } from './routes/_app/simulador'
+import { Route as AppSuporteRouteImport } from './routes/_app/suporte'
 import { Route as AppTurmasRouteImport } from './routes/_app/turmas'
 import { Route as ShareRuDotpngRouteImport } from './routes/share.ru[.]png'
 import { Route as AppComunidadeIdRouteImport } from './routes/_app/comunidade_.$id'
@@ -36,6 +37,7 @@ import { Route as AppGuiasNovoRouteImport } from './routes/_app/guias_.novo'
 import { Route as AppMateriaisCodeRouteImport } from './routes/_app/materiais_.$code'
 import { Route as AppPerfilDadosRouteImport } from './routes/_app/perfil_.dados'
 import { Route as AppProfessoresSiapeRouteImport } from './routes/_app/professores_.$siape'
+import { Route as AppSuporteIdRouteImport } from './routes/_app/suporte_.$id'
 import { Route as AppTurmasIdRouteImport } from './routes/_app/turmas_.$id'
 import { Route as AppCursosIdEstatisticasRouteImport } from './routes/_app/cursos.$id_.estatisticas'
 
@@ -128,6 +130,11 @@ const AppSimuladorRoute = AppSimuladorRouteImport.update({
   path: '/simulador',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSuporteRoute = AppSuporteRouteImport.update({
+  id: '/suporte',
+  path: '/suporte',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTurmasRoute = AppTurmasRouteImport.update({
   id: '/turmas',
   path: '/turmas',
@@ -173,6 +180,11 @@ const AppProfessoresSiapeRoute = AppProfessoresSiapeRouteImport.update({
   path: '/professores/$siape',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSuporteIdRoute = AppSuporteIdRouteImport.update({
+  id: '/suporte_/$id',
+  path: '/suporte/$id',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppTurmasIdRoute = AppTurmasIdRouteImport.update({
   id: '/turmas_/$id',
   path: '/turmas/$id',
@@ -202,6 +214,7 @@ export interface FileRoutesByFullPath {
   '/perfil': typeof AppPerfilRoute
   '/ru': typeof AppRuRoute
   '/simulador': typeof AppSimuladorRoute
+  '/suporte': typeof AppSuporteRoute
   '/turmas': typeof AppTurmasRoute
   '/share/ru.png': typeof ShareRuDotpngRoute
   '/comunidade/$id': typeof AppComunidadeIdRoute
@@ -211,6 +224,7 @@ export interface FileRoutesByFullPath {
   '/materiais/$code': typeof AppMateriaisCodeRoute
   '/perfil/dados': typeof AppPerfilDadosRoute
   '/professores/$siape': typeof AppProfessoresSiapeRoute
+  '/suporte/$id': typeof AppSuporteIdRoute
   '/turmas/$id': typeof AppTurmasIdRoute
   '/cursos/$id/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
@@ -231,6 +245,7 @@ export interface FileRoutesByTo {
   '/perfil': typeof AppPerfilRoute
   '/ru': typeof AppRuRoute
   '/simulador': typeof AppSimuladorRoute
+  '/suporte': typeof AppSuporteRoute
   '/turmas': typeof AppTurmasRoute
   '/share/ru.png': typeof ShareRuDotpngRoute
   '/': typeof AppIndexRoute
@@ -241,6 +256,7 @@ export interface FileRoutesByTo {
   '/materiais/$code': typeof AppMateriaisCodeRoute
   '/perfil/dados': typeof AppPerfilDadosRoute
   '/professores/$siape': typeof AppProfessoresSiapeRoute
+  '/suporte/$id': typeof AppSuporteIdRoute
   '/turmas/$id': typeof AppTurmasIdRoute
   '/cursos/$id/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
@@ -263,6 +279,7 @@ export interface FileRoutesById {
   '/_app/perfil': typeof AppPerfilRoute
   '/_app/ru': typeof AppRuRoute
   '/_app/simulador': typeof AppSimuladorRoute
+  '/_app/suporte': typeof AppSuporteRoute
   '/_app/turmas': typeof AppTurmasRoute
   '/share/ru.png': typeof ShareRuDotpngRoute
   '/_app/': typeof AppIndexRoute
@@ -273,6 +290,7 @@ export interface FileRoutesById {
   '/_app/materiais_/$code': typeof AppMateriaisCodeRoute
   '/_app/perfil_/dados': typeof AppPerfilDadosRoute
   '/_app/professores_/$siape': typeof AppProfessoresSiapeRoute
+  '/_app/suporte_/$id': typeof AppSuporteIdRoute
   '/_app/turmas_/$id': typeof AppTurmasIdRoute
   '/_app/cursos/$id_/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
@@ -296,6 +314,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/ru'
     | '/simulador'
+    | '/suporte'
     | '/turmas'
     | '/share/ru.png'
     | '/comunidade/$id'
@@ -305,6 +324,7 @@ export interface FileRouteTypes {
     | '/materiais/$code'
     | '/perfil/dados'
     | '/professores/$siape'
+    | '/suporte/$id'
     | '/turmas/$id'
     | '/cursos/$id/estatisticas'
   fileRoutesByTo: FileRoutesByTo
@@ -325,6 +345,7 @@ export interface FileRouteTypes {
     | '/perfil'
     | '/ru'
     | '/simulador'
+    | '/suporte'
     | '/turmas'
     | '/share/ru.png'
     | '/'
@@ -335,6 +356,7 @@ export interface FileRouteTypes {
     | '/materiais/$code'
     | '/perfil/dados'
     | '/professores/$siape'
+    | '/suporte/$id'
     | '/turmas/$id'
     | '/cursos/$id/estatisticas'
   id:
@@ -356,6 +378,7 @@ export interface FileRouteTypes {
     | '/_app/perfil'
     | '/_app/ru'
     | '/_app/simulador'
+    | '/_app/suporte'
     | '/_app/turmas'
     | '/share/ru.png'
     | '/_app/'
@@ -366,6 +389,7 @@ export interface FileRouteTypes {
     | '/_app/materiais_/$code'
     | '/_app/perfil_/dados'
     | '/_app/professores_/$siape'
+    | '/_app/suporte_/$id'
     | '/_app/turmas_/$id'
     | '/_app/cursos/$id_/estatisticas'
   fileRoutesById: FileRoutesById
@@ -506,6 +530,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSimuladorRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/suporte': {
+      id: '/_app/suporte'
+      path: '/suporte'
+      fullPath: '/suporte'
+      preLoaderRoute: typeof AppSuporteRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/turmas': {
       id: '/_app/turmas'
       path: '/turmas'
@@ -569,6 +600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProfessoresSiapeRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/suporte_/$id': {
+      id: '/_app/suporte_/$id'
+      path: '/suporte/$id'
+      fullPath: '/suporte/$id'
+      preLoaderRoute: typeof AppSuporteIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/turmas_/$id': {
       id: '/_app/turmas_/$id'
       path: '/turmas/$id'
@@ -600,6 +638,7 @@ interface AppRouteChildren {
   AppPerfilRoute: typeof AppPerfilRoute
   AppRuRoute: typeof AppRuRoute
   AppSimuladorRoute: typeof AppSimuladorRoute
+  AppSuporteRoute: typeof AppSuporteRoute
   AppTurmasRoute: typeof AppTurmasRoute
   AppIndexRoute: typeof AppIndexRoute
   AppComunidadeIdRoute: typeof AppComunidadeIdRoute
@@ -609,6 +648,7 @@ interface AppRouteChildren {
   AppMateriaisCodeRoute: typeof AppMateriaisCodeRoute
   AppPerfilDadosRoute: typeof AppPerfilDadosRoute
   AppProfessoresSiapeRoute: typeof AppProfessoresSiapeRoute
+  AppSuporteIdRoute: typeof AppSuporteIdRoute
   AppTurmasIdRoute: typeof AppTurmasIdRoute
   AppCursosIdEstatisticasRoute: typeof AppCursosIdEstatisticasRoute
 }
@@ -627,6 +667,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPerfilRoute: AppPerfilRoute,
   AppRuRoute: AppRuRoute,
   AppSimuladorRoute: AppSimuladorRoute,
+  AppSuporteRoute: AppSuporteRoute,
   AppTurmasRoute: AppTurmasRoute,
   AppIndexRoute: AppIndexRoute,
   AppComunidadeIdRoute: AppComunidadeIdRoute,
@@ -636,6 +677,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppMateriaisCodeRoute: AppMateriaisCodeRoute,
   AppPerfilDadosRoute: AppPerfilDadosRoute,
   AppProfessoresSiapeRoute: AppProfessoresSiapeRoute,
+  AppSuporteIdRoute: AppSuporteIdRoute,
   AppTurmasIdRoute: AppTurmasIdRoute,
   AppCursosIdEstatisticasRoute: AppCursosIdEstatisticasRoute,
 }

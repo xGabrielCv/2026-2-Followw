@@ -3,7 +3,7 @@ import { type Query, type QueryClient, useQuery, useQueryClient } from '@tanstac
 import { useEffect } from 'react';
 
 import { clearOfflineData } from '#/integrations/offline/storage';
-import { clearAccountStorage } from '#/lib/local-storage';
+import { clearAccountStorage, selectLocalAccount } from '#/lib/local-storage';
 import { useOnline } from '#/lib/online';
 import { api } from '#/queries/api.ts';
 import { apiClient } from '#/queries/client.ts';
@@ -14,8 +14,10 @@ import { meQueryOptions } from '#/queries/me.ts';
 const isAccountQuery = ({ queryKey: [, path] }: Query) => path !== '/me';
 
 async function clearUserData(queryClient: QueryClient) {
+    const cancelled = queryClient.cancelQueries();
     clearAccountStorage();
     queryClient.removeQueries({ predicate: isAccountQuery });
+    await cancelled;
     await clearOfflineData();
 }
 
@@ -40,6 +42,7 @@ export async function startSession(queryClient: QueryClient) {
     await queryClient.cancelQueries({ queryKey: meQueryOptions.queryKey });
     const user = await queryClient.query({ ...meQueryOptions, staleTime: 0 });
     if (!user) throw new SessionNotStoredError();
+    selectLocalAccount(user.registration);
     return user;
 }
 
@@ -80,6 +83,7 @@ export function useSessionRefresh() {
     const online = useOnline();
 
     useEffect(() => {
+        selectLocalAccount(user?.registration);
         if (!user || !online || refreshedRegistration === user.registration) return;
         refreshedRegistration = user.registration;
         apiClient.POST('/auth/sigaa/refresh').catch((error: unknown) => {

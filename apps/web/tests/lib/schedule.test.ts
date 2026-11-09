@@ -14,6 +14,18 @@ import {
 } from '#/lib/schedule.ts';
 
 describe('parseSchedule', () => {
+    test('preserva término máximo em blocos sobrepostos, contidos e repetidos', () => {
+        for (const code of [
+            '2M1234 2M12',
+            '2M12 2M1234',
+            '2M1234 2M1234',
+            '2M123 2M234',
+            '2M4321'
+        ]) {
+            expect(parseSchedule(code)).toEqual([{ weekday: 1, start: '08:00', end: '11:50' }]);
+        }
+        expect(parseSchedule('2N6 99Z9')).toEqual([]);
+    });
     test('expande dias e junta horários seguidos', () => {
         expect(parseSchedule('35T23')).toEqual([
             { weekday: 2, start: '14:00', end: '15:50' },

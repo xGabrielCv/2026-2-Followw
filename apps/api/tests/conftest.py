@@ -1,15 +1,8 @@
-import base64
-import hashlib
-import json
 import logging
 import os
-import time
-from collections import deque
 from http.cookies import SimpleCookie
-from typing import Self
 
 import httpx
-import jwt
 import pytest
 import respx
 from fastapi import FastAPI
@@ -30,6 +23,16 @@ def caplog(caplog):
 
 AUTOR_DE_TESTE = "a" * 64
 QSTASH_SIGNING_KEY = "sig_atual_de_teste_com_32_bytes_ou_mais"
+
+
+@pytest.fixture(autouse=True)
+def isola_cotas_locais():
+    from api.rate_limit import _MEMORY
+
+    _MEMORY.clear()
+    yield
+    _MEMORY.clear()
+
 
 # O `Settings` é instanciado no import de `api.core.config`, então as variáveis
 # precisam existir antes de qualquer teste importar a app.
@@ -183,94 +186,23 @@ def sigaa():
 
 
 class FakeQStash:
-    """QStash de mentira: guarda o que a app publica e entrega em `POST /jobs`.
+    """Sonda de privacidade: nenhuma credencial pode sair para uma fila."""
 
-    Entrega cada mensagem uma vez, assinada como o QStash assinaria, sem
-    retentativa nem deduplicação: essas regras ficam na conta do QStash.
-    """
-
-    def __init__(self) -> None:
-        self.published: list[dict] = []
-        self.pending: deque[dict] = deque()
-        self.deliveries: list[httpx.Response] = []
+    def __init__(self):
+        self.published = []
         self.unavailable = False
 
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        if self.unavailable:
-            return httpx.Response(500, json={"error": "fora do ar"})
-
-        batch = json.loads(request.content)
-        # O QStash de verdade recusa ':' na deduplicação.
-        if any(":" in m["headers"].get("Upstash-Deduplication-Id", "") for m in batch):
-            return httpx.Response(
-                400, json={"error": "DeduplicationId cannot contain ':'"}
-            )
-        self.published.extend(batch)
-        self.pending.extend(batch)
-        return httpx.Response(
-            200, json=[{"messageId": f"msg_{n}"} for n in range(len(batch))]
-        )
-
-    def jobs(self) -> list:
-        """Os jobs publicados, decifrados como a própria app os leria."""
-        from api.sync.queue import decode_job
-
-        return [decode_job(message["body"].encode()) for message in self.published]
-
-    def deliver(self, client: TestClient) -> None:
-        while self.pending:
-            message = self.pending.popleft()
-            url = message["destination"]
-            response = client.post(
-                httpx.URL(url).path,
-                content=message["body"],
-                headers={"Upstash-Signature": self.sign(url, message["body"])},
-            )
-            self.deliveries.append(response)
-
-    @staticmethod
-    def sign(url: str, body: str, key: str = QSTASH_SIGNING_KEY) -> str:
-        """O `Upstash-Signature` que o QStash mandaria com este corpo."""
-        digest = hashlib.sha256(body.encode()).digest()
-        now = int(time.time())
-        claims = {
-            "iss": "Upstash",
-            "sub": url,
-            "exp": now + 300,
-            "nbf": now,
-            "body": base64.urlsafe_b64encode(digest).decode().rstrip("="),
-        }
-        return jwt.encode(claims, key, algorithm="HS256")
+    def __call__(self, request):
+        self.published.append(request)
+        raise AssertionError("Fila persistente não pode receber dados acadêmicos")
 
 
 @pytest.fixture
 def qstash():
-    """Intercepta só a API do QStash; os outros hosts seguem para o próximo mock."""
     fake = FakeQStash()
     with respx.MockRouter(assert_all_called=False) as router:
-        router.post(host="qstash.upstash.io", path="/v2/batch").mock(side_effect=fake)
+        router.route(host="qstash.upstash.io").mock(side_effect=fake)
         yield fake
-
-
-class JobsClient(TestClient):
-    """Entrega os jobs publicados antes de devolver a resposta, como o QStash faria."""
-
-    def __init__(self, app: FastAPI, qstash: FakeQStash) -> None:
-        super().__init__(app)
-        self.qstash = qstash
-        # O QStash não carrega os cookies do usuário.
-        self._jobs = TestClient(app)
-
-    def __enter__(self) -> Self:
-        super().__enter__()
-        # O pool do banco vale num loop só: os jobs rodam no mesmo do client.
-        self._jobs.portal = self.portal
-        return self
-
-    def request(self, *args, **kwargs) -> httpx.Response:
-        response = super().request(*args, **kwargs)
-        self.qstash.deliver(self._jobs)
-        return response
 
 
 @pytest.fixture(autouse=True)
@@ -341,6 +273,23 @@ def async_database(database):
 
     url = database.kw["bind"].url.set(drivername="postgresql+asyncpg")
     # Sem pool: o teste pode usar a sessão em mais de um event loop.
+    # A API roda com o papel restrito (sem bypass de RLS), como em produção.
+    engine = create_async_engine(
+        url,
+        poolclass=NullPool,
+        connect_args={"server_settings": {"role": "followw_app"}},
+    )
+    yield async_sessionmaker(engine, expire_on_commit=False)
+    engine.sync_engine.dispose()
+
+
+@pytest.fixture
+def maintenance_database(database):
+    """Conta de manutenção (db-init, CLI do administrador, recifragem): sem o papel restrito."""
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    url = database.kw["bind"].url.set(drivername="postgresql+asyncpg")
     engine = create_async_engine(url, poolclass=NullPool)
     yield async_sessionmaker(engine, expire_on_commit=False)
     engine.sync_engine.dispose()
@@ -354,10 +303,13 @@ def client(async_database, qstash):
     from api.main import app
 
     # A app reaproveita conexões como em produção, no event loop fixo do client.
-    engine = create_async_engine(async_database.kw["bind"].url)
+    engine = create_async_engine(
+        async_database.kw["bind"].url,
+        connect_args={"server_settings": {"role": "followw_app"}},
+    )
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     app.dependency_overrides[get_sessionmaker] = lambda: sessions
-    with JobsClient(app, qstash) as client:
+    with TestClient(app) as client:
         # o segredo do aparelho que o app manda: a autoria anônima vem dele, não da matrícula
         client.headers["X-Followw-Author"] = AUTOR_DE_TESTE
         yield client
@@ -502,3 +454,13 @@ def stub_sigaa(monkeypatch):
     client.reset = reset
     monkeypatch.setattr("api.sigaa.SigaaClient", client.created)
     return client
+
+
+@pytest.fixture(autouse=True)
+def estado_de_resiliencia_limpo():
+    """Cache e circuitos são por processo: cada teste começa do zero."""
+    from api import resilience
+
+    resilience.reset_all()
+    yield
+    resilience.reset_all()

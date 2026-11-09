@@ -1,4 +1,4 @@
-﻿# Define o usuário e a senha do painel do administrador (grava só o hash em apps\api\.env).
+﻿# Configura o Owner; --recover PSEUDONIMO redefine seus fatores com confirmação local.
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Push-Location (Join-Path $Root 'apps\api')

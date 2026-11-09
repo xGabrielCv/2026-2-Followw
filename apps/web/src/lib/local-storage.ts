@@ -1,3 +1,5 @@
+import { localVault, publicStorageKey } from '#/lib/local-vault';
+
 export const STORAGE_PREFIX = 'followw:';
 
 export const STORAGE_KEYS = {
@@ -5,7 +7,9 @@ export const STORAGE_KEYS = {
     SCHEDULE: 'schedule',
     SCHEDULE_PLANS: 'schedule-plans',
     LAYOUT: 'layout',
-    REVIEWS: 'reviews'
+    REVIEWS: 'reviews',
+    // chamados de suporte: a chave de cada um é a única prova de posse
+    SUPPORT: 'support'
 } as const;
 
 function getStorage(): Storage | null {
@@ -31,8 +35,11 @@ export function isStorageBlocked(): boolean {
     }
 }
 
+const SCOPED_KEYS = new Set<string>([STORAGE_KEYS.SCHEDULE_PLANS, STORAGE_KEYS.REVIEWS, 'author']);
+let activeAccount: string | undefined;
 function formatKey(key: string): string {
-    return `${STORAGE_PREFIX}${key}`;
+    const scope = activeAccount ?? 'visitor';
+    return `${STORAGE_PREFIX}${SCOPED_KEYS.has(key) ? `${key}:${scope}` : key}`;
 }
 
 export interface LocalStorageRepository {
@@ -50,6 +57,10 @@ export const localStorageRepository: LocalStorageRepository = {
         }
 
         try {
+            if (!publicStorageKey(formatKey(key))) {
+                // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- tipo definido pelo repositório chamador
+                return (localVault(storage).get(formatKey(key)) as T | null) ?? fallback ?? null;
+            }
             const item = storage.getItem(formatKey(key));
             if (item === null) {
                 return fallback ?? null;
@@ -68,6 +79,10 @@ export const localStorageRepository: LocalStorageRepository = {
         }
 
         try {
+            if (!publicStorageKey(formatKey(key))) {
+                localVault(storage).set(formatKey(key), value);
+                return;
+            }
             const serialized = JSON.stringify(value);
             storage.setItem(formatKey(key), serialized);
         } catch {
@@ -82,6 +97,7 @@ export const localStorageRepository: LocalStorageRepository = {
         }
 
         try {
+            if (!publicStorageKey(formatKey(key))) localVault(storage).remove(formatKey(key));
             storage.removeItem(formatKey(key));
         } catch {
             // Ignora falhas de remoção no storage
@@ -95,6 +111,7 @@ export const localStorageRepository: LocalStorageRepository = {
         }
 
         try {
+            localVault(storage).clear();
             const keysToRemove: string[] = [];
             for (let i = 0; i < storage.length; i++) {
                 const storageKey = storage.key(i);
@@ -114,7 +131,7 @@ export const localStorageRepository: LocalStorageRepository = {
 
 // Dados da conta, apagados ao trocar de sessão.
 const ACCOUNT_KEYS: string[] = [STORAGE_KEYS.SCHEDULE_PLANS, STORAGE_KEYS.REVIEWS];
-const stores = new Map<string, { clear: () => void }>();
+const stores = new Map<string, { clear: () => void; reset: () => void }>();
 
 /** Valor salvo no storage e observável pelo `useSyncExternalStore`. */
 export function storedValue<T>(key: string, empty: T) {
@@ -125,7 +142,12 @@ export function storedValue<T>(key: string, empty: T) {
         for (const listener of listeners) listener();
     };
     const store = {
-        getSnapshot: () => (snapshot ??= localStorageRepository.get<T>(key) ?? empty),
+        getSnapshot: () => {
+            const storage = getStorage();
+            if (storage && localVault(storage).ready)
+                snapshot = localStorageRepository.get<T>(key) ?? empty;
+            return (snapshot ??= localStorageRepository.get<T>(key) ?? empty);
+        },
         getServerSnapshot: () => empty,
         subscribe: (listener: () => void) => {
             listeners.add(listener);
@@ -141,6 +163,10 @@ export function storedValue<T>(key: string, empty: T) {
         clear: () => {
             localStorageRepository.remove(key);
             update(empty);
+        },
+        reset: () => {
+            snapshot = undefined;
+            for (const listener of listeners) listener();
         }
     };
     stores.set(key, store);
@@ -148,10 +174,32 @@ export function storedValue<T>(key: string, empty: T) {
 }
 
 export function clearAccountStorage() {
-    for (const key of ACCOUNT_KEYS) {
-        localStorageRepository.remove(key);
-        stores.get(key)?.clear();
+    if (!activeAccount || activeAccount === 'visitor') {
+        for (const key of ACCOUNT_KEYS) stores.get(key)?.clear();
     }
+    selectLocalAccount();
+}
+
+/** Troca a conta sem apagar cenários ou segredos de autoria da conta anterior. */
+export function selectLocalAccount(registration?: string) {
+    if (typeof window === 'undefined') return;
+    const next = registration ?? 'visitor';
+    if (next === activeAccount) return;
+    const storage = getStorage();
+    if (storage && registration) {
+        const vault = localVault(storage);
+        for (const key of SCOPED_KEYS) {
+            const legacy = `${STORAGE_PREFIX}${key}`;
+            const target = `${legacy}:${registration}`;
+            const value = vault.get(legacy);
+            if (value != null && vault.get(target) == null) {
+                vault.set(target, value);
+                vault.remove(legacy);
+            }
+        }
+    }
+    activeAccount = next;
+    for (const store of stores.values()) store.reset();
 }
 
 const accountStores = new Map<string, ReturnType<typeof storedValue<unknown>>>();

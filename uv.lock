@@ -63,8 +63,9 @@ dependencies = [
     { name = "psutil" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyotp" },
     { name = "pypdf" },
-    { name = "qstash" },
+    { name = "qrcode" },
     { name = "sigaa-client" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "tzdata" },
@@ -94,8 +95,9 @@ requires-dist = [
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "pydantic", specifier = ">=2.14.2" },
     { name = "pydantic-settings", specifier = ">=2.16.2" },
+    { name = "pyotp", specifier = ">=2.10.0" },
     { name = "pypdf", specifier = ">=6.21.4" },
-    { name = "qstash", specifier = ">=3.4.0" },
+    { name = "qrcode", specifier = ">=8.2" },
     { name = "sigaa-client", editable = "packages/sigaa-client" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.6" },
     { name = "tzdata", specifier = ">=2026.6" },
@@ -1495,6 +1497,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyotp"
+version = "2.10.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/2d/c6/c5d96a86fd0bf6fa1bbb5c5c341ff3208638b692727a683c8289068d9a11/pyotp-2.10.0.tar.gz", hash = "sha256:d01e9703443616b03c57c700b5cbffd56a1f929c1b0f8f03131bc78c1fca9d3f", size = 18625, upload-time = "2026-06-14T03:48:49.221Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/65/33/7b83bde70eddaaaaef487751a9c3a5cc0c0be54620ded0e120ebdc401ff9/pyotp-2.10.0-py3-none-any.whl", hash = "sha256:1df2f6a1bcc3bb0716172a5215ddc2f8c7c7fd26a13df9927d52e1746934836c", size = 13768, upload-time = "2026-06-14T03:48:47.831Z" },
+]
+
+[[package]]
 name = "pypdf"
 version = "6.21.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1624,16 +1635,15 @@ wheels = [
 ]
 
 [[package]]
-name = "qstash"
-version = "3.4.0"
+name = "qrcode"
+version = "8.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "httpx" },
-    { name = "pyjwt" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/83/0d/42c12ee57d48f8b1399e026d750c39497ba5c3a4e87ad1b8c4898e91d335/qstash-3.4.0.tar.gz", hash = "sha256:883744276820788986bd5c4386c2f244c89f10ad3720210efa65e776b11a6dea", size = 29198, upload-time = "2026-03-18T14:13:00.735Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/b2/7fc2931bfae0af02d5f53b174e9cf701adbb35f39d69c2af63d4a39f81a9/qrcode-8.2.tar.gz", hash = "sha256:35c3f2a4172b33136ab9f6b3ef1c00260dd2f66f858f24d88418a015f446506c", size = 43317, upload-time = "2025-05-01T15:44:24.726Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/63/98dcf66ed3a9d55eba3d4dadb4876be167409fb3f74c6a9443f0b55558c8/qstash-3.4.0-py3-none-any.whl", hash = "sha256:a023737aa824b274057a34bb822c5ba3c45b1001831ff97421fbfefcfe5ff860", size = 40680, upload-time = "2026-03-18T14:12:59.885Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/b8/d2d6d731733f51684bbf76bf34dab3b70a9148e8f2cef2bb544fccec681a/qrcode-8.2-py3-none-any.whl", hash = "sha256:16e64e0716c14960108e85d853062c9e8bba5ca8252c0b4d0231b9df4060ff4f", size = 45986, upload-time = "2025-05-01T15:44:22.781Z" },
 ]
 
 [[package]]

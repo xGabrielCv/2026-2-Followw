@@ -84,10 +84,12 @@ export function BackupSetting({ registration }: { registration: string }) {
                 <DialogHeader>
                     <DialogTitle>Backup das configurações</DialogTitle>
                     <DialogDescription>
-                        Configurações, calendário, marcações de presença, grades do simulador e o
-                        segredo das suas avaliações ficam <strong>só neste aparelho</strong>. Para
-                        levar a outro, exporte aqui e importe lá. O arquivo não passa pela nuvem do
-                        Followw.
+                        Configurações, calendário, marcações de presença e grades ficam só neste
+                        aparelho. O arquivo exportado contém informações acadêmicas pessoais em
+                        texto aberto: guarde-o com cuidado. Ele não inclui senhas, cookies, tokens
+                        de avaliações, segredos de autoria ou credenciais de suporte e não passa
+                        pela nuvem. Backups antigos podem conter segredos de autoria; importe apenas
+                        arquivos seus.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="flex flex-col gap-3">

@@ -8,6 +8,7 @@ from api.account import Account
 from api.anonymous import anonymous_key
 from api.db.main import Database
 from api.db.models import ActiveUser
+from api.flags import flags
 
 
 async def start_account(account: Account, db: Database, author: str | None) -> None:
@@ -16,7 +17,7 @@ async def start_account(account: Account, db: Database, author: str | None) -> N
     O uso conta pela chave do aparelho, que não tem relação com a matrícula.
     """
     await account.profile(refresh=True)
-    if author is not None:
+    if author is not None and (await db.read(flags))["telemetry"]:
         await db.write(lambda session: record_activity(session, author))
 
 

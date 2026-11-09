@@ -22,6 +22,7 @@ class SigaaLoginRequest(BaseModel):
 
 @router.post("/sigaa")
 async def sigaa_login(
+    request: Request,
     body: SigaaLoginRequest,
     response: Response,
     db: DatabaseDep,
@@ -31,7 +32,11 @@ async def sigaa_login(
     credentials = Credentials(registration=body.registration, password=body.password)
     connection = SigaaConnection(credentials, response=response)
     try:
-        await start_account(Account(connection, response=response), db, author)
+        await start_account(
+            Account(connection, response=response),
+            db,
+            author if request.headers.get("X-Followw-Metrics") == "1" else None,
+        )
     finally:
         await connection.aclose()
 
@@ -42,13 +47,18 @@ async def sigaa_login(
     "/sigaa/refresh", status_code=status.HTTP_204_NO_CONTENT, responses=SIGAA_ERRORS
 )
 async def sigaa_refresh(
+    request: Request,
     connection: SigaaConnectionDep,
     response: Response,
     db: DatabaseDep,
     author: OptionalAuthorDep,
 ) -> None:
     """Confere a sessão e renova o perfil guardado no cookie; o app chama ao abrir."""
-    await start_account(Account(connection, response=response), db, author)
+    await start_account(
+        Account(connection, response=response),
+        db,
+        author if request.headers.get("X-Followw-Metrics") == "1" else None,
+    )
 
 
 @router.delete("/sigaa")

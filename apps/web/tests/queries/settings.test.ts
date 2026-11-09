@@ -38,10 +38,7 @@ describe('configurações e lançamentos ficam no navegador', () => {
 
         expect(settingsStore('251000000').getSnapshot().displayName).toBe('Ana');
         expect(settingsStore('252000000').getSnapshot().displayName).toBe('Bia');
-        expect(JSON.parse(localStorage.getItem('followw:settings:251000000') ?? '{}')).toEqual({
-            displayName: 'Ana',
-            subjectColors: { FGA0030: 2 }
-        });
+        expect(localStorage.getItem('followw:settings:251000000')).toBeNull();
         expect(requests).toHaveLength(0);
     });
 
@@ -58,7 +55,8 @@ describe('configurações e lançamentos ficam no navegador', () => {
                 remind_days: 1
             }
         ]);
-        expect(localStorage.getItem('followw:events:251000000')).toContain('Prova 2');
+        expect(entriesStore('251000000').getSnapshot()[0]?.title).toBe('Prova 2');
+        expect(localStorage.getItem('followw:events:251000000')).toBeNull();
         expect(requests).toHaveLength(0);
     });
 

@@ -1,6 +1,7 @@
 import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
 
+import { validDate } from '#/lib/date';
 import { accountStore } from '#/lib/local-storage';
 import { meQueryOptions } from '#/queries/me';
 
@@ -35,8 +36,8 @@ export function validEntry(entry: CalendarEntryInput): boolean {
     return (
         title.length > 0 &&
         title.length <= 120 &&
-        /^\d{4}-\d{2}-\d{2}$/.test(entry.date) &&
-        (entry.time == null || /^\d{2}:\d{2}$/.test(entry.time)) &&
+        validDate(entry.date) &&
+        (entry.time == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(entry.time)) &&
         ['prova', 'trabalho', 'evento', 'lembrete'].includes(entry.kind) &&
         (entry.remind_days == null || (entry.remind_days >= 0 && entry.remind_days <= 30)) &&
         (entry.notes?.length ?? 0) <= 1000

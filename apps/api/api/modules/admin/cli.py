@@ -1,6 +1,6 @@
 """`uv run admin-password`: define o usuário e a senha do painel no `.env` da API.
 
-Grava só o hash scrypt da senha. Reiniciar a API depois da troca invalida as sessões anteriores.
+Contas no PostgreSQL usam Argon2id; recuperação revoga sessões e exige novo cadastro MFA.
 """
 
 import argparse
@@ -48,34 +48,82 @@ def write_credentials(
 
 
 def main() -> None:
-    # Importado aqui: o hash não depende do resto das configurações da API.
-    from api.modules.admin.passwords import MIN_PASSWORD, hash_password
+    from api.modules.admin.passwords import MIN_PASSWORD
 
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Cria o Owner ou altera sua senha no PostgreSQL. Recuperação MFA exige acesso ao ambiente privado do servidor."
+    )
     parser.add_argument(
-        "--reset",
+        "--recover",
+        metavar="PSEUDONIMO",
+        help="Revoga sessões e fatores do Owner indicado; exige cadastrar TOTP novamente.",
+    )
+    parser.add_argument(
+        "--reset-legacy",
         action="store_true",
-        help="Remove o acesso local para cadastrá-lo novamente pela página.",
+        help="Remove somente credenciais administrativas antigas do .env, sem alterar contas do banco.",
     )
     args = parser.parse_args()
-    if args.reset:
+    if args.reset_legacy:
+        if input("Digite REMOVER LEGADO para confirmar: ") != "REMOVER LEGADO":
+            sys.exit("Operação cancelada.")
         reset_credentials()
         print(
-            "Acesso removido. Reinicie a API e abra /api/admin para cadastrar usuário e senha."
+            "Credencial legada removida. Contas e MFA do PostgreSQL foram preservados."
         )
         return
-    print("Painel do administrador do Followw")
-    username = input("Usuário: ").strip()
-    if not re.fullmatch(r"[A-Za-z0-9._-]{3,64}", username):
-        sys.exit("Use de 3 a 64 letras, números, ponto, hífen ou sublinhado.")
-    password = getpass.getpass(f"Senha (mínimo {MIN_PASSWORD} caracteres): ")
-    if len(password) < MIN_PASSWORD:
-        sys.exit(f"A senha precisa de pelo menos {MIN_PASSWORD} caracteres.")
+    username = args.recover or input("Pseudônimo do Owner: ").strip()
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{2,63}", username):
+        sys.exit(
+            "Use de 3 a 64 caracteres, começando por uma letra, sem e-mail ou matrícula."
+        )
+    password = getpass.getpass(f"Nova senha (mínimo {MIN_PASSWORD} caracteres): ")
+    if len(password) < MIN_PASSWORD or len(password) > 256:
+        sys.exit("A senha deve ter de 12 a 256 caracteres.")
     if getpass.getpass("Repita a senha: ") != password:
         sys.exit("As senhas não conferem.")
-    write_credentials(username, hash_password(password))
-    print(f"Pronto: usuário e hash da senha gravados em {ENV_FILE}.")
-    print("Reinicie a API para valer.")
+    action = "RECUPERAR" if args.recover else "CONFIGURAR"
+    print(
+        "As sessões existentes serão revogadas."
+        + (
+            " Os fatores antigos e códigos de recuperação serão invalidados."
+            if args.recover
+            else " O MFA existente será preservado."
+        )
+    )
+    if input(f"Digite {action} {username} para confirmar: ") != f"{action} {username}":
+        sys.exit("Operação cancelada.")
+    from dotenv import load_dotenv
+
+    load_dotenv(ENV_FILE, override=False)
+    import asyncio
+
+    from api.db.main import (
+        create_schema,
+    )
+    from api.db.main import (
+        maintenance_engine as engine,
+    )
+    from api.db.main import (
+        maintenance_session as async_session,
+    )
+    from api.modules.admin.recovery import configure_owner
+
+    async def execute():
+        async with engine.begin() as connection:
+            await connection.run_sync(create_schema)
+        await configure_owner(
+            async_session, username, password, recover=bool(args.recover)
+        )
+        await engine.dispose()
+
+    try:
+        asyncio.run(execute())
+    except ValueError as error:
+        sys.exit(str(error))
+    print(
+        "Owner configurado. Acesse /api/admin e entre com a nova senha. MFA continua obrigatório."
+    )
 
 
 def reset_credentials(env: Path | None = None) -> None:

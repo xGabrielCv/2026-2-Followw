@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { GitHubIcon, REPOSITORY_URL } from '#/components/GitHubLink';
 import { BackHeader } from '#/components/HeaderBar';
 import { BackupSetting } from '#/components/profile/BackupSetting';
+import { StorageSetting } from '#/components/profile/StorageSetting';
 import {
     AlertDialog,
     AlertDialogAction,
@@ -49,7 +50,7 @@ interface Item {
 const DEVICE: Item[] = [
     {
         what: 'Sessão do SIGAA (matrícula e senha)',
-        how: 'Num cookie cifrado que o navegador guarda, mas não consegue ler. Só a API o abre, durante cada pedido, para falar com o SIGAA. Vale por até 400 dias, sem precisar entrar de novo.'
+        how: 'Num cookie cifrado e HttpOnly. Só a API o abre em memória para falar com o SIGAA. O login vence após até 8 horas, sem prolongamento automático por consultas.'
     },
     {
         what: 'Perfil: nome, foto, curso, IRA, MP, semestre de entrada e integralização',
@@ -57,15 +58,15 @@ const DEVICE: Item[] = [
     },
     {
         what: 'Turmas, menções, frequência, colegas, postagens, notícias, estágios e extrato do RU',
-        how: 'No cache do app, neste aparelho, por até 400 dias. Esse cache não tem uma camada própria de criptografia. Ao abrir o app, ele busca primeiro a agenda e as turmas e depois o resto, em segundo plano; de novo só quando o dado envelhece.'
+        how: 'No cache cifrado deste aparelho, por 30 dias por padrão. Você pode escolher 7, 30 ou 90 dias. As consultas são atualizadas em segundo plano, preservando o dado salvo se a rede falhar.'
     },
     {
         what: 'Configurações, calendário, marcações de presença, grades do simulador e o segredo das suas avaliações',
-        how: 'Só no armazenamento deste navegador, separado por matrícula. Preferências e backup não têm criptografia própria: proteja o aparelho e o arquivo. Para levar a outro aparelho, use o backup.'
+        how: 'Só neste navegador. Dados acadêmicos e preferências ficam cifrados; a chave não exportável fica no IndexedDB. Código do próprio site ainda pode acessá-los. O backup exportado contém dados pessoais em texto aberto: proteja o arquivo.'
     },
     {
         what: 'Segredo do aparelho (chave de autoria)',
-        how: 'Um código aleatório criado aqui, sem relação com a sua matrícula. É dele que sai a chave anônima do que você publica. Vai no backup.'
+        how: 'Código aleatório sem relação com a matrícula, guardado cifrado. Mantém a autoria pseudônima. O backup novo não exporta esse segredo; backups antigos podem contê-lo.'
     }
 ];
 
@@ -76,7 +77,7 @@ const PASSING: Item[] = [
     },
     {
         what: 'Carteirinha, QR do RU, histórico em PDF e mural de estágios',
-        how: 'Gerados no SIGAA na hora de cada pedido.'
+        how: 'Gerados no SIGAA na hora de cada pedido, sem fila persistente de credenciais.'
     },
     {
         what: 'Seu histórico nas recomendações de matérias',
@@ -163,9 +164,11 @@ function DataUsagePage() {
                         nunca se ligam entre si.
                     </p>
                     <p>
-                        Por isso, nem quem administra o servidor, sabendo a sua matrícula, consegue
-                        descobrir o que você publicou. O preço: noutro aparelho você só apaga o que
-                        publicou se levar o segredo pelo backup.
+                        Isso é pseudonimização: identificadores persistidos não contêm sua
+                        matrícula, mas podem correlacionar ações no mesmo escopo. O operador da API
+                        processa a sessão e o segredo em memória; essa arquitetura não garante
+                        anonimato contra um operador malicioso. A autoria antiga continua disponível
+                        neste navegador, mas o backup novo não exporta segredos de acesso.
                     </p>
                     <p>
                         O que você escreve pode identificar você (um detalhe da sua turma, seu nome
@@ -180,6 +183,9 @@ function DataUsagePage() {
                     Seu controle
                 </SectionTitle>
                 <DeviceUsage />
+                <Card className="gap-1 px-3 py-1">
+                    <StorageSetting />
+                </Card>
                 {user && (
                     <Card className="gap-1 px-3 py-1">
                         <BackupSetting registration={user.registration} />

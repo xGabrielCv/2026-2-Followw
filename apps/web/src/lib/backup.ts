@@ -3,7 +3,7 @@ import type { CalendarEntry } from '#/queries/events';
 import type { OwnReview } from '#/queries/reviews';
 import type { UserSettings } from '#/queries/settings';
 
-import { authorSecret, setAuthorSecret, validAuthor } from '#/lib/author';
+import { setAuthorSecret, validAuthor } from '#/lib/author';
 import { marksStore, validMarks, type LessonMarks } from '#/lib/lesson-marks';
 import { MAX_PLANS, schedulePlans } from '#/lib/planned-schedule';
 import { entriesStore, MAX_ENTRIES, validEntry } from '#/queries/events';
@@ -16,7 +16,7 @@ import { settingsStore } from '#/queries/settings';
  */
 export interface Backup {
     app: 'followw';
-    version: 1;
+    version: 1 | 2;
     exported_at: string;
     settings: UserSettings;
     events: CalendarEntry[];
@@ -32,16 +32,74 @@ const CODE = /^[A-Z0-9]{1,16}$/;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export function exportBackup(registration: string, now = new Date()): Backup {
+    const { displayName, completedSubjects, subjectColors, shareStatistics, sharePromptDismissed } =
+        settingsStore(registration).getSnapshot();
     return {
         app: 'followw',
-        version: 1,
+        version: 2,
         exported_at: now.toISOString(),
-        settings: settingsStore(registration).getSnapshot(),
-        events: entriesStore(registration).getSnapshot(),
+        settings: {
+            displayName,
+            completedSubjects,
+            subjectColors,
+            shareStatistics,
+            sharePromptDismissed
+        },
+        events: entriesStore(registration)
+            .getSnapshot()
+            .map(({ id, date, title, kind, time, subject_code, notes, remind_days }) => ({
+                id,
+                date,
+                title,
+                kind,
+                time,
+                subject_code,
+                notes,
+                remind_days
+            })),
         marks: marksStore(registration).getSnapshot(),
-        plans: schedulePlans.getSnapshot(),
-        reviews: ownReviews.getSnapshot(),
-        author: authorSecret() ?? undefined
+        plans: {
+            active: schedulePlans.getSnapshot().active,
+            plans: schedulePlans.getSnapshot().plans.map(({ id, name, items }) => ({
+                id,
+                name,
+                items: items.map(
+                    ({
+                        code,
+                        name: subjectName,
+                        hours,
+                        number,
+                        semester,
+                        schedule,
+                        room,
+                        sigaa_id,
+                        vacancies,
+                        occupied,
+                        professors
+                    }) => ({
+                        code,
+                        name: subjectName,
+                        hours,
+                        number,
+                        semester,
+                        schedule,
+                        room,
+                        sigaa_id,
+                        vacancies,
+                        occupied,
+                        professors: professors.map(
+                            ({ siape, name: professorName, photo, email }) => ({
+                                siape,
+                                name: professorName,
+                                photo,
+                                email
+                            })
+                        )
+                    })
+                )
+            }))
+        },
+        reviews: {}
     };
 }
 
@@ -137,7 +195,7 @@ export function parseBackup(text: string): Backup | BackupError {
         return 'json-invalido';
     }
     if (!isObject(data) || data.app !== 'followw') return 'nao-e-do-followw';
-    if (data.version !== 1) return 'versao-desconhecida';
+    if (data.version !== 1 && data.version !== 2) return 'versao-desconhecida';
     const ok =
         validSettings(data.settings) &&
         Array.isArray(data.events) &&
@@ -162,8 +220,10 @@ export function importBackup(registration: string, backup: Backup) {
     entriesStore(registration).set(backup.events);
     marksStore(registration).set(backup.marks);
     schedulePlans.set(backup.plans);
-    ownReviews.set(backup.reviews);
-    if (backup.author) setAuthorSecret(backup.author);
+    if (backup.version === 1) {
+        ownReviews.set(backup.reviews);
+        if (backup.author) setAuthorSecret(backup.author);
+    }
 }
 
 export function backupSummary(backup: Backup) {

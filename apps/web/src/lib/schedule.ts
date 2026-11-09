@@ -61,7 +61,9 @@ export interface ClassTime extends TimeRange {
 export function parseSchedule(code: string | null | undefined): ClassTime[] {
     const times: ClassTime[] = [];
     for (const [, days, shift, slots] of (code ?? '').matchAll(/([1-7]+)([MTN])([1-6]+)/g)) {
-        const ranges = Array.from(slots, (slot) => SLOTS[shift][Number(slot) - 1]).filter(Boolean);
+        const ranges = Array.from(new Set(slots), (slot) => SLOTS[shift][Number(slot) - 1])
+            .filter(Boolean)
+            .toSorted((a, b) => a[0].localeCompare(b[0]));
         if (ranges.length === 0) continue;
         for (const day of days) {
             times.push({
@@ -82,7 +84,7 @@ export function parseSchedule(code: string | null | undefined): ClassTime[] {
             last.weekday === time.weekday &&
             getMinutes(time.start) - getMinutes(last.end) <= MERGE_GAP_MINUTES
         )
-            last.end = time.end;
+            last.end = last.end > time.end ? last.end : time.end;
         else merged.push(time);
     }
     return merged;

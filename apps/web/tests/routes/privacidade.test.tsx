@@ -62,14 +62,16 @@ describe('privacidade e termos', () => {
         expect(markup).toContain('Não gravamos seus dados pessoais do SIGAA no servidor');
         expect(markup).toContain('cookie cifrado');
         expect(markup).toContain('AES-256-GCM');
-        expect(markup).toContain('400 dias');
+        expect(markup).toContain('30 dias por padrão');
+        expect(markup).toContain('8 horas');
         expect(markup).toContain('PostHog');
         expect(markup).toContain('sem gravação de sessão');
         expect(markup).not.toContain('mailto:');
         expect(markup).not.toContain('contato@followw.app');
         expect(markup).not.toContain('removal@followw.app');
         expect(markup).toContain('leitura é pública');
-        expect(markup).toContain('não têm uma camada própria de criptografia');
+        expect(markup).toContain('cifrados no navegador');
+        expect(markup).toContain('texto aberto');
         expect(markup).not.toContain('Guardamos em nosso banco de dados cópias');
         expect(markup).toContain('stalking');
         expect(markup).toContain('automações são permitidos');

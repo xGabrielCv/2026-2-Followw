@@ -42,7 +42,7 @@ describe('localStorageRepository', () => {
         const retrieved = localStorageRepository.get<string>('ru-token');
 
         expect(retrieved).toBe('token-123456');
-        expect(memoryStorage.getItem('followw:ru-token')).toBe('"token-123456"');
+        expect(memoryStorage.getItem('followw:ru-token')).toBeNull();
     });
 
     test('armazena e recupera valores do tipo número', () => {
@@ -50,7 +50,7 @@ describe('localStorageRepository', () => {
         const retrieved = localStorageRepository.get<number>('ru_balance');
 
         expect(retrieved).toBe(42.5);
-        expect(memoryStorage.getItem('followw:ru_balance')).toBe('42.5');
+        expect(memoryStorage.getItem('followw:ru_balance')).toBeNull();
     });
 
     test('armazena e recupera configurações', () => {
@@ -59,7 +59,7 @@ describe('localStorageRepository', () => {
         const retrieved = localStorageRepository.get('settings');
 
         expect(retrieved).toEqual(settings);
-        expect(memoryStorage.getItem('followw:settings')).toBe(JSON.stringify(settings));
+        expect(memoryStorage.getItem('followw:settings')).toBeNull();
     });
 
     test('armazena e recupera objetos complexos', () => {
@@ -68,7 +68,7 @@ describe('localStorageRepository', () => {
 
         const retrieved = localStorageRepository.get<typeof payload>('user-data');
         expect(retrieved).toEqual(payload);
-        expect(memoryStorage.getItem('followw:user-data')).toBe(JSON.stringify(payload));
+        expect(memoryStorage.getItem('followw:user-data')).toBeNull();
     });
 
     test('retorna null para chaves inexistentes', () => {
@@ -91,7 +91,7 @@ describe('localStorageRepository', () => {
         localStorageRepository.set('balance', 10);
 
         expect(memoryStorage.getItem('other_app:session')).toBe('abc');
-        expect(memoryStorage.getItem('followw:token')).toBe('"123"');
+        expect(memoryStorage.getItem('followw:token')).toBeNull();
 
         localStorageRepository.clear();
 

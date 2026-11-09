@@ -287,6 +287,15 @@ if (-not (Select-String -Path $envFile -Pattern '^DATA_ENCRYPTION_KEY=.+' -Quiet
     Add-Content -Encoding ascii $envFile @('# Chave que cifra o conteudo da comunidade no banco e os arquivos (guarde com cuidado)', "DATA_ENCRYPTION_KEY=$dataKey")
     Ok 'chave de cifra dos dados criada em apps\api\.env'
 }
+# A API conecta ao PostgreSQL com o papel restrito `followw_app` (sem bypass de Row-Level Security);
+# o db-init e as cargas usam a conta de manutenção. A senha do papel é só deste computador.
+if (-not (Select-String -Path $envFile -Pattern '^APP_DB_PASSWORD=.+' -Quiet)) {
+    $bytes = New-Object byte[] 24
+    [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $appPassword = ([BitConverter]::ToString($bytes) -replace '-', '').ToLower()
+    Add-Content -Encoding ascii $envFile @('# Senha do papel restrito da API no PostgreSQL (guarde com cuidado)', "APP_DB_PASSWORD=$appPassword")
+    Ok 'senha do papel restrito da API criada em apps\api\.env'
+}
 # O painel do administrador (/api/admin) pede usuário e senha; só o hash da senha fica no .env.
 $adminReady = Select-String -Path $envFile -Pattern '^ADMIN_PASSWORD_HASH=.+' -Quiet
 if (-not $adminReady) {
@@ -295,6 +304,7 @@ if (-not $adminReady) {
 
 # Variáveis do processo têm prioridade sobre o .env: o modo local vale sempre por aqui.
 $env:DATABASE_URL = $DatabaseUrl
+$env:DATABASE_MAINTENANCE_URL = $DatabaseUrl
 $env:JOB_QUEUE = 'local'
 # Libera em Perfil > Conta os dados de demonstração; nunca fica ligado em produção.
 $env:DEMO_DATA = if ($Demo) { '1' } else { '0' }
@@ -320,7 +330,7 @@ if (-not $Offline) {
 }
 if (-not (Test-Path (Join-Path $dataDir 'units.csv'))) { Fail 'Catálogo ausente. Execute uma vez com internet para importar os dados públicos de referência.' }
 # Os modelos entram no hash: tabela nova no código também roda o db-init, que só cria o que falta.
-$hash = (@(Get-ChildItem $dataDir -Filter *.csv | Sort-Object Name) + @(Get-Item (Join-Path $ApiDir 'api\db\models.py')) |
+$hash = (@(Get-ChildItem $dataDir -Filter *.csv | Sort-Object Name) + @(Get-Item (Join-Path $ApiDir 'api\db\models.py'), (Join-Path $ApiDir 'api\db\security.py'), (Join-Path $ApiDir 'api\modules\support\models.py')) |
     Get-FileHash -Algorithm SHA256 | ForEach-Object Hash) -join ''
 $seeded = if (Test-Path $SeedMarker) { Get-Content $SeedMarker -Raw } else { '' }
 if ($Reseed -or $seeded.Trim() -ne $hash) {
@@ -361,6 +371,11 @@ if (-not $Offline -and -not $SkipDataUpdate -and (Test-UpdateDue)) {
     Warn "dados com mais de $UpdateEveryDays dias: atualizando em segundo plano (log em .local\update.log)"
 }
 
+# A partir daqui só a API roda, com o papel restrito: as políticas RLS passam a valer.
+$appPasswordLine = Select-String -Path $envFile -Pattern '^APP_DB_PASSWORD=(.+)$' | Select-Object -First 1
+if ($appPasswordLine) {
+    $env:DATABASE_URL = "postgresql+asyncpg://followw_app:$($appPasswordLine.Matches[0].Groups[1].Value.Trim())@127.0.0.1:$DbPort/followw"
+}
 Step 'Subindo a API e o front'
 $api = $null
 $web = $null

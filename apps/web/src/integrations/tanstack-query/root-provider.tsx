@@ -7,8 +7,11 @@ import {
 } from '@tanstack/react-query';
 
 import { PERSIST_MAX_AGE } from '#/integrations/offline/storage.ts';
+import { initializeQueryTimers } from '#/lib/query-timers';
 import { clearSession } from '#/queries/auth.ts';
 import { ApiError } from '#/queries/errors.ts';
+
+initializeQueryTimers();
 
 export function getContext() {
     const isServer = environmentManager.isServer();

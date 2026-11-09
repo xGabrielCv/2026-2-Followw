@@ -1,9 +1,9 @@
 import type { Middleware } from 'openapi-fetch';
 
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
 
-import { runBackgroundSync } from '#/integrations/prefetch/background-sync';
+import { runBackgroundSync, syncPause } from '#/integrations/prefetch/background-sync';
 import { apiClient } from '#/queries/client';
 
 const turma = (id: string, current: boolean, semester = '2026.2') => ({
@@ -27,6 +27,20 @@ function respond(url: URL) {
 }
 
 describe('carregamento em segundo plano', () => {
+    test('remove listener ao terminar pausa e ao cancelar', async () => {
+        const controller = new AbortController();
+        const added = spyOn(controller.signal, 'addEventListener');
+        const removed = spyOn(controller.signal, 'removeEventListener');
+        await syncPause(1, controller.signal);
+        const pending = syncPause(5000, controller.signal);
+        controller.abort();
+        await pending;
+        await syncPause(5000, controller.signal);
+        expect(added).toHaveBeenCalledTimes(2);
+        expect(removed).toHaveBeenCalledTimes(2);
+        added.mockRestore();
+        removed.mockRestore();
+    });
     test('busca na ordem de urgência, um passo por vez, e pula o que está fresco', async () => {
         const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
         const order: string[] = [];

@@ -9,7 +9,6 @@ from api.errors import SIGAA_ERRORS
 from api.modules.me.profile import ProfileServiceDep, UserProfile
 from api.modules.me.sharing import SharingInput, SharingStatus, set_sharing
 from api.sigaa import SigaaClientDep, SigaaConnection, SigaaConnectionDep
-from api.sync.queue import JobQueueDep
 
 router = APIRouter()
 _DOCUMENT_ERRORS = {
@@ -109,7 +108,7 @@ def _document_download(content: bytes, filename: str, response: Response) -> Res
     "/statistics-sharing",
     response_model=SharingStatus,
     summary="Compartilhar (ou não) as estatísticas das turmas do aluno",
-    description="Libera nos índices públicos as estatísticas das turmas encerradas do aluno. A escolha fica no navegador; o servidor só guarda que a turma tem estatística liberada, com uma chave anônima por turma. Índices que faltam são buscados num job (pending).",
+    description="Libera nos índices públicos as estatísticas das turmas encerradas do aluno. A escolha fica no navegador; o servidor só guarda que a turma tem estatística liberada, com uma chave anônima por turma. Índices que faltam são buscados nesta requisição, sem filas persistentes (pending em falhas temporárias).",
     responses=SIGAA_ERRORS,
     dependencies=[NoStore],
 )
@@ -117,7 +116,6 @@ async def put_statistics_sharing(
     body: SharingInput,
     account: AccountDep,
     db: DatabaseDep,
-    queue: JobQueueDep,
     author: AuthorDep,
 ) -> SharingStatus:
-    return await set_sharing(account, db, queue, body.shared, author)
+    return await set_sharing(account, db, body.shared, author)

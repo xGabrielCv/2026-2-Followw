@@ -15,6 +15,7 @@ import type { CatalogSubject, SubjectClassroom } from '#/queries/subjects';
 
 import { getContext } from '#/integrations/tanstack-query/root-provider';
 import { localStorageRepository, STORAGE_KEYS } from '#/lib/local-storage';
+import { schedulePlans } from '#/lib/planned-schedule';
 import { clearSession, startSession } from '#/queries/auth';
 import { apiClient } from '#/queries/client';
 import { ApiError } from '#/queries/errors';
@@ -43,7 +44,7 @@ beforeAll(async () => {
 afterAll(() => restoreLayoutEffect());
 afterEach(() => {
     dom.testing.cleanup();
-    localStorage.clear();
+    localStorageRepository.clear();
 });
 
 const classroom: SubjectClassroom = {
@@ -118,9 +119,7 @@ describe('montagem da grade semanal', () => {
             const view = setup();
             localStorageRepository.set(STORAGE_KEYS.THEME, 'dark');
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 01'));
-            expect(
-                JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
-            ).toHaveLength(1);
+            expect(schedulePlans.getSnapshot().plans[0].items).toHaveLength(1);
             const middleware: Middleware = {
                 onRequest: () => Response.json({ registration: 'outra-conta' })
             };
@@ -179,9 +178,7 @@ describe('montagem da grade semanal', () => {
         fireEvent.click(add('FGA0108'));
         fireEvent.click(add('FGA0001'));
         expect(view.getByText(/ultrapassa a carga horária máxima de 100h/)).toBeTruthy();
-        expect(
-            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
-        ).toHaveLength(1);
+        expect(schedulePlans.getSnapshot().plans[0].items).toHaveLength(1);
         expect(add('FGA0002').hasAttribute('disabled')).toBe(false);
         expect(add('FGA0003').hasAttribute('disabled')).toBe(false);
         fireEvent.click(add('FGA0002'));
@@ -212,9 +209,7 @@ describe('montagem da grade semanal', () => {
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 01'));
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 02'));
             expect(view.getByText(/já está na grade do semestre 2026.2, na turma 01/)).toBeTruthy();
-            expect(
-                JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
-            ).toHaveLength(1);
+            expect(schedulePlans.getSnapshot().plans[0].items).toHaveLength(1);
             fireEvent.click(button(view, 'Remover da grade: FGA0108, turma 01'));
             fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 02'));
             expect(
@@ -283,9 +278,7 @@ describe('montagem da grade semanal', () => {
         expect(blocked.hasAttribute('disabled')).toBe(false);
         fireEvent.click(blocked);
         expect(view.getByText(/O horário de .*FGA0001.* conflita com .*FGA0108/)).toBeTruthy();
-        expect(
-            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
-        ).toHaveLength(1);
+        expect(schedulePlans.getSnapshot().plans[0].items).toHaveLength(1);
         fireEvent.click(blocked);
         expect(view.getAllByText('Não foi possível adicionar à grade')).toHaveLength(1);
         fireEvent.click(await view.findByRole('button', { name: 'Fechar aviso' }));
@@ -315,9 +308,7 @@ describe('montagem da grade semanal', () => {
         fireEvent.click(button(view, 'Limpar seleção'));
         expect(view.queryByRole('toolbar')).toBeNull();
         // limpar esvazia a grade ativa, que continua no simulador
-        expect(JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items).toEqual(
-            []
-        );
+        expect(schedulePlans.getSnapshot().plans[0].items).toEqual([]);
     });
 
     test('salva a grade no localStorage e restaura ao remontar', () => {
@@ -325,18 +316,14 @@ describe('montagem da grade semanal', () => {
         const view = setup({ schedule: '24M12' });
         fireEvent.click(button(view, 'Adicionar à grade: FGA0108, turma 01'));
         fireEvent.click(button(view, 'Adicionar à grade: FGA0001, turma 01'));
-        expect(
-            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
-        ).toHaveLength(2);
+        expect(schedulePlans.getSnapshot().plans[0].items).toHaveLength(2);
         view.unmount();
         const restored = setup({ schedule: '24M12' });
         expect(
             button(restored, 'Remover da grade: FGA0108, turma 01').getAttribute('aria-pressed')
         ).toBe('true');
         fireEvent.click(button(restored, 'Remover da grade: FGA0001, turma 01'));
-        expect(
-            JSON.parse(localStorage.getItem('followw:schedule-plans')!).plans[0].items
-        ).toHaveLength(1);
+        expect(schedulePlans.getSnapshot().plans[0].items).toHaveLength(1);
     });
 
     test('fechar e reabrir mantém seleção', async () => {

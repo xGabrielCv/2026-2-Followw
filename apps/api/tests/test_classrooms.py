@@ -417,13 +417,43 @@ def test_turma_desconhecida_consulta_a_lista_e_a_de_outro_aluno_e_404(
     stub_sigaa.classrooms.get_classroom_statistics.return_value = ()
     assert aluno.get("/classrooms/AAA111/statistics").json() == []
     assert stub_sigaa.classrooms.list_classrooms.await_count == 1
-    # já conhecida: não relê a lista
+    # Mesmo já conhecida, confere vínculo na sessão atual.
     aluno.get("/classrooms/1614141/statistics")
-    assert stub_sigaa.classrooms.list_classrooms.await_count == 1
+    assert stub_sigaa.classrooms.list_classrooms.await_count == 2
 
     resposta = aluno.get("/classrooms/CCC333/members")
     assert resposta.status_code == 404
     assert aluno.get("/classrooms/a b/members").status_code == 422
+
+
+@pytest.mark.parametrize(
+    "resource", ["members", "frequency", "posts", "statistics", "posts/news:1"]
+)
+@pytest.mark.parametrize("identifier", ["AAA111", "1614141"])
+def test_catalogo_de_outro_aluno_nao_autoriza_dados_privados(
+    aluno, stub_sigaa, resource, identifier
+):
+    assert aluno.get("/classrooms").status_code == 200
+    stub_sigaa.classrooms.list_classrooms.return_value = [PASSADA]
+    outra = Credentials(registration="252000000", password=SecretStr("sintetica123"))
+    from fastapi import Response
+
+    from api.cookies import set_refresh_cookie
+
+    response = Response()
+    set_refresh_cookie(response, outra)
+    from http.cookies import SimpleCookie
+
+    jar = SimpleCookie()
+    for header in response.headers.getlist("set-cookie"):
+        jar.load(header)
+    aluno.cookies.clear()
+    aluno.cookies.update({name: value.value for name, value in jar.items()})
+    assert aluno.get(f"/classrooms/{identifier}/{resource}").status_code == 404
+    stub_sigaa.classrooms.list_classroom_members.assert_not_awaited()
+    stub_sigaa.classrooms.get_classroom_frequency.assert_not_awaited()
+    stub_sigaa.classrooms.list_classroom_posts.assert_not_awaited()
+    stub_sigaa.classrooms.get_classroom_statistics.assert_not_awaited()
 
 
 def test_participantes_vem_do_sigaa_e_so_os_docentes_ficam_no_banco(

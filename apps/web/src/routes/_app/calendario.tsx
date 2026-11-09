@@ -25,6 +25,7 @@ import {
     formatClock,
     relativeDays
 } from '#/lib/agenda';
+import { validDate } from '#/lib/date';
 import { nowInBrasilia } from '#/lib/schedule';
 import { cn } from '#/lib/shadcn';
 import { classroomsQueryOptions } from '#/queries/classrooms';
@@ -34,11 +35,7 @@ import { meQueryOptions } from '#/queries/me';
 
 const calendarParsers = {
     date: createParser({
-        parse: (value) =>
-            /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-            new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
-                ? value
-                : null,
+        parse: (value) => (validDate(value) ? value : null),
         serialize: String
     })
 };

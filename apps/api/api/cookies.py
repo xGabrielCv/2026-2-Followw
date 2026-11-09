@@ -46,7 +46,9 @@ def read_access_cookie(request: Request, registration: str) -> str | None:
     return payload.get("session_token")
 
 
-def set_refresh_cookie(response: Response, credentials: Credentials) -> None:
+def set_refresh_cookie(
+    response: Response, credentials: Credentials, *, expires_at: int | None = None
+) -> None:
     _set_cookie(
         response,
         REFRESH_COOKIE_NAME,
@@ -55,15 +57,29 @@ def set_refresh_cookie(response: Response, credentials: Credentials) -> None:
             "password": credentials.password.get_secret_value(),
         },
         settings.refresh_token_expire_minutes,
+        expires_at=expires_at,
     )
 
 
 def read_refresh_cookie(request: Request) -> Credentials | None:
     payload = _read_cookie(request, REFRESH_COOKIE_NAME)
+    if (
+        payload
+        and payload["exp"]
+        > int(datetime.now(UTC).timestamp())
+        + settings.refresh_token_expire_minutes * 60
+        + 5
+    ):
+        return None
     try:
         return Credentials.model_validate(payload) if payload else None
     except ValidationError:
         return None
+
+
+def refresh_deadline(request: Request) -> int | None:
+    payload = _read_cookie(request, REFRESH_COOKIE_NAME)
+    return payload["exp"] if payload else None
 
 
 def set_profile_cookie(
@@ -136,9 +152,16 @@ def _hkdf(secret: str, info: str) -> bytes:
 
 
 def _set_cookie(
-    response: Response, name: str, payload: dict, expire_minutes: int
+    response: Response,
+    name: str,
+    payload: dict,
+    expire_minutes: int,
+    *,
+    expires_at: int | None = None,
 ) -> None:
     expires = datetime.now(UTC) + timedelta(minutes=expire_minutes)
+    if expires_at is not None:
+        expires = min(expires, datetime.fromtimestamp(expires_at, UTC))
     token = encrypt_cookie(name, {**payload, "exp": int(expires.timestamp())})
     # Gravar de novo na mesma resposta substitui o cookie em vez de repeti-lo.
     prefix = f"{name}=".encode("latin-1")
@@ -155,7 +178,13 @@ def _set_cookie(
         # cookies `Secure`.
         secure=settings.environment == "production",
         samesite="lax",
-        max_age=expire_minutes * 60,
+        max_age=max(
+            0,
+            min(
+                expire_minutes * 60,
+                int(expires.timestamp()) - int(datetime.now(UTC).timestamp()),
+            ),
+        ),
     )
 
 

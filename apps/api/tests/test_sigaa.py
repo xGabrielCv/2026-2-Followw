@@ -1,3 +1,6 @@
+import asyncio
+from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 from joserfc import jwt
@@ -16,6 +19,46 @@ from api.core.config import settings
 from api.sigaa import SigaaClientDep, SigaaPublicClientDep
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
+
+
+async def test_timeout_do_bloqueio_nao_abre_client_nem_libera_lock_alheio(monkeypatch):
+    from fastapi import HTTPException, Response
+
+    from api.sigaa import _SESSION_LOCKS, SigaaConnection
+
+    lock = asyncio.Lock()
+    await lock.acquire()
+    _SESSION_LOCKS[(asyncio.get_running_loop(), CREDENCIAIS.registration)] = lock
+    constructor = AsyncMock()
+    monkeypatch.setattr("api.sigaa.SigaaClient", constructor)
+    monkeypatch.setattr("api.sigaa._LOCK_TIMEOUT", 0.01)
+    connection = SigaaConnection(CREDENCIAIS, response=Response())
+    try:
+        with pytest.raises(HTTPException) as error:
+            await connection.client()
+        assert error.value.status_code == 503
+        constructor.assert_not_called()
+        await connection.aclose()
+        assert lock.locked()
+    finally:
+        lock.release()
+
+
+async def test_duas_conexoes_da_mesma_conta_aguardam_liberacao():
+    from fastapi import Response
+
+    from api.sigaa import SigaaConnection
+
+    first = SigaaConnection(CREDENCIAIS, response=Response())
+    second = SigaaConnection(CREDENCIAIS, response=Response())
+    await first._acquire()
+    waiting = asyncio.create_task(second._acquire())
+    await asyncio.sleep(0)
+    assert not waiting.done()
+    first._release()
+    await asyncio.wait_for(waiting, 1)
+    assert second._lock is not None
+    second._release()
 
 
 async def _sonda(client: SigaaClientDep):

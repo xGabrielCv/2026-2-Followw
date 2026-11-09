@@ -111,12 +111,7 @@ class ClassroomService:
 
     async def get_turma(self, classroom_id: str) -> Turma:
         """A turma pelo `frontEndIdTurma` ou pelo `sigaa_id`, se for do aluno."""
-        row = await self._db.read(
-            lambda session: ClassroomRepository(session).find(classroom_id)
-        )
-        if row is not None and row.front_end_id is not None:
-            return Turma(row.front_end_id, row, _is_current(row.semester))
-        # Turma ainda desconhecida: a lista do aluno a traz (e diz se é dele).
+        # O catálogo compartilhado nunca comprova vínculo com o aluno desta requisição.
         for turma in await self.list_turmas("all"):
             if classroom_id in (turma.front_end_id, str(turma.row.sigaa_id)):
                 return turma
@@ -149,10 +144,6 @@ def _in_semester(item: sigaa_client.Classroom, semester: str | None) -> bool:
     if semester is None:
         return item.current
     return semester == "all" or item.semester == semester
-
-
-def _is_current(semester: str) -> bool:
-    return academic_calendar.member_status(semester) is ClassroomStatus.CURSANDO
 
 
 def to_classroom(

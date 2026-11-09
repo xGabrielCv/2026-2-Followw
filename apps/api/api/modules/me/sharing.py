@@ -1,8 +1,11 @@
 """Liberar os índices das turmas encerradas do aluno, sem ligar a turma a quem liberou."""
 
+import asyncio
 from datetime import UTC, datetime
 
+import httpx
 from pydantic import BaseModel
+from sigaa_client import SigaaError
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +17,6 @@ from api.db.models import Classroom, SharedStatistics
 from api.modules.classrooms.repository import ClassroomRepository
 from api.modules.classrooms.service import ClassroomService
 from api.sigaa import SigaaConnection
-from api.sync import Job
-from api.sync.queue import JobQueue
 
 
 class SharingInput(BaseModel):
@@ -35,7 +36,7 @@ def _scope(classroom_id: object) -> str:
 
 
 async def set_sharing(
-    account: Account, db: Database, queue: JobQueue, shared: bool, author: str
+    account: Account, db: Database, shared: bool, author: str
 ) -> SharingStatus:
     turmas = await ClassroomService(account, db).list_turmas("all")
     past = [turma.row.id for turma in turmas if not turma.current]
@@ -44,19 +45,19 @@ async def set_sharing(
         for turma in turmas
         if not turma.current and turma.row.statistics_synced_at is None
     ]
-    count = await db.write(lambda session: _share(session, author, past, shared))
+    pending = False
     if shared and missing:
-        await queue.enqueue(
-            Job(
-                credentials=account.connection.credentials,
-                task="share_statistics",
-                author=author,
-            )
-        )
+        # Credenciais nunca saem para filas persistentes, nem mesmo cifradas.
+        try:
+            async with asyncio.timeout(15):
+                await fetch_and_share_statistics(account.connection, db, author)
+        except TimeoutError, SigaaError, httpx.HTTPError:
+            pending = True
+    count = await db.write(lambda session: _share(session, author, past, shared))
     return SharingStatus(
         shared=shared,
         classrooms=count if shared else 0,
-        pending=shared and bool(missing),
+        pending=pending,
     )
 
 

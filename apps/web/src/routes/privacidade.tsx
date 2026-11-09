@@ -92,21 +92,22 @@ function PrivacyPage() {
                             <p>
                                 Não guardamos sua senha no banco nem em logs. Ela fica apenas num
                                 cookie cifrado no seu navegador, usado para autenticar no CAS/SIGAA
-                                a cada pedido. Para buscar os índices que você liberou, uma tarefa
-                                em segundo plano recebe a credencial cifrada e a descarta ao
-                                terminar.
+                                a cada pedido. Nenhuma credencial é enviada a filas persistentes ou
+                                serviços externos de processamento.
                             </p>
                         </div>
                         <div>
                             <h3 className="font-semibold text-foreground">No seu dispositivo</h3>
                             <p>
                                 Configurações, calendário, marcações de presença, grades e o cache
-                                dos dados do SIGAA ficam no armazenamento do seu navegador por até
-                                400 dias, para o app abrir rápido e funcionar offline. Você pode
-                                exportar, importar ou apagar esses dados em Perfil, Uso de dados. Os
-                                cookies de sessão e perfil são cifrados; o cache e as preferências
-                                locais não têm uma camada própria de criptografia. Proteja o acesso
-                                ao aparelho e aos arquivos de backup.
+                                dos dados do SIGAA ficam cifrados no navegador por 30 dias por
+                                padrão, com opções de 7, 30 ou 90 dias em Uso de dados. O login tem
+                                limite separado de até 8 horas. A chave local fica no próprio
+                                navegador; a cifra não impede acesso por código malicioso da mesma
+                                origem ou por alguém com o aparelho desbloqueado. Backups exportados
+                                contêm informações pessoais em texto aberto e não incluem senhas ou
+                                segredos de acesso. Credenciais de autoria e suporte permanecem
+                                cifradas até a limpeza manual para preservar acesso ao conteúdo.
                             </p>
                         </div>
                         <div>

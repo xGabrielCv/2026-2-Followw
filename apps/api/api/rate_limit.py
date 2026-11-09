@@ -31,11 +31,6 @@ class RateLimitMiddleware:
 
         method = scope["method"]
         path = get_route_path(scope).rstrip("/")
-        # A assinatura e o controle de fluxo do QStash protegem a entrega dos jobs.
-        if method == "POST" and path == "/jobs":
-            await self.app(scope, receive, send)
-            return
-
         group, limit = _quota(method, path)
         result = await _limit(
             group,
@@ -85,7 +80,18 @@ async def limit_registration(registration: str) -> None:
         )
 
 
-def _retry_headers(result: Response) -> dict[str, str]:
+async def limit_by(group: str, key: str, limit: int, window_seconds: int) -> None:
+    """Cota própria de um recurso (ex.: tentativas de recuperação de um chamado), de qualquer IP."""
+    result = await _limit(group, key, limit, window_seconds)
+    if result is not None and not result.allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests",
+            headers=_retry_headers(result),
+        )
+
+
+def _retry_headers(result: Response | _MemoryResult) -> dict[str, str]:
     return {
         "Retry-After": str(max(1, ceil(result.reset - time()))),
         "Cache-Control": "no-store",
@@ -94,7 +100,7 @@ def _retry_headers(result: Response) -> dict[str, str]:
 
 @dataclass
 class _Window:
-    start: float
+    reset: float
     count: int
 
 
@@ -111,26 +117,31 @@ _MEMORY_MAX_KEYS = 50_000
 
 def _memory_limit(group: str, key: str, limit: int, window: int) -> _MemoryResult:
     now = time()
-    if len(_MEMORY) > _MEMORY_MAX_KEYS:
-        for stale in [k for k, w in _MEMORY.items() if now - w.start >= window]:
+    if len(_MEMORY) >= _MEMORY_MAX_KEYS:
+        for stale in [k for k, w in _MEMORY.items() if now >= w.reset]:
             del _MEMORY[stale]
     current = _MEMORY.get((group, key))
-    if current is None or now - current.start >= window:
-        current = _MEMORY[(group, key)] = _Window(now, 0)
+    if current is None or now >= current.reset:
+        if current is None and len(_MEMORY) >= _MEMORY_MAX_KEYS:
+            return _MemoryResult(False, now + window)
+        current = _MEMORY[(group, key)] = _Window((now // window + 1) * window, 0)
     current.count += 1
-    return _MemoryResult(current.count <= limit, current.start + window)
+    return _MemoryResult(current.count <= limit, current.reset)
 
 
-async def _limit(group: str, key: str, limit: int, window: int) -> Response | None:
-    redis = redis_client()
-    if redis is None:
-        if settings.environment == "production":
-            return _memory_limit(group, key, limit, window)  # type: ignore[return-value]
-        return None
-
+async def _limit(
+    group: str, key: str, limit: int, window: int
+) -> Response | _MemoryResult:
     identifier = hmac.digest(
         derive_key("followw:rate-limit"), key.encode(), "sha256"
     ).hex()
+    # Conta também durante operação normal para impedir cota nova ao cair o Redis.
+    local = _memory_limit(group, identifier, limit, window)
+    if not local.allowed:
+        return local
+    redis = redis_client()
+    if redis is None:
+        return local
     try:
         async with asyncio.timeout(settings.redis_timeout_seconds):
             return await Ratelimit(
@@ -144,7 +155,7 @@ async def _limit(group: str, key: str, limit: int, window: int) -> Response | No
             level=logging.WARNING,
             error_type=type(error).__name__,
         )
-        return None
+        return local
 
 
 def _bucket(host: str) -> str:

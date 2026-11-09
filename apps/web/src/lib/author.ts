@@ -1,8 +1,6 @@
 import { localStorageRepository } from '#/lib/local-storage';
 
-// Segredo aleatório deste aparelho: a API faz dele a chave anônima de autoria (para limites e para
-// você apagar o que publicou). Não vem da matrícula, então nem quem administra o servidor liga um
-// conteúdo a você. Vai no backup para levar a autoria a outro aparelho.
+// Segredo aleatório do aparelho, sem matrícula; a API deriva a autoria por escopo em memória.
 const KEY = 'author';
 const SECRET = /^[0-9a-f]{64}$/;
 

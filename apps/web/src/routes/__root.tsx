@@ -18,8 +18,12 @@ import { useOfflineSupport } from '#/integrations/offline/use-offline-support';
 import PostHogProvider from '#/integrations/posthog/provider';
 import { reloadOnPreloadError } from '#/lib/chunk-reload';
 import { layoutScript } from '#/lib/layout';
+import { selectLocalAccount } from '#/lib/local-storage';
+import { initializeLocalVault } from '#/lib/local-vault';
 import { themeScript } from '#/lib/theme';
 import { useSessionRefresh } from '#/queries/auth';
+import { loadQuery } from '#/queries/load';
+import { meQueryOptions } from '#/queries/me';
 import appCss from '#/styles.css?url';
 
 interface MyRouterContext {
@@ -27,12 +31,19 @@ interface MyRouterContext {
 }
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
+    beforeLoad: async ({ context }) => {
+        await initializeLocalVault();
+        if (typeof window !== 'undefined') {
+            const user = await loadQuery(context.queryClient, meQueryOptions);
+            selectLocalAccount(user?.registration);
+        }
+    },
     head: ({ match }) => ({
         meta: [
             { charSet: 'utf-8' },
             {
                 name: 'viewport',
-                content: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'
+                content: 'width=device-width, initial-scale=1'
             },
             { name: 'theme-color', content: '#007c5d' },
             { name: 'apple-mobile-web-app-capable', content: 'yes' },

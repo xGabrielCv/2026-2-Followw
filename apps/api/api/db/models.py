@@ -20,6 +20,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from api.crypto import Encrypted
 from api.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from api.modules.admin.models import AdminAccount, AdminSession  # noqa: F401 — registra tabelas administrativas
+from api.modules.support.models import Ticket, TicketMessage  # noqa: F401 — registra os chamados
 
 type Requirements = list[list[str]]
 
@@ -322,8 +324,7 @@ class ProfessorReview(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class Material(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Arquivo que um aluno compartilhou numa matéria, sem autor.
 
-    `uploader_key` é um HMAC da matrícula com a matéria: limita os envios por aluno e deixa o
-    próprio aluno apagar, sem ligar arquivos de matérias diferentes nem voltar à matrícula.
+    `uploader_key` deriva do segredo aleatório do aparelho e da matéria, nunca da matrícula.
     """
 
     __tablename__ = "materials"
@@ -371,7 +372,7 @@ class Tutorial(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     summary: Mapped[str] = mapped_column(Encrypted("tutorials.summary"))
     body: Mapped[str] = mapped_column(Encrypted("tutorials.body"))
     category: Mapped[str] = mapped_column()
-    # HMAC da matrícula: só limita quantos guias o mesmo aluno deixa esperando aprovação.
+    # Segredo do aparelho por escopo; limita quantos guias aguardam aprovação.
     author_key: Mapped[str] = mapped_column(index=True)
     # pending, approved ou rejected.
     status: Mapped[str] = mapped_column(default="pending")
@@ -381,8 +382,7 @@ class Tutorial(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class ForumPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Dúvida ou publicação anônima da comunidade.
 
-    `author_key` é um HMAC da matrícula com a própria conversa: marca as respostas do autor e
-    deixa apagar, sem ligar conversas diferentes ao mesmo aluno.
+    `author_key` deriva do segredo aleatório do aparelho e da conversa, sem identificador acadêmico.
     """
 
     __tablename__ = "forum_posts"
@@ -438,7 +438,11 @@ class AdminLog(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     action: Mapped[str] = mapped_column()
     target_type: Mapped[str | None] = mapped_column()
     target_id: Mapped[str | None] = mapped_column()
-    detail: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[str | None] = mapped_column(Encrypted("admin.log.detail"))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("admin_accounts.id"), index=True
+    )
+    actor_role: Mapped[str | None] = mapped_column()
 
 
 class SystemText(Base, TimestampMixin):

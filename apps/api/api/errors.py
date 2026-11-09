@@ -3,6 +3,7 @@ from collections.abc import Awaitable, Callable
 
 import httpx
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sigaa_client import (
     AuthenticationFailed,
@@ -21,6 +22,18 @@ from api.db.units import UnitNotFound
 from api.logger import error_fields, event
 
 Handler = Callable[[Request, Exception], Awaitable[JSONResponse]]
+
+
+async def _invalid_input(_: Request, error: RequestValidationError) -> JSONResponse:
+    return JSONResponse(
+        {
+            "detail": [
+                {"loc": item["loc"], "type": item["type"], "msg": "Entrada inválida."}
+                for item in error.errors()
+            ]
+        },
+        status_code=422,
+    )
 
 
 def _error(status_code: int, detail: str | None = None) -> Handler:
@@ -49,6 +62,7 @@ async def _document_unavailable(_: Request, error: Exception) -> JSONResponse:
 # O Starlette escolhe o handler pela classe mais específica da exceção. Sessão do
 # SIGAA que morre mesmo após o relogin é falha da origem (502), não do login.
 EXCEPTION_HANDLERS: dict[type[Exception], Handler] = {
+    RequestValidationError: _invalid_input,
     AuthenticationFailed: _authentication_failed,
     ClassroomNotFound: _error(404, "Classroom not found"),
     NewsNotFound: _error(404, "News not found"),

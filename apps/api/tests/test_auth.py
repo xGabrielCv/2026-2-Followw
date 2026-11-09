@@ -12,7 +12,7 @@ from api.cookies import (
     REFRESH_COOKIE_NAME,
     decrypt_cookie,
 )
-from api.db.models import ActiveUser
+from api.db.models import ActiveUser, SystemFlag
 from api.modules.auth.account import periods
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
@@ -39,6 +39,9 @@ def test_login_guarda_o_perfil_no_cookie_e_nada_do_aluno_no_banco(
 
 
 def test_login_conta_o_uso_com_uma_chave_anonima_por_periodo(client, sigaa, database):
+    with database.begin() as session:
+        session.add(SystemFlag(key="telemetry", enabled=True))
+    client.headers["X-Followw-Metrics"] = "1"
     client.post("/auth/sigaa", json=LOGIN)
     client.post("/auth/sigaa", json=LOGIN)
     client.post("/auth/sigaa/refresh")

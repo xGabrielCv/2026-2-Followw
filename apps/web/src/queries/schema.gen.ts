@@ -645,7 +645,7 @@ export interface paths {
         get?: never;
         /**
          * Compartilhar (ou não) as estatísticas das turmas do aluno
-         * @description Libera nos índices públicos as estatísticas das turmas encerradas do aluno. A escolha fica no navegador; o servidor só guarda que a turma tem estatística liberada, com uma chave anônima por turma. Índices que faltam são buscados num job (pending).
+         * @description Libera nos índices públicos as estatísticas das turmas encerradas do aluno. A escolha fica no navegador; o servidor só guarda que a turma tem estatística liberada, com uma chave anônima por turma. Índices que faltam são buscados nesta requisição, sem filas persistentes (pending em falhas temporárias).
          */
         put: operations["put_statistics_sharing_me_statistics_sharing_put"];
         post?: never;
@@ -1002,6 +1002,111 @@ export interface paths {
          * @description Vai para a fila da moderação, que decide se apaga. Não guarda quem pediu.
          */
         post: operations["create_report_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/support/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abrir um chamado de suporte anônimo
+         * @description Devolve a chave e o código de recuperação uma única vez. Não guarda matrícula, nome nem e-mail.
+         */
+        post: operations["create_ticket_support_tickets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/support/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recuperar o acesso a um chamado com o código de recuperação */
+        post: operations["recover_ticket_support_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/support/tickets/{ticket_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ver um chamado e suas mensagens */
+        get: operations["get_ticket_support_tickets__ticket_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/support/tickets/{ticket_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Responder ao atendimento */
+        post: operations["reply_ticket_support_tickets__ticket_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/support/tickets/{ticket_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Encerrar o próprio chamado */
+        post: operations["close_ticket_support_tickets__ticket_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/support/tickets/{ticket_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reabrir um chamado resolvido ou encerrado pelo próprio aluno */
+        post: operations["reopen_ticket_support_tickets__ticket_id__reopen_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1533,6 +1638,11 @@ export interface components {
             /** Period */
             period: string;
         };
+        /** KeyGranted */
+        KeyGranted: {
+            /** Key */
+            key: string;
+        };
         /** LatestNewsFeed */
         LatestNewsFeed: {
             /** Items */
@@ -1646,6 +1756,31 @@ export interface components {
          * @enum {string}
          */
         MenuSectionKey: "drink" | "bread" | "extra" | "spread" | "complement" | "complement_vegetarian" | "complement_vegan" | "fruit" | "salad_1" | "salad_2" | "salad_dressing" | "main_dish" | "main_dish_vegetarian" | "main_dish_vegan" | "side_dish" | "accompaniments" | "soup" | "toast" | "dessert";
+        /** MessageInput */
+        MessageInput: {
+            /** Body */
+            body: string;
+        };
+        /** MessageView */
+        MessageView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Sender
+             * @enum {string}
+             */
+            sender: "student" | "staff";
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** NewReview */
         NewReview: {
             /** Rating */
@@ -2006,6 +2141,16 @@ export interface components {
         };
         /** @enum {string} */
         ReasonCode: "required" | "target_period" | "overdue" | "same_unit" | "chain_length" | "chain_width" | "hours";
+        /** RecoverInput */
+        RecoverInput: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Code */
+            code: string;
+        };
         /** ReplyInput */
         ReplyInput: {
             /** Body */
@@ -2326,6 +2471,74 @@ export interface components {
              * @description Nome do componente; nulo fora do catálogo.
              */
             name: string | null;
+        };
+        /** TicketCreated */
+        TicketCreated: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Number */
+            number: number;
+            /** Key */
+            key: string;
+            /** Recovery Code */
+            recovery_code: string;
+        };
+        /** TicketInput */
+        TicketInput: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "bug" | "help" | "suggestion" | "praise" | "complaint" | "review_question" | "material_problem" | "group_problem" | "moderation_review" | "other";
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Related Type */
+            related_type?: ("review" | "group" | "material" | "post" | "reply" | "tutorial") | null;
+            /** Related Id */
+            related_id?: string | null;
+        };
+        /** TicketView */
+        TicketView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Number */
+            number: number;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "bug" | "help" | "suggestion" | "praise" | "complaint" | "review_question" | "material_problem" | "group_problem" | "moderation_review" | "other";
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "in_review" | "waiting_student" | "answered" | "resolved" | "closed";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Message Count */
+            message_count: number;
+            /** Can Reopen */
+            can_reopen: boolean;
+            /** Messages */
+            messages: components["schemas"]["MessageView"][];
         };
         /** TutorialDetails */
         TutorialDetails: {
@@ -5281,6 +5494,257 @@ export interface operations {
             };
             /** @description Conteúdo não encontrado. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_ticket_support_tickets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TicketInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_ticket_support_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyGranted"];
+                };
+            };
+            /** @description Chamado não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ticket_support_tickets__ticket_id__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Ticket-Key": string;
+            };
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketView"];
+                };
+            };
+            /** @description Chamado não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reply_ticket_support_tickets__ticket_id__messages_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Ticket-Key": string;
+            };
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MessageInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketView"];
+                };
+            };
+            /** @description Chamado não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Chamado encerrado ou cheio. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_ticket_support_tickets__ticket_id__close_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Ticket-Key": string;
+            };
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketView"];
+                };
+            };
+            /** @description Chamado não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_ticket_support_tickets__ticket_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Ticket-Key": string;
+            };
+            path: {
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TicketView"];
+                };
+            };
+            /** @description Chamado não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Não pode ser reaberto. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -341,7 +341,7 @@ def test_so_entram_turmas_de_quem_compartilha_as_estatisticas(
     assert all("251000000" not in key for key in keys)
 
 
-def test_liberar_busca_num_job_os_indices_que_faltam(
+def test_liberar_busca_indices_na_requisicao_sem_persistir_credenciais(
     client, database, cookies, stub_sigaa, qstash
 ):
     with database.begin() as session:
@@ -362,12 +362,8 @@ def test_liberar_busca_num_job_os_indices_que_faltam(
 
     status = client.put("/me/statistics-sharing", json={"shared": True}).json()
 
-    assert status == {"shared": True, "classrooms": 0, "pending": True}
-    [job] = qstash.jobs()
-    assert job.task == "share_statistics"
-    # a Upstash não vê a matrícula, nem no controle de fluxo
-    assert "251000000" not in str(qstash.published[0]["headers"])
-    # o job (entregue antes da resposta, como o QStash faria) buscou e liberou
+    assert status == {"shared": True, "classrooms": 1, "pending": False}
+    assert qstash.published == []
     outcomes = client.get("/public/subjects/FGA0003/outcomes").json()
     assert outcomes["subject"]["classrooms"] == 1
     assert outcomes["subject"]["failed"] == 30.0

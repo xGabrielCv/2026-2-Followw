@@ -11,6 +11,7 @@ from sigaa_client import Credentials, SigaaClient, SigaaError, SigaaPublicClient
 from api.cookies import (
     read_access_cookie,
     read_refresh_cookie,
+    refresh_deadline,
     set_access_cookie,
     set_refresh_cookie,
 )
@@ -18,7 +19,9 @@ from api.logger import event, operation
 
 # O SIGAA guarda na sessão a turma aberta: duas requisições do mesmo aluno ao mesmo tempo
 # misturariam as telas. Cada aluno usa a sessão uma requisição por vez.
-_SESSION_LOCKS: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
+_SESSION_LOCKS: WeakValueDictionary[
+    tuple[asyncio.AbstractEventLoop, str], asyncio.Lock
+] = WeakValueDictionary()
 # Uma requisição presa não segura as outras para sempre.
 _LOCK_TIMEOUT = 90
 
@@ -36,12 +39,14 @@ class SigaaConnection:
         session_token: str | None = None,
         *,
         response: Response | None = None,
+        credential_deadline: int | None = None,
     ) -> None:
         self.credentials = credentials
         self._session_token = session_token
         self._response = response
         self._client: SigaaClient | None = None
         self._lock: asyncio.Lock | None = None
+        self._credential_deadline = credential_deadline
 
     @property
     def registration(self) -> str:
@@ -88,14 +93,19 @@ class SigaaConnection:
         # Só a sessão do navegador é compartilhada; os jobs logam numa sessão própria.
         if self._response is None or self._lock is not None:
             return
-        lock = _SESSION_LOCKS.get(self.registration)
+        key = (asyncio.get_running_loop(), self.registration)
+        lock = _SESSION_LOCKS.get(key)
         if lock is None:
-            lock = _SESSION_LOCKS[self.registration] = asyncio.Lock()
+            lock = _SESSION_LOCKS[key] = asyncio.Lock()
         try:
             await asyncio.wait_for(lock.acquire(), _LOCK_TIMEOUT)
         except TimeoutError:
             event("sigaa.session_lock_timeout")
-            return
+            raise HTTPException(
+                status_code=503,
+                detail="Sessão SIGAA ocupada. Tente novamente em instantes.",
+                headers={"Retry-After": "5", "Cache-Control": "no-store"},
+            ) from None
         self._lock = lock
 
     def _release(self) -> None:
@@ -107,7 +117,9 @@ class SigaaConnection:
         self._session_token = token
         # Se a chamada ao SIGAA falhar, o handler do erro descarta estes cookies.
         if self._response is not None:
-            set_refresh_cookie(self._response, self.credentials)
+            set_refresh_cookie(
+                self._response, self.credentials, expires_at=self._credential_deadline
+            )
             set_access_cookie(self._response, token, self.registration)
 
 
@@ -123,6 +135,7 @@ async def get_optional_sigaa_connection(
         credentials,
         read_access_cookie(request, credentials.registration),
         response=response,
+        credential_deadline=refresh_deadline(request),
     )
     try:
         yield connection

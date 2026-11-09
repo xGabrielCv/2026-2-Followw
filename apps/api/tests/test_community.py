@@ -4,6 +4,7 @@ from datetime import datetime
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
+import pyotp
 import pytest
 from PIL import Image
 from pydantic import SecretStr
@@ -49,13 +50,28 @@ def base(database):
 def painel(monkeypatch):
     monkeypatch.setattr(settings, "admin_username", "admin-teste")
     monkeypatch.setattr(settings, "admin_password_hash", HASH_ADMIN)
-    auth._failures.clear()
 
 
 def _entrar_admin(client, senha=SENHA_ADMIN):
-    return client.post(
+    response = client.post(
         "/admin/api/login",
         json={"username": "admin-teste", "password": senha},
+        headers=ADMIN,
+    )
+    if response.status_code != 200:
+        return response
+    if response.json()["stage"] == "enroll":
+        secret = client.get("/admin/api/mfa/enroll").json()["secret"]
+        response = client.post(
+            "/admin/api/mfa/confirm",
+            json={"code": pyotp.TOTP(secret).now()},
+            headers=ADMIN,
+        )
+        client._admin_recovery_codes = response.json()["recovery_codes"]
+        return response
+    return client.post(
+        "/admin/api/mfa/verify",
+        json={"code": client._admin_recovery_codes.pop()},
         headers=ADMIN,
     )
 
@@ -168,7 +184,7 @@ def test_conteudo_fica_cifrado_no_banco(ana, base, database):
                 "SELECT title, body FROM forum_posts UNION ALL SELECT body, body FROM forum_replies"
             )
         ).all()
-    assert all(valor.startswith("v1:") for linha in bruto for valor in linha)
+    assert all(valor.startswith("v2:") for linha in bruto for valor in linha)
     assert "Segredo" not in str(bruto) and "secreta" not in str(bruto)
     # A API devolve o texto normal, e a busca funciona com o conteúdo cifrado.
     assert ana.get(f"/forum/{post['id']}").json()["title"] == "Segredo do título"
@@ -316,8 +332,8 @@ def test_painel_desligado_sem_usuario_e_senha(client, base, monkeypatch):
         "user": None,
         "setup": False,
     }
-    assert client.get("/admin/api/overview").status_code == 404
-    assert _entrar_admin(client).status_code == 404
+    assert client.get("/admin/api/overview").status_code == 401
+    assert _entrar_admin(client).status_code == 401
     # fora do OpenAPI do app
     assert "/admin" not in str(client.get("/openapi.json").json()["paths"])
 
@@ -332,14 +348,14 @@ def test_login_do_painel_com_sessao_em_cookie_seguro(client, base, painel, ler_c
     assert sem_header.status_code == 403
 
     resposta = _entrar_admin(client)
-    assert resposta.status_code == 204
+    assert resposta.status_code == 200
     cookie = ler_cookies(resposta)[auth.ADMIN_COOKIE]
     assert cookie["httponly"] and cookie["samesite"].lower() == "strict"
     assert SENHA_ADMIN not in cookie.value
-    assert client.get("/admin/api/session").json() == {
-        "enabled": True,
-        "user": "admin-teste",
-    }
+    profile = client.get("/admin/api/session").json()
+    assert profile["enabled"] is True and profile["setup"] is False
+    assert profile["user"]["username"] == "admin-teste"
+    assert profile["user"]["role"] == "owner"
     assert client.get("/admin/api/overview").status_code == 200
     # mudar algo sem o header é recusado mesmo com a sessão
     assert client.post("/admin/api/maintenance").status_code == 403
@@ -359,7 +375,7 @@ def test_login_do_painel_bloqueia_depois_de_muitas_tentativas(client, base, pain
 
 def test_hash_da_senha_nao_guarda_a_senha():
     guardado = hash_password("uma-senha-bem-longa")
-    assert guardado.startswith("scrypt$") and "uma-senha" not in guardado
+    assert guardado.startswith("$argon2id$") and "uma-senha" not in guardado
     assert auth.verify_password("uma-senha-bem-longa", guardado)
     assert not auth.verify_password("outra-senha-qualquer", guardado)
     assert not auth.verify_password("x", "lixo")
@@ -424,7 +440,12 @@ def test_painel_mostra_uso_recursos_e_apaga_conteudo(
     assert registro[1]["detail"] == "teste"
 
 
-def test_estatisticas_de_uso_por_periodo(ana, base, painel, sigaa, hoje):
+def test_estatisticas_de_uso_por_periodo(ana, base, painel, sigaa, hoje, database):
+    from api.db.models import SystemFlag
+
+    with database.begin() as session:
+        session.add(SystemFlag(key="telemetry", enabled=True))
+    ana.headers["X-Followw-Metrics"] = "1"
     # O conteúdo nasce com a data real: o "hoje" do painel precisa ser o mesmo.
     hoje(datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None))
     ana.cookies.clear()
@@ -573,15 +594,20 @@ def test_primeiro_acesso_do_admin_pela_pagina_so_local(
     assert client.post("/admin/api/setup", json=curta, headers=ADMIN).status_code == 422
     corpo = {"username": "admin-teste", "password": "uma-senha-bem-longa"}
     assert client.post("/admin/api/setup", json=corpo).status_code == 403
-    assert client.post("/admin/api/setup", json=corpo, headers=ADMIN).status_code == 204
-    # já entra logado, e a senha só existe como hash no .env
-    assert client.get("/admin/api/overview").status_code == 200
-    texto = env.read_text(encoding="utf-8")
+    assert client.post("/admin/api/setup", json=corpo, headers=ADMIN).status_code == 200
+    assert client.get("/admin/api/overview").status_code == 401
+    secret = client.get("/admin/api/mfa/enroll").json()["secret"]
     assert (
-        "ADMIN_PASSWORD_HASH='scrypt$" in texto and "uma-senha-bem-longa" not in texto
+        client.post(
+            "/admin/api/mfa/confirm",
+            json={"code": pyotp.TOTP(secret).now()},
+            headers=ADMIN,
+        ).status_code
+        == 200
     )
-    # depois de criado, ninguém cadastra de novo
-    assert client.post("/admin/api/setup", json=corpo, headers=ADMIN).status_code == 403
+    assert client.get("/admin/api/overview").status_code == 200
+    assert not env.exists()
+    assert client.post("/admin/api/setup", json=corpo, headers=ADMIN).status_code == 409
 
 
 def test_cadastro_do_admin_recusado_fora_do_pc(client, base, monkeypatch):
@@ -600,12 +626,12 @@ def test_versao_do_conteudo_muda_so_na_parte_alterada(ana, base):
     assert antes["reviews"] == depois["reviews"]
 
 
-def test_painel_mostra_armazenamento_e_estimativa_do_aparelho(client, base, painel):
+def test_painel_mostra_armazenamento_real_sem_estimar_dados_do_aluno(
+    client, base, painel
+):
     _entrar_admin(client)
     overview = client.get("/admin/api/overview").json()
-    assert (
-        overview["device"]["typical_bytes"] > overview["device"]["per_classroom_bytes"]
-    )
+    assert "device" not in overview
     assert overview["database_bytes"] > 0
 
 
@@ -628,11 +654,14 @@ def test_visitante_le_conversa_e_respostas_mas_nao_pode_interagir(ana, base):
     assert ana.delete(f"/forum/{post['id']}/replies/{reply['id']}").status_code == 401
 
 
-def test_trocar_senha_invalida_sessao_admin_existente(client, painel, monkeypatch):
-    assert _entrar_admin(client).status_code == 204
-    monkeypatch.setattr(
-        settings, "admin_password_hash", hash_password("outra-senha-do-admin")
-    )
+def test_trocar_senha_invalida_sessao_admin_existente(client, painel, database):
+    from api.modules.admin.models import AdminAccount
+
+    assert _entrar_admin(client).status_code == 200
+    with database.begin() as session:
+        account = session.scalar(select(AdminAccount))
+        account.password_hash = hash_password("outra-senha-do-admin")
+        account.session_version += 1
     assert client.get("/admin/api/overview").status_code == 401
 
 

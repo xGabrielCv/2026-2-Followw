@@ -1,10 +1,4 @@
-"""Chaves anônimas: o mesmo aparelho gera a mesma chave num escopo, sem nenhuma ligação com o aluno.
-
-A origem é um segredo aleatório que o navegador cria e guarda (`X-Followw-Author`), nunca a
-matrícula: nem quem administra o servidor, sabendo a matrícula de alguém, consegue conferir se
-ela escreveu algo. O HMAC com um segredo do servidor e o escopo (uma matéria, uma conversa, uma
-turma) faz duas chaves de escopos diferentes nunca se ligarem entre si.
-"""
+"""Autoria pseudônima por escopo; o operador processa o segredo em memória, nunca a matrícula como chave."""
 
 import hmac
 import re

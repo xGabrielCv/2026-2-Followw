@@ -12,11 +12,16 @@ from api.cache import NO_DIRECTIVES, CacheControl, is_stale
 from api.db.main import SessionmakerDep
 from api.logger import event
 from api.modules.public_restaurant.repository import RestaurantRepository
+from api.resilience import CircuitOpenError, OriginGuard, count
 
 RESTAURANT_MENU_TTL = timedelta(days=5)
 BRASILIA = timezone(timedelta(hours=-3))
 _MENU = TypeAdapter(tuple[DailyMenu, ...])
 Meal = Literal["breakfast", "lunch", "dinner"]
+# Uma consulta à UnB por campus, não uma por aluno; a origem fora do ar abre o circuito.
+RESTAURANT_ORIGIN = OriginGuard(
+    "ru", max_concurrent=2, failure_threshold=3, reset_seconds=120
+)
 
 
 def today() -> date:
@@ -91,9 +96,10 @@ class RestaurantService:
             )
 
         try:
-            async with UnbBrowser() as browser:
-                days = await browser.restaurant.get_menu(campus)
-        except (UnbBrowserError, httpx.HTTPError) as error:
+            days, fetched_at, saved = await RESTAURANT_ORIGIN.fetch(
+                f"menu:{campus}", lambda: self._refresh(campus)
+            )
+        except (UnbBrowserError, httpx.HTTPError, CircuitOpenError) as error:
             # Cache vencido de outras datas não serve: sem o intervalo pedido, 502.
             # Se foi o cliente quem pediu a revalidação, só o `stale-if-error` libera o cache.
             if (
@@ -103,24 +109,38 @@ class RestaurantService:
             ):
                 raise UnbBrowserError("Site do RU indisponível.") from error
             event("restaurant.stale_fallback", level=logging.WARNING)
+            count("origin.ru.stale_served")
             cache.served(synced_at)
             return cached
 
-        now = datetime.now(UTC)
-        cache.served(now)
-        try:
-            async with self._sessionmaker() as session:
-                repository = RestaurantRepository(session)
-                await repository.save(campus, days, now)
-                await session.commit()
-                rows = await repository.get(campus, start, end)
-                return _MENU.validate_python(rows, from_attributes=True)
-        except SQLAlchemyError, OSError, TimeoutError, ValidationError:
-            event("restaurant.cache_write_failed", level=logging.WARNING)
+        cache.served(fetched_at)
+        if saved:
+            try:
+                async with self._sessionmaker() as session:
+                    rows = await RestaurantRepository(session).get(campus, start, end)
+                    return _MENU.validate_python(rows, from_attributes=True)
+            except SQLAlchemyError, OSError, TimeoutError, ValidationError:
+                event("restaurant.cache_write_failed", level=logging.WARNING)
         # Revalida para marcar todos os campos como definidos, igual ao que vem do banco.
         return _MENU.validate_python(
             _MENU.dump_python(tuple(d for d in days if start <= d.date <= end))
         )
+
+    async def _refresh(
+        self, campus: Campus
+    ) -> tuple[tuple[DailyMenu, ...], datetime, bool]:
+        """Consulta a UnB e grava no banco: roda uma vez por campus, mesmo com muitos pedidos."""
+        async with UnbBrowser() as browser:
+            days = await browser.restaurant.get_menu(campus)
+        now = datetime.now(UTC)
+        try:
+            async with self._sessionmaker() as session:
+                await RestaurantRepository(session).save(campus, days, now)
+                await session.commit()
+        except SQLAlchemyError, OSError, TimeoutError, ValidationError:
+            event("restaurant.cache_write_failed", level=logging.WARNING)
+            return tuple(days), now, False
+        return tuple(days), now, True
 
 
 RestaurantServiceDep = Annotated[RestaurantService, Depends()]

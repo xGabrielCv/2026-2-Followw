@@ -57,4 +57,4 @@ async def test_sem_redis_em_producao_a_cota_fica_na_memoria(monkeypatch):
     resultados = [await _limit("teste", "1.2.3.4", 2, 60) for _ in range(3)]
     assert [r.allowed for r in resultados] == [True, True, False]
     monkeypatch.setattr(settings, "environment", "testing")
-    assert await _limit("teste", "1.2.3.4", 2, 60) is None
+    assert not (await _limit("teste", "1.2.3.4", 2, 60)).allowed

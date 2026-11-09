@@ -49,3 +49,6 @@ apps/web/.output/
 apps/web/.nitro/
 apps/web/.tanstack/
 apps/web/dist/
+
+# Documentação interna (MkDocs) e dados de agentes: só nesta máquina
+docs-interno/

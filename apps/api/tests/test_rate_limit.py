@@ -80,6 +80,7 @@ def test_limita_requisicoes_entre_rotas_e_renova_a_janela(redis, monkeypatch):
     assert response.headers["cache-control"] == "no-store"
 
     monkeypatch.setattr("upstash_ratelimit.limiter.now_ms", lambda: 180_000)
+    monkeypatch.setattr("api.rate_limit.time", lambda: 180)
     assert client.get("/docs").status_code == 200
 
 
@@ -157,19 +158,20 @@ def test_cors_funciona_quando_a_cota_esgota_e_preflight_nao_consulta_redis(redis
 
 
 @pytest.mark.parametrize("path", ["/jobs", "/api/jobs", "/jobs/"])
-def test_jobs_nao_consultam_redis_e_continuam_exigindo_assinatura(redis, path):
+def test_rota_de_jobs_aposentada_nao_recebe_credenciais(redis, path):
     response = TestClient(app).post(path, content="nao-e-um-job")
-    assert response.status_code == 422
-    assert redis.call_count == 0
+    assert response.status_code == 404
+    assert redis.call_count == 1
 
 
 @pytest.mark.parametrize(
     "field", ["upstash_redis_rest_url", "upstash_redis_rest_token"]
 )
-def test_sem_configuracao_redis_a_api_funciona_sem_consulta(redis, monkeypatch, field):
+def test_sem_redis_aplica_cota_local_sem_consulta(redis, monkeypatch, field):
     monkeypatch.setattr(settings, field, "")
-    for _ in range(3):
+    for _ in range(2):
         assert TestClient(app).get("/docs").status_code == 200
+    assert TestClient(app).get("/docs").status_code == 429
     assert redis.call_count == 0
 
 
@@ -383,3 +385,24 @@ def test_configuracao_recusa_limites_invalidos(field, value):
 def test_segredo_vazio_desativa_o_encaminhamento():
     config = Settings(**{**settings.model_dump(), "rate_limit_secret_key": ""})
     assert config.rate_limit_secret_key is None
+
+
+def test_redis_indisponivel_mantem_cota_e_nao_guarda_ip(redis):
+    from api.rate_limit import _MEMORY
+
+    redis.mock(side_effect=httpx.ConnectError("indisponivel"))
+    client = TestClient(app, client=("203.0.113.18", 1))
+    assert client.get("/docs").status_code == 200
+    assert client.get("/docs").status_code == 200
+    assert client.get("/docs").status_code == 429
+    assert "203.0.113.18" not in str(_MEMORY)
+
+
+def test_memoria_saturada_recusa_chaves_novas_sem_crescer(monkeypatch):
+    from api.rate_limit import _MEMORY, _memory_limit
+
+    monkeypatch.setattr("api.rate_limit._MEMORY_MAX_KEYS", 2)
+    assert _memory_limit("teste", "a", 2, 60).allowed
+    assert _memory_limit("teste", "b", 2, 60).allowed
+    assert not _memory_limit("teste", "c", 2, 60).allowed
+    assert len(_MEMORY) == 2
