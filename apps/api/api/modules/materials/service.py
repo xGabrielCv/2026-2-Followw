@@ -15,19 +15,19 @@ from typing import Annotated, Literal
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import delete, func, select, text
+from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
 from api.anonymous import owns, resource_key
 from api.community_limits import read_limits
-from api.db.context import set_context
+from api.db.context import set_context, use_context
 from api.db.main import DatabaseDep, after_commit
-from api.db.models import Classroom, Material, Subject
+from api.db.models import Classroom, Material, MaterialRejection, Subject
 from api.db.search import contains_term
 from api.modules.community.quotas import MAX_DAILY_UPLOAD_ATTEMPTS
-from api.modules.materials import av
+from api.modules.materials import av, scanner
 from api.modules.materials.sanitize import EXTENSIONS, InvalidFile, sanitize, sniff
 from api.schemas import SubjectReference
 from api.storage import LocalStorage, material_storage
@@ -152,6 +152,43 @@ class MaterialService:
         self._db = db
         self._storage = material_storage()
 
+    async def _record_rejection(
+        self,
+        code: str,
+        filename: str,
+        data: bytes,
+        mime: str | None,
+        engine: str,
+        reason_code: str,
+        reason_detail: str,
+    ) -> None:
+        raw_ext = (
+            ("." + filename.rsplit(".", 1)[-1].lower())
+            if "." in filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+            else ""
+        )
+        safe_ext = re.sub(r"[^a-z0-9.]", "", raw_ext)[:16] or "sem-ext"
+        digest_prefix = hashlib.sha256(data).hexdigest()[:16]
+
+        async def record(session: AsyncSession) -> None:
+            # Core INSERT sem RETURNING mantém a política SELECT restrita ao escopo admin.
+            await session.execute(
+                insert(MaterialRejection).values(
+                    id=uuid.uuid4(),
+                    subject_code=code,
+                    detected_mime=(mime or "unknown")[:120],
+                    file_ext=safe_ext,
+                    engine=engine[:40],
+                    reason_code=reason_code[:60],
+                    reason_detail=reason_detail[:240],
+                    sha256_prefix=digest_prefix,
+                    size_bytes=len(data),
+                )
+            )
+
+        with use_context(scope="materials_security"):
+            await self._db.write(record)
+
     async def subjects(self, q: str | None) -> list[SubjectWithMaterials]:
         async def load(session: AsyncSession) -> list[SubjectWithMaterials]:
             query = (
@@ -218,20 +255,87 @@ class MaterialService:
                 422, f"O semestre precisa estar entre {oldest} e {newest}."
             )
         if len(data) > MAX_FILE_BYTES:
+            await self._record_rejection(
+                code,
+                filename,
+                data,
+                None,
+                "size-guard",
+                "file_too_large",
+                "Arquivo maior que o teto máximo permitido.",
+            )
             raise HTTPException(413, "Arquivo maior que 20 MB.")
         mime = sniff(data, filename)
+        try:
+            await to_thread.run_sync(scanner.scan_raw, data, mime, limiter=_SANITIZERS)
+        except scanner.ScanRejected as error:
+            await self._record_rejection(
+                code,
+                filename,
+                data,
+                mime,
+                error.engine,
+                error.reason_code,
+                error.detail,
+            )
+            raise HTTPException(error.status_code, error.detail) from error
         if mime is None:
+            await self._record_rejection(
+                code,
+                filename,
+                data,
+                None,
+                "mime-sniff",
+                "unsupported_mime",
+                "Formato de arquivo não suportado.",
+            )
             raise HTTPException(
                 415,
                 "Envie PDF, imagem (PNG, JPEG ou WebP), documento Office (DOCX, PPTX ou XLSX) ou texto (.txt).",
             )
         try:
             clean = await to_thread.run_sync(sanitize, data, mime, limiter=_SANITIZERS)
+            await to_thread.run_sync(
+                scanner.verify_clean, clean, mime, limiter=_SANITIZERS
+            )
+        except scanner.ScanRejected as error:
+            await self._record_rejection(
+                code,
+                filename,
+                data,
+                mime,
+                error.engine,
+                error.reason_code,
+                error.detail,
+            )
+            raise HTTPException(error.status_code, error.detail) from error
         except InvalidFile as error:
+            await self._record_rejection(
+                code,
+                filename,
+                data,
+                mime,
+                "sanitizer",
+                "invalid_or_corrupted_file",
+                str(error),
+            )
             raise HTTPException(422, str(error)) from error
         if len(clean) > MAX_FILE_BYTES:
             raise HTTPException(413, "Arquivo maior que 20 MB.")
-        await av.scan(clean)
+        try:
+            await av.scan(clean)
+        except HTTPException as error:
+            if error.status_code == 422:
+                await self._record_rejection(
+                    code,
+                    filename,
+                    data,
+                    mime,
+                    "clamav",
+                    "clamav_found",
+                    str(error.detail),
+                )
+            raise
         digest = hashlib.sha256(clean).hexdigest()
         key = resource_key(author)
         storage_key = uuid.uuid4().hex

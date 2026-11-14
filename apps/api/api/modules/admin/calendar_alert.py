@@ -117,7 +117,7 @@ async def update_alert_admin(
         await log(
             session,
             "community.alert",
-            detail=f"enabled={saved.enabled} always_on={saved.always_on} mid={saved.mid_semester_enabled}:{saved.mid_semester_chance}%",
+            detail=f"enabled={saved.enabled} always_on={saved.always_on} mid={saved.mid_semester_enabled}:{saved.mid_semester_every_n}x",
             actor=request.state.admin,
         )
         return saved

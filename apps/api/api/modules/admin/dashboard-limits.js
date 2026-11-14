@@ -24,9 +24,10 @@ export async function limitsView(render) {
                 el('strong', { class: 'grow' }, 'Armazenamento global de materiais (visível só no admin)'),
                 el('span', { class: 'muted' }, `${bytes(usedBytes)} de ${values.materials_total_gb} GB (${pct.toFixed(1)}%)`)),
             el('div', { class: 'meter' }, el('span', { widthPercent: pct.toFixed(1) })),
-            el('p', { class: 'muted' }, overview.clamav_enabled
-                ? 'Verificação ativa: sanitização estrutural (PDF/Office/imagens) + varredura ClamAV configurada.'
-                : 'Não há antivírus ativo nesta instância (ClamAV opcional via CLAMAV_HOST). PDFs passam por reconstrução e bloqueio de JavaScript/Launch/arquivos embutidos; imagens e Office são sanitizados estruturalmente.')),
+            el('p', { class: 'muted' },
+                `Varredura ativa: ${(overview.scanner_engines || ['yara-x', 'pdf-inspector', 'office-ole', 'image-reencode']).join(', ')}` +
+                (overview.clamav_enabled ? ' + ClamAV' : ' (ClamAV opcional via CLAMAV_HOST)') +
+                ` · Envios recusados pela segurança: ${overview.material_rejections_count || 0}.`)),
         el('form', { class: 'panel', onsubmit: async (event) => {
             event.preventDefault();
             const form = event.currentTarget;

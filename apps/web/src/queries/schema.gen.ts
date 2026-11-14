@@ -2480,7 +2480,7 @@ export interface components {
              * @default custom
              * @enum {string}
              */
-            preset: "first_day" | "last_day" | "custom";
+            preset: "first_day" | "last_day" | "mid_semester" | "custom";
             /**
              * Title
              * @default Avalie seus professores do semestre
@@ -2497,13 +2497,13 @@ export interface components {
              */
             mid_semester_enabled: boolean;
             /**
-             * Mid Semester Chance
-             * @default 35
+             * Mid Semester Every N
+             * @default 3
              */
-            mid_semester_chance: number;
+            mid_semester_every_n: number;
             /**
              * Mid Semester Title
-             * @default Metade do semestre: avalie seus professores!
+             * @default 50% do semestre: avalie seus professores
              */
             mid_semester_title: string;
             /**
@@ -2511,6 +2511,36 @@ export interface components {
              * @default Já passamos da metade do semestre. Avalie como estão sendo suas aulas e ajude outros estudantes.
              */
             mid_semester_message: string;
+            /**
+             * Last Day Enabled
+             * @default true
+             */
+            last_day_enabled: boolean;
+            /**
+             * Last Day Title
+             * @default Último dia do semestre: avalie seus professores
+             */
+            last_day_title: string;
+            /**
+             * Last Day Message
+             * @default Último dia letivo do semestre! Avalie seus professores e compartilhe as estatísticas das suas turmas anonimamente.
+             */
+            last_day_message: string;
+            /**
+             * First Day Enabled
+             * @default true
+             */
+            first_day_enabled: boolean;
+            /**
+             * First Day Title
+             * @default Avalie seus professores do semestre anterior
+             */
+            first_day_title: string;
+            /**
+             * First Day Message
+             * @default Novo semestre começando! Aproveite para avaliar seus professores do semestre anterior e ajudar os colegas.
+             */
+            first_day_message: string;
             /**
              * Trigger Id
              * @default default

@@ -50,7 +50,12 @@ export const forumListQueryOptions = (query: ForumListQuery) =>
 // ------------------------------------------------------------------ materiais
 
 export const subjectMaterialsQueryOptions = (code: string) =>
-    api.queryOptions('get', '/materials/{code}', { params: { path: { code } } });
+    api.queryOptions(
+        'get',
+        '/materials/{code}',
+        { params: { path: { code } } },
+        { staleTime: 0, refetchOnMount: 'always', refetchOnWindowFocus: true }
+    );
 
 export const materialSubjectsQueryOptions = (q?: string) =>
     api.queryOptions('get', '/materials', { params: { query: { q } } });

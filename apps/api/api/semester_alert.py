@@ -9,16 +9,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.db.models import SystemText
 
 KEY = "semester_alert"
-AlertPreset = Literal["first_day", "last_day", "custom"]
+AlertPreset = Literal["first_day", "last_day", "mid_semester", "custom"]
 
 ALERT_PRESETS: dict[str, tuple[str, str]] = {
     "first_day": (
-        "Início do semestre",
-        "Novo semestre começando! Aproveite para avaliar seus professores dos semestres anteriores e ajudar os colegas.",
+        "Avalie seus professores do semestre anterior",
+        "Novo semestre começando! Aproveite para avaliar seus professores do semestre anterior e ajudar os colegas.",
+    ),
+    "mid_semester": (
+        "50% do semestre: avalie seus professores",
+        "Já passamos da metade do semestre. Avalie como estão sendo suas aulas e ajude outros estudantes.",
     ),
     "last_day": (
-        "Fim do semestre",
-        "Últimos dias do semestre! Avalie seus professores e compartilhe as estatísticas das suas turmas anonimamente.",
+        "Último dia do semestre: avalie seus professores",
+        "Último dia letivo do semestre! Avalie seus professores e compartilhe as estatísticas das suas turmas anonimamente.",
     ),
 }
 
@@ -40,14 +44,36 @@ class SemesterAlertConfig(BaseModel):
         max_length=600,
     )
     mid_semester_enabled: bool = True
-    mid_semester_chance: int = Field(default=35, ge=0, le=100)
+    mid_semester_every_n: int = Field(default=3, ge=1, le=20)
     mid_semester_title: str = Field(
-        default="Metade do semestre: avalie seus professores!",
+        default="50% do semestre: avalie seus professores",
         min_length=3,
         max_length=120,
     )
     mid_semester_message: str = Field(
         default="Já passamos da metade do semestre. Avalie como estão sendo suas aulas e ajude outros estudantes.",
+        min_length=3,
+        max_length=600,
+    )
+    last_day_enabled: bool = True
+    last_day_title: str = Field(
+        default="Último dia do semestre: avalie seus professores",
+        min_length=3,
+        max_length=120,
+    )
+    last_day_message: str = Field(
+        default="Último dia letivo do semestre! Avalie seus professores e compartilhe as estatísticas das suas turmas anonimamente.",
+        min_length=3,
+        max_length=600,
+    )
+    first_day_enabled: bool = True
+    first_day_title: str = Field(
+        default="Avalie seus professores do semestre anterior",
+        min_length=3,
+        max_length=120,
+    )
+    first_day_message: str = Field(
+        default="Novo semestre começando! Aproveite para avaliar seus professores do semestre anterior e ajudar os colegas.",
         min_length=3,
         max_length=600,
     )

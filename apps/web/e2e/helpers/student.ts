@@ -31,8 +31,8 @@ export async function login(page: Page, registration = '251000000') {
     }).toPass({ timeout: 15000 });
 }
 
-export function syntheticPdf() {
-    const text = 'BT /F1 18 Tf 30 150 Td (Documento sintetico) Tj ET';
+export function syntheticPdf(label = 'Documento sintetico') {
+    const text = `BT /F1 18 Tf 30 150 Td (${label}) Tj ET`;
     const objects = [
         '<< /Type /Catalog /Pages 2 0 R >>',
         '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',

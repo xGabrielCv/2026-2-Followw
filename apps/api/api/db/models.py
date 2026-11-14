@@ -357,6 +357,25 @@ class Material(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     uploader_key: Mapped[str | None] = mapped_column(index=True)
 
 
+class MaterialRejection(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """Registro anônimo de arquivo recusado na varredura de segurança (sem PII)."""
+
+    __tablename__ = "material_rejections"
+    __table_args__ = (
+        Index("ix_material_rejections_created", "created_at"),
+        Index("ix_material_rejections_subject", "subject_code", "created_at"),
+    )
+
+    subject_code: Mapped[str] = mapped_column()
+    detected_mime: Mapped[str] = mapped_column()
+    file_ext: Mapped[str] = mapped_column()
+    engine: Mapped[str] = mapped_column()
+    reason_code: Mapped[str] = mapped_column()
+    reason_detail: Mapped[str] = mapped_column()
+    sha256_prefix: Mapped[str] = mapped_column()
+    size_bytes: Mapped[int] = mapped_column()
+
+
 class Report(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Denúncia ou pedido de exclusão de um conteúdo da comunidade, para a moderação."""
 

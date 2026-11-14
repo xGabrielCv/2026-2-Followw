@@ -25,13 +25,67 @@ export interface OwnReview extends ReviewInput {
 const NO_REVIEWS: Record<string, OwnReview> = {};
 export const ownReviews = storedValue(STORAGE_KEYS.REVIEWS, NO_REVIEWS);
 
-export function useOwnReview(siape: number): OwnReview | undefined {
+const normalizeSubject = (subject?: string | null) => {
+    const clean = subject?.trim().toUpperCase();
+    return clean || null;
+};
+
+const compositeReviewKey = (siape: number, subject: string) => `${siape}:${subject}`;
+
+/** Descobre a chave salva em `ownReviews` para `(siape, subject?)`, preservando a chave legada `[siape]`. */
+export function findOwnReviewKey<T extends { subject?: string | null }>(
+    reviews: Record<string, T>,
+    siape: number,
+    subject?: string | null
+): string | null {
+    const norm = normalizeSubject(subject);
+    const legacyKey = String(siape);
+    const legacy = reviews[legacyKey];
+    if (norm) {
+        const compKey = compositeReviewKey(siape, norm);
+        if (reviews[compKey]) return compKey;
+        const legacySubject = normalizeSubject(legacy?.subject);
+        if (legacy && (!legacySubject || legacySubject === norm)) return legacyKey;
+        return null;
+    }
+    if (legacy) return legacyKey;
+    const prefix = `${siape}:`;
+    return Object.keys(reviews).find((key) => key.startsWith(prefix)) ?? null;
+}
+
+export function findOwnReview<T extends { subject?: string | null }>(
+    reviews: Record<string, T>,
+    siape: number,
+    subject?: string | null
+): T | undefined {
+    const key = findOwnReviewKey(reviews, siape, subject);
+    return key ? reviews[key] : undefined;
+}
+
+function targetSaveKey(
+    reviews: Record<string, OwnReview>,
+    siape: number,
+    subject?: string | null
+): string {
+    const norm = normalizeSubject(subject);
+    if (!norm) return String(siape);
+    const compKey = compositeReviewKey(siape, norm);
+    if (reviews[compKey]) return compKey;
+    const legacyKey = String(siape);
+    const legacy = reviews[legacyKey];
+    const legacySubject = normalizeSubject(legacy?.subject);
+    // Primeira avaliação (ou mesma matéria já salva na chave numérica) continua em `[siape]`.
+    if (!legacy || !legacySubject || legacySubject === norm) return legacyKey;
+    return compKey;
+}
+
+export function useOwnReview(siape: number, subject?: string | null): OwnReview | undefined {
     const reviews = useSyncExternalStore(
         ownReviews.subscribe,
         ownReviews.getSnapshot,
         ownReviews.getServerSnapshot
     );
-    return reviews[siape];
+    return findOwnReview(reviews, siape, subject);
 }
 
 // avaliações mudam pouco; voltar ao perfil não precisa refazer a consulta na hora
@@ -75,14 +129,15 @@ type SaveReview = { siape: number; body: ReviewInput };
 
 export async function saveReview({ siape, body }: SaveReview) {
     const store = ownReviews.atAccount(localAccount());
-    const own = store.getSnapshot()[siape];
+    const key = targetSaveKey(store.getSnapshot(), siape, body.subject);
+    const own = findOwnReview(store.getSnapshot(), siape, body.subject);
     if (own) {
         try {
             await apiClient.PUT('/reviews/{review_id}', {
                 params: { path: { review_id: own.id }, header: { 'X-Review-Token': own.token } },
                 body
             });
-            store.set({ ...store.getSnapshot(), [siape]: { ...own, ...body } });
+            store.set({ ...store.getSnapshot(), [key]: { ...own, ...body } });
             await flushLocalStorage();
             return;
         } catch (error) {
@@ -95,15 +150,20 @@ export async function saveReview({ siape, body }: SaveReview) {
     if (!data) throw new Error('Não foi possível salvar a avaliação');
     store.set({
         ...store.getSnapshot(),
-        [siape]: { ...body, id: data.review.id, token: credential }
+        [key]: { ...body, id: data.review.id, token: credential }
     });
     await flushLocalStorage();
 }
 
-export async function deleteReview(siape: number) {
+export type DeleteReviewInput = number | { siape: number; subject?: string | null };
+
+export async function deleteReview(input: DeleteReviewInput) {
+    const siape = typeof input === 'number' ? input : input.siape;
+    const subject = typeof input === 'number' ? undefined : input.subject;
     const store = ownReviews.atAccount(localAccount());
-    const own = store.getSnapshot()[siape];
-    if (!own) return;
+    const key = findOwnReviewKey(store.getSnapshot(), siape, subject);
+    const own = key ? store.getSnapshot()[key] : undefined;
+    if (!own || !key) return;
     try {
         await apiClient.DELETE('/reviews/{review_id}', {
             params: { path: { review_id: own.id }, header: { 'X-Review-Token': own.token } }
@@ -111,8 +171,8 @@ export async function deleteReview(siape: number) {
     } catch (error) {
         if (!(error instanceof ApiError && error.isNotFound)) throw error;
     }
-    if (store.getSnapshot()[siape]?.id !== own.id) return;
-    const { [siape]: _, ...rest } = store.getSnapshot();
+    if (store.getSnapshot()[key]?.id !== own.id) return;
+    const { [key]: _, ...rest } = store.getSnapshot();
     store.set(rest);
     await flushLocalStorage();
 }

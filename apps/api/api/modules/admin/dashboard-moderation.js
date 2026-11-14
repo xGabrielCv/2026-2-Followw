@@ -1,6 +1,6 @@
 import { call, confirmation, el, notice, when } from './dashboard-core.js';
 
-const filters = { reports: 'pending', tutorials: 'pending', reportPage: 1, tutorialPage: 1, reason: '', target: '', reportSearch: '', tutorialSearch: '', reportOrder: 'newest', tutorialOrder: 'newest' };
+const filters = { reports: 'pending', tutorials: 'pending', reportPage: 1, tutorialPage: 1, rejectionPage: 1, reason: '', target: '', reportSearch: '', tutorialSearch: '', reportOrder: 'newest', tutorialOrder: 'newest' };
 const reasons = { ofensivo: 'Ofensivo', dados_pessoais: 'Expõe alguém', spam: 'Spam', falso: 'Falso', direitos_autorais: 'Direitos autorais', outro: 'Outro' };
 const types = { review: 'Avaliação', group: 'Grupo', material: 'Material', post: 'Publicação', reply: 'Resposta', tutorial: 'Guia' };
 
@@ -10,7 +10,11 @@ export async function moderationView(render, editTutorial) {
     if (filters.target) params.set('target', filters.target);
     params.set('q', filters.reportSearch); params.set('order', filters.reportOrder);
     const tutorialParams = new URLSearchParams({ status: filters.tutorials, page: filters.tutorialPage, q: filters.tutorialSearch, order: filters.tutorialOrder });
-    const [reports, tutorials] = await Promise.all([call('/reports?' + params), call('/tutorials?' + tutorialParams)]);
+    const [reports, tutorials, rejections] = await Promise.all([
+        call('/reports?' + params),
+        call('/tutorials?' + tutorialParams),
+        call(`/materials/rejections?page=${filters.rejectionPage}`).catch(() => ({ items: [], total: 0, page: 1, page_size: 20 })),
+    ]);
     const selected = { report: new Set(), tutorial: new Set() };
     const act = async (kind, ids, action, batch = false) => {
         if (!ids.length || ids.length > 20) { notice('Selecione de 1 a 20 itens da página.', true); return; }
@@ -48,5 +52,20 @@ export async function moderationView(render, editTutorial) {
             tutorials.items.length ? el('div', { class: 'list' }, tutorials.items.map((item) => el('div', {},
                 el('div', { class: 'item' }, checkbox('tutorial', item, item.title), el('strong', {}, item.title), el('p', { class: 'muted' }, item.summary), el('details', {}, el('summary', {}, 'Ler o guia'), el('p', { class: 'pre' }, item.body)), history(item)),
                 el('div', { class: 'actions' }, el('button', { onclick: () => editTutorial(item) }, 'Editar'), item.status !== 'approved' ? el('button', { onclick: () => act('tutorial', [item.id], 'accept') }, 'Aprovar') : null, item.status !== 'rejected' ? el('button', { onclick: () => act('tutorial', [item.id], 'reject') }, item.status === 'approved' ? 'Despublicar' : 'Recusar') : null)))) : el('p', { role: 'status', class: 'muted' }, 'Nenhum guia nesta fila.'),
-            filters.tutorials === 'pending' ? batch('tutorial') : null, pager(tutorials, 'tutorialPage'))];
+            filters.tutorials === 'pending' ? batch('tutorial') : null, pager(tutorials, 'tutorialPage')),
+        el('div', { class: 'panel' },
+            el('div', { class: 'toolbar' },
+                el('h2', { class: 'grow' }, `Envios recusados pela segurança (${rejections.total})`),
+                rejections.total ? el('button', { class: 'danger', onclick: async () => {
+                    if (!await confirmation('Limpar histórico de recusas?', 'Remove os registros anônimos de arquivos bloqueados pela varredura de segurança.')) return;
+                    try { await call('/materials/rejections', { method: 'DELETE' }); notice('Registros de segurança removidos.'); filters.rejectionPage = 1; void render(); }
+                    catch (error) { notice(error.message, true); }
+                } }, 'Limpar histórico') : null),
+            el('p', { class: 'muted' }, 'Registro 100% anônimo (sem matrícula, nome do estudante ou nome original do arquivo).'),
+            rejections.items.length ? el('div', { class: 'list' }, rejections.items.map((item) => el('div', { class: 'item' },
+                el('strong', {}, `${item.subject_code} · ${item.file_ext}`),
+                el('span', { class: 'badge' }, `${item.engine} · ${item.reason_code}`),
+                el('p', { class: 'pre' }, item.reason_detail),
+                el('p', { class: 'muted' }, `${when(item.created_at)} · MIME: ${item.detected_mime} · ${item.size_bytes} B · SHA256: ${item.sha256_prefix}…`)))) : el('p', { role: 'status', class: 'muted' }, 'Nenhum envio recusado registrado.'),
+            pager(rejections, 'rejectionPage'))];
 }

@@ -465,9 +465,15 @@ def test_calendario_alerta_e_bandeira_respeitam_rbac_e_refletem_no_public_config
             "title": "Avalie o semestre",
             "message": "Mensagem personalizada de início do semestre.",
             "mid_semester_enabled": True,
-            "mid_semester_chance": 50,
+            "mid_semester_every_n": 3,
             "mid_semester_title": "Metade",
             "mid_semester_message": "Hora de avaliar seus docentes.",
+            "last_day_enabled": True,
+            "last_day_title": "Último dia do semestre",
+            "last_day_message": "Avalie hoje no último dia.",
+            "first_day_enabled": True,
+            "first_day_title": "Semestre anterior",
+            "first_day_message": "Avalie o semestre anterior.",
             "trigger_id": "t1",
             "triggered_at": None,
         },
@@ -491,3 +497,15 @@ def test_calendario_alerta_e_bandeira_respeitam_rbac_e_refletem_no_public_config
     assert dados["flags"]["current_plan"] is True
     assert "2030.1" in dados["calendar"]
     assert dados["alert"]["trigger_id"] == novo_id
+
+    overview = client.get("/admin/api/overview", headers=HEADERS)
+    assert overview.status_code == 200
+    assert "yara-x" in overview.json()["scanner_engines"]
+
+    recusas = client.get("/admin/api/materials/rejections", headers=HEADERS)
+    assert recusas.status_code == 200
+    assert recusas.json()["total"] == 0
+
+    limpeza = client.delete("/admin/api/materials/rejections", headers=HEADERS)
+    assert limpeza.status_code == 200
+    assert limpeza.json()["deleted"] == 0

@@ -114,3 +114,29 @@ test('exclusão atrasada não remove avaliação de outra conta e 404 limpa só 
     selectLocalAccount('251000001');
     expect(ownReviews.getSnapshot()[111]).toBeUndefined();
 });
+
+test('permite avaliar mais de uma matéria do mesmo docente de forma independente', async () => {
+    let seq = 0;
+    respond = (request) => {
+        if (request.method === 'DELETE') return new Response(null, { status: 204 });
+        seq++;
+        return Response.json({
+            review: {
+                ...own,
+                id: seq === 1 ? 'rev-a' : 'rev-b'
+            }
+        });
+    };
+
+    await saveReview({ siape: 111, body: { rating: 80, subject: 'FGA0030' } });
+    await saveReview({ siape: 111, body: { rating: 90, subject: 'FGA0124' } });
+
+    const snap = ownReviews.getSnapshot();
+    expect(snap[111]).toMatchObject({ id: 'rev-a', subject: 'FGA0030', rating: 80 });
+    expect(snap['111:FGA0124']).toMatchObject({ id: 'rev-b', subject: 'FGA0124', rating: 90 });
+    expect(snap[111]?.token).not.toBe(snap['111:FGA0124']?.token);
+
+    await deleteReview({ siape: 111, subject: 'FGA0124' });
+    expect(ownReviews.getSnapshot()['111:FGA0124']).toBeUndefined();
+    expect(ownReviews.getSnapshot()[111]?.id).toBe('rev-a');
+});

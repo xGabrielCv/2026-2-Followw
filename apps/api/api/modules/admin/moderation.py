@@ -6,11 +6,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 
 from api.crypto import matches
 from api.db.main import DatabaseDep
-from api.db.models import AdminLog, Report, Tutorial
+from api.db.models import AdminLog, MaterialRejection, Report, Tutorial
 from api.db.pagination import paginate
 from api.modules.admin import auth
 from api.modules.admin.service import ReportView, TutorialView, _preview, log
@@ -336,5 +336,69 @@ async def batch(
         for id_ in body.ids:
             await decide(session, body.kind, id_, body, request.state.admin)
         return {"processed": len(rows)}
+
+    return await db.write(write)
+
+
+class MaterialRejectionView(BaseModel):
+    id: UUID
+    subject_code: str
+    detected_mime: str
+    file_ext: str
+    engine: str
+    reason_code: str
+    reason_detail: str
+    sha256_prefix: str
+    size_bytes: int
+    created_at: datetime
+
+
+@router.get("/materials/rejections")
+async def list_material_rejections(
+    db: DatabaseDep, page: Annotated[int, Query(ge=1)] = 1
+) -> ModerationPage[MaterialRejectionView]:
+    async def read(session):
+        query = select(MaterialRejection).order_by(
+            MaterialRejection.created_at.desc(), MaterialRejection.id.desc()
+        )
+        rows, total = await paginate(session, query, page, 20)
+        return ModerationPage(
+            items=[
+                MaterialRejectionView(
+                    id=row.id,
+                    subject_code=row.subject_code,
+                    detected_mime=row.detected_mime,
+                    file_ext=row.file_ext,
+                    engine=row.engine,
+                    reason_code=row.reason_code,
+                    reason_detail=row.reason_detail,
+                    sha256_prefix=row.sha256_prefix,
+                    size_bytes=row.size_bytes,
+                    created_at=row.created_at,
+                )
+                for row in rows
+            ],
+            total=total,
+            page=page,
+            page_size=20,
+        )
+
+    return await db.read(read)
+
+
+@router.delete("/materials/rejections")
+async def clear_material_rejections(
+    request: Request, db: DatabaseDep
+) -> dict[str, int]:
+    async def write(session):
+        result = await session.execute(delete(MaterialRejection))
+        count = result.rowcount or 0
+        await log(
+            session,
+            "materials.rejections.clear",
+            detail=f"deleted={count}",
+            actor=request.state.admin,
+        )
+        return {"deleted": count}
 
     return await db.write(write)

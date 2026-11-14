@@ -73,9 +73,15 @@ const previousGlobals = new Map<string, PropertyDescriptor | undefined>();
 let restoreLayoutEffect: () => Promise<void>;
 
 function BuscarTurmasPage() {
+    const Header = Route.options.staticData?.header;
     const Page = Route.options.component;
     if (!Page) throw new Error('Componente da busca ausente');
-    return <Page />;
+    return (
+        <>
+            {Header && <Header />}
+            <Page />
+        </>
+    );
 }
 
 function ResetFilters() {

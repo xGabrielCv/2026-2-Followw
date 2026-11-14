@@ -29,6 +29,7 @@ from api.db.models import (
     Classroom,
     ForumPost,
     Material,
+    MaterialRejection,
     Professor,
     ProfessorReview,
     Report,
@@ -85,6 +86,8 @@ class Overview(BaseModel):
     materials_bytes: int
     materials_files: int
     clamav_enabled: bool = False
+    scanner_engines: list[str] = []
+    material_rejections_count: int = 0
     counts: dict[str, int]
     pending: dict[str, int]
     users: dict[str, int]
@@ -367,6 +370,13 @@ class AdminService:
             (visible, links),
         ) = await self._db.read(read)
         storage = material_storage()
+        from api.modules.materials import scanner as material_scanner
+
+        rejections_count = await self._db.read(
+            lambda session: session.scalar(
+                select(func.count()).select_from(MaterialRejection)
+            )
+        )
         return Overview(
             environment=settings.environment,
             demo_data=settings.demo_data,
@@ -393,6 +403,8 @@ class AdminService:
             materials_bytes=await storage.usage(),
             materials_files=counts[_LABELS["material"]],
             clamav_enabled=material_av.enabled(),
+            scanner_engines=material_scanner.active_engines(),
+            material_rejections_count=rejections_count or 0,
             counts=counts,
             pending=pending,
             users=users,

@@ -171,6 +171,9 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
     await expect(page.locator('#main')).toContainText('administrador-sintetico');
     await page.getByRole('button', { name: 'Limites da comunidade', exact: true }).click();
     await expect(page.locator('#main')).toContainText('50 GB');
+    await expect(page.locator('#main')).toContainText('yara-x');
+    const versionBefore = (await (await page.request.get('/api/public/config/version')).json())
+        .parts.config;
     await page.getByRole('spinbutton', { name: /^MB por arquivo/ }).fill('19');
     await page.getByRole('button', { name: 'Salvar limites', exact: true }).click();
     await page
@@ -178,6 +181,10 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
         .getByRole('button', { name: 'Confirmar', exact: true })
         .click();
     await expect(page.locator('#notice')).toContainText('Limites atualizados');
+    const versionAfter = (await (await page.request.get('/api/public/config/version')).json()).parts
+        .config;
+    expect(versionAfter).toBeTruthy();
+    expect(versionAfter).not.toBe(versionBefore);
     const reported = await page.request.post('/api/reports', {
         data: {
             target_type: 'post',
@@ -188,6 +195,7 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
     });
     expect(reported.status()).toBe(201);
     await page.getByRole('button', { name: /^Moderação/ }).click();
+    await expect(page.locator('#main')).toContainText('Envios recusados pela segurança');
     await page
         .getByRole('searchbox', { name: 'Buscar mensagem, motivo ou ID do conteúdo', exact: true })
         .fill('conferencia');

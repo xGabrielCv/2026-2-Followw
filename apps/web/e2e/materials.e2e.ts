@@ -57,3 +57,46 @@ test('material é enviado sem cookie acadêmico e PDF vira pixels com recursos l
     await page.keyboard.press('Escape');
     await expect(preview).not.toBeVisible();
 });
+
+test('scanner ativo recusa payload suspeito e aceita PDF limpo sem vazar origem', async ({
+    page
+}) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await login(page);
+    await page.goto('/materiais/FGA0146');
+    await ready(page);
+    await page.getByRole('button', { name: 'Enviar', exact: true }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Enviar material' });
+    const eicarHead = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR';
+    const eicarTail = '-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+    await dialog.locator('input[type=file]').setInputFiles({
+        name: 'suspeito.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from(`%PDF-1.4\n% ${eicarHead}${eicarTail}\n%%EOF`, 'utf-8')
+    });
+    await dialog.getByLabel('Título', { exact: true }).fill('Tentativa com assinatura suspeita');
+    await dialog.getByRole('checkbox', { name: /O arquivo não tem meu nome/ }).check();
+    const rejected = page.waitForResponse(
+        (response) =>
+            response.request().method() === 'POST' &&
+            response.url().endsWith('/api/materials/FGA0146')
+    );
+    await dialog.getByRole('button', { name: 'Enviar material', exact: true }).click();
+    expect((await rejected).status()).toBe(422);
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('input[type=file]').setInputFiles({
+        name: 'limpo.pdf',
+        mimeType: 'application/pdf',
+        buffer: syntheticPdf('Limpo apos scanner')
+    });
+    await dialog.getByLabel('Título', { exact: true }).fill('PDF limpo após recusa');
+    const accepted = page.waitForResponse(
+        (response) =>
+            response.request().method() === 'POST' &&
+            response.url().endsWith('/api/materials/FGA0146')
+    );
+    await dialog.getByRole('button', { name: 'Enviar material', exact: true }).click();
+    expect((await accepted).status()).toBe(201);
+    await expect(dialog).not.toBeVisible();
+});

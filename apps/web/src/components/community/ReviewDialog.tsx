@@ -48,7 +48,7 @@ interface ReviewDialogProps {
 export function ReviewDialog({ professors, subject, open, onOpenChange }: ReviewDialogProps) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+            <DialogContent className="flex max-h-[calc(100dvh-2rem)] min-w-0 flex-col overflow-x-hidden overflow-y-auto desk:max-w-lg forced-mobile:max-w-[min(calc(100vw-2rem),26rem)]">
                 <DialogHeader>
                     <DialogTitle>Avaliar professor</DialogTitle>
                     <DialogDescription>
@@ -80,7 +80,7 @@ export function ReviewPanel({
 }) {
     const [siape, setSiape] = useState(professors[0]?.siape);
     const professor = professors.find((item) => item.siape === siape) ?? professors[0];
-    const own = useOwnReview(professor?.siape ?? 0);
+    const own = useOwnReview(professor?.siape ?? 0, subject);
 
     return (
         <>
@@ -120,7 +120,7 @@ export function ReviewPanel({
             )}
             {professor && (
                 <ReviewFields
-                    key={professor.siape}
+                    key={`${professor.siape}:${subject ?? ''}`}
                     own={own}
                     professor={professor}
                     subject={subject}
@@ -282,7 +282,12 @@ function ReviewFields({
                         variant="outline"
                         className={cn('text-destructive')}
                         disabled={pending}
-                        onClick={() => remove.mutate(professor.siape, { onSuccess: onDone })}
+                        onClick={() =>
+                            remove.mutate(
+                                { siape: professor.siape, subject },
+                                { onSuccess: onDone }
+                            )
+                        }
                     >
                         Apagar avaliação
                     </Button>

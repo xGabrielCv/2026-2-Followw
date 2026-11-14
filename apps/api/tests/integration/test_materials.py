@@ -377,3 +377,46 @@ def test_clamav_configurado_rejeita_arquivo_infectado_e_permite_limpo(
     monkeypatch.setattr(av.asyncio, "open_connection", _fake_conn(b"stream: OK\x00"))
     limpo = _enviar(logado, _png(), name="limpo.png")
     assert limpo.status_code == 201
+
+
+def test_envio_com_eicar_e_recusado_e_registrado_sem_pii_no_admin(
+    logado, materia, database
+):
+    from api.db.models import MaterialRejection
+
+    eicar = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+    recusado = _enviar(logado, eicar, name="Gabriel_251000000_prova.txt")
+    assert recusado.status_code == 422
+    assert "EICAR" in recusado.json()["detail"]
+
+    with database() as session:
+        rows = list(session.scalars(select(MaterialRejection)))
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.subject_code == "FGA0030"
+    assert row.engine == "yara-x"
+    assert row.reason_code == "eicar_signature"
+    # Só a extensão entra; o nome original do estudante nunca é salvo.
+    assert row.file_ext == ".txt"
+    assert "Gabriel" not in row.reason_detail
+    assert "251000000" not in row.reason_detail
+
+
+def test_limites_editados_refletem_imediato_e_mudam_versao_config(
+    client, logado, materia, database
+):
+    from api.community_limits import KEY, CommunityLimits
+    from api.db.models import SystemText
+
+    v_antes = client.get("/public/config/version").json()["parts"]["config"]
+    with database.begin() as session:
+        session.add(
+            SystemText(
+                key=KEY,
+                value=CommunityLimits(materials_per_subject=3).model_dump_json(),
+            )
+        )
+    v_depois = client.get("/public/config/version").json()["parts"]["config"]
+    assert v_depois != v_antes
+    listing = logado.get(URL).json()
+    assert listing["limits"]["max_per_subject"] == 3

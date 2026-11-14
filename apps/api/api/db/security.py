@@ -25,6 +25,7 @@ from api.db.community_security import policies as community_policies
 APP_ROLE = "followw_app"
 
 _ADMIN = "current_setting('app.scope', true) = 'admin'"
+_MATERIAL_SEC = "current_setting('app.scope', true) IN ('admin', 'materials_security')"
 _SYNC = "current_setting('app.scope', true) IN ('admin', 'sync')"
 _LOGS = "current_setting('app.scope', true) IN ('admin', 'logs')"
 _TICKET_PROOF = (
@@ -69,6 +70,9 @@ _POLICIES: list[tuple[str, str, str | None, str | None]] = [
     ("admin_sessions", "ALL", _ADMIN, _ADMIN),
     ("admin_log", "SELECT", _ADMIN, None),
     ("admin_log", "INSERT", None, _ADMIN),
+    ("material_rejections", "SELECT", _ADMIN, None),
+    ("material_rejections", "INSERT", None, _MATERIAL_SEC),
+    ("material_rejections", "DELETE", _ADMIN, None),
     ("system_flags", "SELECT", "true", None),
     ("system_flags", "INSERT", None, _ADMIN),
     ("system_flags", "UPDATE", _ADMIN, _ADMIN),

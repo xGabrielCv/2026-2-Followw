@@ -140,7 +140,7 @@ export const Route = createFileRoute('/_app/buscar')({
     },
     staticData: {
         header: () => (
-            <HeaderBar>
+            <HeaderBar actions={<BuscarSemesterSelect />}>
                 <HeaderTitle>Buscar</HeaderTitle>
             </HeaderBar>
         )
@@ -148,6 +148,37 @@ export const Route = createFileRoute('/_app/buscar')({
     errorComponent: ErrorState,
     component: BuscarPage
 });
+
+function BuscarSemesterSelect() {
+    const [{ semester }, setSearch] = useSearchState();
+    const { calendar } = useAppConfig();
+    const { data: offer } = useQuery(offerSemestersQueryOptions);
+    const { choices, selected } = offerSemester(offer ?? [], semester, calendar);
+    const defaultSemester = choices.find((choice) => choice.available)?.semester ?? offer?.[0];
+    const availableOptions = choices.filter((choice) => choice.available);
+
+    if (availableOptions.length === 0 || !selected) return null;
+
+    return (
+        <select
+            aria-label="Semestre da oferta"
+            value={selected}
+            onChange={(event) => {
+                const nextValue = event.target.value;
+                void setSearch({
+                    semester: nextValue === defaultSemester ? null : nextValue
+                });
+            }}
+            className="h-9 shrink-0 rounded-xl border border-border bg-card px-2.5 text-xs font-semibold text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+            {availableOptions.map((choice) => (
+                <option key={choice.semester} value={choice.semester}>
+                    {`${choice.semester} · ${choice.kind === 'next' ? 'Planejado' : 'Atual'}`}
+                </option>
+            ))}
+        </select>
+    );
+}
 
 function BuscarPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
@@ -157,8 +188,6 @@ function BuscarPage() {
     const today = nowInBrasilia().date;
     const { data: offer } = useQuery(offerSemestersQueryOptions);
     const { choices, selected } = offerSemester(offer ?? [], semester, calendar);
-    const defaultSemester = choices.find((choice) => choice.available)?.semester ?? offer?.[0];
-    const availableOptions = choices.filter((choice) => choice.available);
     const canPlanSelected = selected
         ? canAddToSchedule(selected, {
               today,
@@ -207,34 +236,14 @@ function BuscarPage() {
                     className="h-11 bg-card pl-10 text-sm"
                 />
             </div>
-            <div className="-my-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="-my-2">
                 <TabFilter
                     label="Categoria da busca"
                     value={category}
                     options={SEARCH_CATEGORIES}
                     labels={searchCategoryLabels}
                     onChange={(value) => void setSearch({ category: value })}
-                    className="min-w-0 flex-1"
                 />
-                {availableOptions.length > 0 && selected && (
-                    <select
-                        aria-label="Semestre da oferta"
-                        value={selected}
-                        onChange={(event) => {
-                            const nextValue = event.target.value;
-                            void setSearch({
-                                semester: nextValue === defaultSemester ? null : nextValue
-                            });
-                        }}
-                        className="h-9 shrink-0 rounded-xl border border-border bg-card px-2.5 text-xs font-semibold text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-                    >
-                        {availableOptions.map((choice) => (
-                            <option key={choice.semester} value={choice.semester}>
-                                {`${choice.semester} · ${choice.kind === 'next' ? 'Planejado' : 'Atual'}`}
-                            </option>
-                        ))}
-                    </select>
-                )}
             </div>
             <SchedulePreview />
             <div aria-live="polite" className="flex flex-col gap-5 pb-8">

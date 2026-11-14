@@ -252,3 +252,34 @@ def test_nome_com_barra_invertida_nao_e_aceito():
     # o zipfile do Windows converte "\\" ao ler; em outros sistemas o nome chegaria assim
     assert office._name_ok("a\\b.xml") is False
     assert office._name_ok("word/document.xml") is True
+
+
+def test_scanner_rejeita_eicar_executaveis_scripts_e_primitivas_perigosas():
+    from api.modules.materials import scanner
+
+    eicar = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+    with pytest.raises(scanner.ScanRejected) as erro_eicar:
+        scanner.scan_raw(eicar, office.TEXT)
+    assert erro_eicar.value.engine == "yara-x"
+    assert erro_eicar.value.reason_code == "eicar_signature"
+
+    pe = b"MZ" + b"\x90" * 60 + b"PE\x00\x00" + b"\x00" * 20
+    with pytest.raises(scanner.ScanRejected) as erro_pe:
+        scanner.scan_raw(pe, None)
+    assert erro_pe.value.reason_code == "executable_payload"
+    assert erro_pe.value.status_code == 415
+
+    svg_xss = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    with pytest.raises(scanner.ScanRejected) as erro_xss:
+        scanner.scan_raw(svg_xss, office.TEXT)
+    assert erro_xss.value.reason_code == "script_stager"
+
+    pdf_xfa = b"%PDF-1.7\n1 0 obj<</XFA (x)>>endobj\n"
+    with pytest.raises(scanner.ScanRejected) as erro_pdf:
+        scanner.scan_raw(pdf_xfa, "application/pdf")
+    assert erro_pdf.value.reason_code == "pdf_exploit_primitive"
+
+    # Documento limpo passa sem falsos positivos
+    limpo = pacote(office.DOCX)
+    scanner.scan_raw(limpo, office.DOCX)
+    scanner.verify_clean(limpo, office.DOCX)

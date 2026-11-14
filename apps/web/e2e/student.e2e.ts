@@ -91,3 +91,66 @@ test('aluno publica sem cookie acadêmico, edita perfil offline e troca de conta
     const values = await page.evaluate(() => Object.values(localStorage));
     expect(values.every((value) => !value.includes('Bio privada local de teste'))).toBe(true);
 });
+
+test('buscar posiciona seletor no cabeçalho e modal de alerta respeita limites em celular e desktop', async ({
+    page
+}) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/buscar');
+    await ready(page);
+    const select = page.getByLabel('Semestre da oferta', { exact: true });
+    await expect(select).toBeVisible();
+    const mobileBuscar = await page.evaluate(() => {
+        const header = document.querySelector('header');
+        const sel = document.querySelector('select[aria-label="Semestre da oferta"]');
+        return {
+            scrollW: document.documentElement.scrollWidth,
+            clientW: document.documentElement.clientWidth,
+            inHeader: Boolean(header && sel && header.contains(sel))
+        };
+    });
+    expect(mobileBuscar.inHeader).toBe(true);
+    expect(mobileBuscar.scrollW).toBeLessThanOrEqual(mobileBuscar.clientW);
+
+    await page.route('**/api/public/config', async (route) => {
+        const response = await route.fetch();
+        const json = await response.json();
+        json.alert = { ...json.alert, enabled: true, always_on: true };
+        await route.fulfill({ response, json });
+    });
+
+    await page.goto('/login');
+    await ready(page);
+    await page.getByRole('textbox', { name: 'Matrícula', exact: true }).fill('251000000');
+    await page.getByLabel('Senha do SIGAA', { exact: true }).fill('simulada123');
+    await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+    await expect(page).toHaveURL(/\/perfil$/);
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+    const assertDialogFits = async (width: number) => {
+        await page.setViewportSize({ width, height: 844 });
+        const bounds = await dialog.evaluate((el) => {
+            const box = el.getBoundingClientRect();
+            const children = Array.from(el.querySelectorAll('button, li, p'));
+            const maxChildRight = Math.max(
+                box.right,
+                ...children.map((node) => node.getBoundingClientRect().right)
+            );
+            return {
+                dialogRight: box.right,
+                dialogLeft: box.left,
+                maxChildRight,
+                viewportWidth: window.innerWidth,
+                scrollW: el.scrollWidth,
+                clientW: el.clientWidth
+            };
+        });
+        expect(bounds.dialogLeft).toBeGreaterThanOrEqual(0);
+        expect(bounds.dialogRight).toBeLessThanOrEqual(bounds.viewportWidth);
+        expect(bounds.maxChildRight).toBeLessThanOrEqual(bounds.dialogRight + 1);
+        expect(bounds.scrollW).toBeLessThanOrEqual(bounds.clientW + 1);
+    };
+    await assertDialogFits(390);
+    await assertDialogFits(1280);
+});

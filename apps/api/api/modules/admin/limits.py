@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +27,7 @@ async def set_limits(
             session.add(SystemText(key=KEY, value=body.model_dump_json()))
         else:
             row.value = body.model_dump_json()
+            row.updated_at = datetime.now(UTC)
         await log(
             session,
             "community.limits",

@@ -274,9 +274,10 @@ function alertPanel(info) {
   const titleInput = el("input", { type:"text", value:cfg.title, maxlength:120, required:true });
   const messageInput = el("textarea", { rows:3, maxlength:600, required:true }, cfg.message);
   const presetSelect = el("select", { "aria-label":"Modelo de aviso" }, [
-    ["custom", "Personalizado"],
-    ["first_day", "Primeiro dia do semestre"],
+    ["custom", "Personalizado (Disparo manual)"],
+    ["mid_semester", "50% do semestre"],
     ["last_day", "Último dia do semestre"],
+    ["first_day", "Primeiro dia (Semestre anterior)"],
   ].map(([value, label]) => el("option", { value, selected: cfg.preset === value }, label)));
   presetSelect.addEventListener("change", () => {
     const preset = info.presets?.[presetSelect.value];
@@ -287,9 +288,15 @@ function alertPanel(info) {
   const enabledInput = el("input", { type:"checkbox", checked: cfg.enabled });
   const alwaysOnInput = el("input", { type:"checkbox", checked: cfg.always_on });
   const midEnabledInput = el("input", { type:"checkbox", checked: cfg.mid_semester_enabled });
-  const midChanceInput = el("input", { type:"number", min:0, max:100, step:1, value: cfg.mid_semester_chance, required:true });
+  const midEveryNInput = el("input", { type:"number", min:1, max:20, step:1, value: cfg.mid_semester_every_n ?? 3, required:true });
   const midTitleInput = el("input", { type:"text", value: cfg.mid_semester_title, maxlength:120, required:true });
   const midMessageInput = el("textarea", { rows:2, maxlength:600, required:true }, cfg.mid_semester_message);
+  const lastDayEnabledInput = el("input", { type:"checkbox", checked: cfg.last_day_enabled ?? true });
+  const lastDayTitleInput = el("input", { type:"text", value: cfg.last_day_title || "Último dia do semestre: avalie seus professores", maxlength:120, required:true });
+  const lastDayMessageInput = el("textarea", { rows:2, maxlength:600, required:true }, cfg.last_day_message || "Último dia letivo do semestre! Avalie seus professores e compartilhe as estatísticas das suas turmas anonimamente.");
+  const firstDayEnabledInput = el("input", { type:"checkbox", checked: cfg.first_day_enabled ?? true });
+  const firstDayTitleInput = el("input", { type:"text", value: cfg.first_day_title || "Avalie seus professores do semestre anterior", maxlength:120, required:true });
+  const firstDayMessageInput = el("textarea", { rows:2, maxlength:600, required:true }, cfg.first_day_message || "Novo semestre começando! Aproveite para avaliar seus professores do semestre anterior e ajudar os colegas.");
   const readPayload = () => ({
     enabled: enabledInput.checked,
     always_on: alwaysOnInput.checked,
@@ -297,26 +304,42 @@ function alertPanel(info) {
     title: titleInput.value.trim(),
     message: messageInput.value.trim(),
     mid_semester_enabled: midEnabledInput.checked,
-    mid_semester_chance: Number(midChanceInput.value),
+    mid_semester_every_n: Number(midEveryNInput.value),
     mid_semester_title: midTitleInput.value.trim(),
     mid_semester_message: midMessageInput.value.trim(),
+    last_day_enabled: lastDayEnabledInput.checked,
+    last_day_title: lastDayTitleInput.value.trim(),
+    last_day_message: lastDayMessageInput.value.trim(),
+    first_day_enabled: firstDayEnabledInput.checked,
+    first_day_title: firstDayTitleInput.value.trim(),
+    first_day_message: firstDayMessageInput.value.trim(),
     trigger_id: cfg.trigger_id,
     triggered_at: cfg.triggered_at,
   });
   return el("div", { class:"panel" },
-    el("h3", {}, "Aviso de avaliações e estatísticas (ao abrir o app)"),
+    el("h3", {}, "Aviso de avaliações e estatísticas (4 versões automáticas + disparo)"),
     el("p", { class:"muted" }, `Semestre atual: ${info.current_semester}${info.progress_percent != null ? ` (${info.progress_percent}% das aulas concluídas)` : ""}. Campanha atual: ${cfg.trigger_id}${cfg.triggered_at ? ` · disparada ${when(cfg.triggered_at)}` : ""}.`),
     el("div", { class:"grid g2" },
       el("label", { class:"switch" }, el("span", {}, "Sistema de aviso ativo"), enabledInput),
       el("label", { class:"switch" }, el("span", {}, "Sempre ativado ao abrir (modo de teste)"), alwaysOnInput),
-      el("label", {}, "Modelo rápido", presetSelect),
-      el("label", {}, "Título da campanha atual", titleInput)),
-    el("label", {}, "Mensagem da campanha", messageInput),
+      el("label", {}, "Modelo rápido (disparo manual)", presetSelect),
+      el("label", {}, "1. Título no disparo manual", titleInput)),
+    el("label", {}, "1. Mensagem no disparo manual", messageInput),
     el("div", { class:"grid g2" },
-      el("label", { class:"switch" }, el("span", {}, "Ativar aviso automático na metade do semestre (>= 50%)"), midEnabledInput),
-      el("label", {}, "Chance ao abrir após 50% do semestre (%)", midChanceInput),
-      el("label", {}, "Título na metade do semestre", midTitleInput),
-      el("label", {}, "Mensagem na metade do semestre", midMessageInput)),
+      el("label", { class:"switch" }, el("span", {}, "2. Ativar aviso aos 50%+ do semestre"), midEnabledInput),
+      el("label", {}, "Cadência consistente após 50% (exibir a cada N aberturas)", midEveryNInput),
+      el("label", {}, "2. Título nos 50%+ do semestre", midTitleInput),
+      el("label", {}, "2. Mensagem nos 50%+ do semestre", midMessageInput)),
+    el("div", { class:"grid g2" },
+      el("label", { class:"switch" }, el("span", {}, "3. Ativar no último dia do semestre"), lastDayEnabledInput),
+      el("div", {}),
+      el("label", {}, "3. Título no último dia do semestre", lastDayTitleInput),
+      el("label", {}, "3. Mensagem no último dia do semestre", lastDayMessageInput)),
+    el("div", { class:"grid g2" },
+      el("label", { class:"switch" }, el("span", {}, "4. Ativar no 1º dia do próximo semestre (turmas anteriores)"), firstDayEnabledInput),
+      el("div", {}),
+      el("label", {}, "4. Título no 1º dia do semestre", firstDayTitleInput),
+      el("label", {}, "4. Mensagem no 1º dia do semestre", firstDayMessageInput)),
     el("div", { class:"toolbar" },
       el("button", { class:"primary", type:"button", onclick:async () => {
         try {
