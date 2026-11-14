@@ -71,20 +71,35 @@ test('recalcula na alteração, preserva ao voltar e restaura as menções ao li
     );
     const first = render(simulator);
     const current = { name: currentLabel };
-    expect(index(first.container, 'IRA')).toBe('4');
+    expect(index(first.container, 'IRA atual')).toBe('4');
+    expect(index(first.container, 'MP atual')).toBe('—');
+    expect(index(first.container, 'IRA futuro')).toBeUndefined();
+    expect(index(first.container, 'MP futuro')).toBeUndefined();
     fireEvent.change(first.getByRole('combobox', current), { target: { value: 'SS' } });
-    expect(index(first.container, 'IRA')).toBe('4,667');
-    expect(index(first.container, 'MP')).toBe('5');
+    expect(index(first.container, 'IRA atual')).toBe('4');
+    expect(index(first.container, 'MP atual')).toBe('—');
+    expect(index(first.container, 'IRA futuro')).toBe('4,667');
+    expect(index(first.container, 'MP futuro')).toBe('5');
     expect(first.getByText('* Projeção para 2026.2.')).toBeDefined();
     first.unmount();
 
     const reopened = render(simulator);
     expect(currentGrade(reopened.container)).toBe('SS');
+    expect(index(reopened.container, 'IRA futuro')).toBe('4,667');
     fireEvent.click(reopened.getByRole('button', { name: 'Limpar simulação' }));
     expect(currentGrade(reopened.container)).toBe('');
-    expect(index(reopened.container, 'IRA')).toBe('4');
-    expect(index(reopened.container, 'MP')).toBe('—');
+    expect(index(reopened.container, 'IRA atual')).toBe('4');
+    expect(index(reopened.container, 'MP atual')).toBe('—');
+    expect(index(reopened.container, 'IRA futuro')).toBeUndefined();
     expect(reopened.queryByText('* Projeção para 2026.2.')).toBeNull();
+
+    // alterar apenas semestre anterior também exibe o impacto como IRA futuro
+    fireEvent.click(reopened.getByText('Semestres anteriores'));
+    fireEvent.change(reopened.getByRole('combobox', { name: 'Menção de Música, 2026.1' }), {
+        target: { value: 'SS' }
+    });
+    expect(index(reopened.container, 'IRA atual')).toBe('4');
+    expect(index(reopened.container, 'IRA futuro')).toBe('5');
 });
 
 test('explica os limites da projeção e a ausência de dados para os índices', () => {
@@ -96,8 +111,8 @@ test('explica os limites da projeção e a ausência de dados para os índices',
     expect(page.getByText('IRA indisponível sem o semestre de ingresso.')).toBeDefined();
     expect(page.getByText('MP indisponível sem a matriz curricular.')).toBeDefined();
     expect(page.getByText('Nenhuma disciplina no semestre atual.')).toBeDefined();
-    expect(index(page.container, 'IRA')).toBe('—');
-    expect(index(page.container, 'MP')).toBe('—');
+    expect(index(page.container, 'IRA atual')).toBe('—');
+    expect(index(page.container, 'MP atual')).toBe('—');
 });
 
 test('separa menções simuladas entre contas no armazenamento existente', () => {

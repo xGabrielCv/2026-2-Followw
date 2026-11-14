@@ -88,3 +88,26 @@ export function simulateIndexes(
 
 export const isFreeModule = (classroom: Classroom, curriculum: Set<string> | null) =>
     curriculum !== null && !curriculum.has(subjectCode(classroom.subject.code));
+
+export interface EvolutionChartPoint {
+    semester: string;
+    ira: number | null;
+    projectedIra: number | null;
+    projected: boolean;
+}
+
+// divide a série para destacar em vermelho apenas o segmento até o semestre projetado
+export function evolutionChartPoints(
+    evolution: { semester: string; ira: number; projected: boolean }[]
+): EvolutionChartPoint[] {
+    const projectedIndex = evolution.findIndex((point) => point.projected);
+    return evolution.map((point, index) => ({
+        semester: point.semester,
+        ira: point.projected ? null : point.ira,
+        projectedIra:
+            point.projected || (projectedIndex > 0 && index === projectedIndex - 1)
+                ? point.ira
+                : null,
+        projected: point.projected
+    }));
+}

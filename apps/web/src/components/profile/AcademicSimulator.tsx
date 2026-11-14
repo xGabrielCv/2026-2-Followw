@@ -1,14 +1,15 @@
 import { ChevronDown } from 'lucide-react';
-import { useSyncExternalStore } from 'react';
+import { type ComponentProps, useSyncExternalStore } from 'react';
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 
-import type { Grade } from '#/lib/academic-simulation';
+import type { EvolutionChartPoint, Grade } from '#/lib/academic-simulation';
 import type { Classroom } from '#/queries/classrooms';
 
 import { Button } from '#/components/ui/button';
 import { Card } from '#/components/ui/card';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '#/components/ui/chart';
 import {
+    evolutionChartPoints,
     gradeWeights,
     isFreeModule,
     isGrade,
@@ -21,7 +22,10 @@ import {
 import { groupBySemester } from '#/lib/classroom-details';
 import { formatAcademicIndex, titleCase } from '#/lib/profile';
 
-const chartConfig = { ira: { label: 'IRA', color: 'var(--primary)' } };
+const chartConfig = {
+    ira: { label: 'IRA', color: 'var(--primary)' },
+    projectedIra: { label: 'Projeção', color: 'var(--destructive)' }
+};
 const displayIndex = (value: number | null) => (value === null ? '—' : formatAcademicIndex(value));
 
 function changeGrade(classroom: Classroom, grade: Grade | null) {
@@ -30,6 +34,54 @@ function changeGrade(classroom: Classroom, grade: Grade | null) {
     if (grade === (classroom.grade ?? null)) delete next[key];
     else next[key] = grade;
     simulatedGrades.set(next);
+}
+
+function projectedDot({
+    cx,
+    cy,
+    payload
+}: {
+    cx?: number;
+    cy?: number;
+    payload?: EvolutionChartPoint;
+}) {
+    if (payload?.projected && cx != null && cy != null) {
+        return (
+            <circle
+                key={payload.semester}
+                cx={cx}
+                cy={cy}
+                r={3}
+                fill="var(--color-projectedIra)"
+                stroke="var(--color-projectedIra)"
+            />
+        );
+    }
+    return <g key={payload?.semester} />;
+}
+
+function SimulatorTooltip({
+    payload,
+    current,
+    projected,
+    ...props
+}: ComponentProps<typeof ChartTooltipContent> & {
+    current: string | undefined;
+    projected: boolean;
+}) {
+    return (
+        <ChartTooltipContent
+            {...props}
+            payload={payload?.filter((item) => item.value != null).slice(0, 1)}
+            indicator="dot"
+            labelFormatter={(semester) =>
+                projected && typeof semester === 'string' && semester === current
+                    ? `${semester} · Projeção`
+                    : semester
+            }
+            formatter={(value) => `IRA ${formatAcademicIndex(Number(value))}`}
+        />
+    );
 }
 
 export function AcademicSimulator({
@@ -51,7 +103,12 @@ export function AcademicSimulator({
     const groups = groupBySemester(simulationClassrooms(classrooms, entry, current));
     const currentClassrooms = groups.find(([semester]) => semester === current)?.[1] ?? [];
     const previous = groups.filter(([semester]) => semester !== current);
+    const baseline = simulateIndexes(groups, entry, current, curriculum, {});
     const { ira, mp, evolution } = simulateIndexes(groups, entry, current, curriculum, overrides);
+    const hasSimulation = groups.some(([, items]) =>
+        items.some((classroom) => simulationKey(classroom) in overrides)
+    );
+    const chartData = evolutionChartPoints(evolution);
     const projected = evolution.at(-1)?.projected === true;
 
     function rows(items: Classroom[]) {
@@ -102,20 +159,38 @@ export function AcademicSimulator({
                     equivalências. Pode diferir dos índices oficiais do SIGAA. As menções simuladas
                     ficam somente neste navegador, cifradas por conta.
                 </p>
-                <dl className="grid grid-cols-2 gap-4" aria-live="polite">
-                    <div>
-                        <dt className="text-muted-foreground">IRA</dt>
-                        <dd className="text-2xl font-semibold text-primary tabular-nums">
-                            {displayIndex(ira)}
-                        </dd>
-                    </div>
-                    <div>
-                        <dt className="text-muted-foreground">MP</dt>
-                        <dd className="text-2xl font-semibold text-primary tabular-nums">
-                            {displayIndex(mp)}
-                        </dd>
-                    </div>
-                </dl>
+                <div className="flex flex-col gap-3" aria-live="polite">
+                    <dl className="grid grid-cols-2 gap-4">
+                        <div>
+                            <dt className="text-muted-foreground">IRA atual</dt>
+                            <dd className="text-2xl font-semibold text-primary tabular-nums">
+                                {displayIndex(baseline.ira)}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt className="text-muted-foreground">MP atual</dt>
+                            <dd className="text-2xl font-semibold text-primary tabular-nums">
+                                {displayIndex(baseline.mp)}
+                            </dd>
+                        </div>
+                    </dl>
+                    {hasSimulation && (
+                        <dl className="grid grid-cols-2 gap-4 border-t border-border pt-3">
+                            <div>
+                                <dt className="text-muted-foreground">IRA futuro</dt>
+                                <dd className="text-2xl font-semibold text-destructive tabular-nums">
+                                    {displayIndex(ira)}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt className="text-muted-foreground">MP futuro</dt>
+                                <dd className="text-2xl font-semibold text-destructive tabular-nums">
+                                    {displayIndex(mp)}
+                                </dd>
+                            </div>
+                        </dl>
+                    )}
+                </div>
                 {!entry && (
                     <p className="text-xs text-muted-foreground">
                         IRA indisponível sem o semestre de ingresso.
@@ -183,7 +258,7 @@ export function AcademicSimulator({
                                 className="h-56 w-full"
                                 style={{ minWidth: evolution.length * 42 + 44 }}
                             >
-                                <LineChart data={evolution} margin={{ left: 0, right: 20, top: 8 }}>
+                                <LineChart data={chartData} margin={{ left: 0, right: 20, top: 8 }}>
                                     <CartesianGrid vertical={false} />
                                     <XAxis
                                         dataKey="semester"
@@ -197,18 +272,9 @@ export function AcademicSimulator({
                                     <YAxis domain={[0, 5]} allowDecimals={false} width={24} />
                                     <ChartTooltip
                                         content={
-                                            <ChartTooltipContent
-                                                indicator="dot"
-                                                labelFormatter={(semester) =>
-                                                    projected &&
-                                                    typeof semester === 'string' &&
-                                                    semester === current
-                                                        ? `${semester} · Projeção`
-                                                        : semester
-                                                }
-                                                formatter={(value) =>
-                                                    `IRA ${formatAcademicIndex(Number(value))}`
-                                                }
+                                            <SimulatorTooltip
+                                                current={current}
+                                                projected={projected}
                                             />
                                         }
                                     />
@@ -217,6 +283,15 @@ export function AcademicSimulator({
                                         stroke="var(--color-ira)"
                                         strokeWidth={2}
                                         dot={{ r: 3 }}
+                                        connectNulls={false}
+                                        isAnimationActive={false}
+                                    />
+                                    <Line
+                                        dataKey="projectedIra"
+                                        stroke="var(--color-projectedIra)"
+                                        strokeWidth={2}
+                                        dot={projectedDot}
+                                        connectNulls={false}
                                         isAnimationActive={false}
                                     />
                                 </LineChart>
@@ -224,7 +299,13 @@ export function AcademicSimulator({
                         </div>
                     )}
                     {projected && (
-                        <p className="text-xs text-muted-foreground">* Projeção para {current}.</p>
+                        <p className="flex items-center gap-1.5 text-xs text-destructive">
+                            <span
+                                className="inline-block size-2 rounded-full bg-destructive"
+                                aria-hidden="true"
+                            />
+                            * Projeção para {current}.
+                        </p>
                     )}
                 </Card>
             </section>

@@ -5,6 +5,7 @@ import {
     BookOpenText,
     Bot,
     BriefcaseBusiness,
+    Calculator,
     CircleHelp,
     CalendarRange,
     ChartColumn,
@@ -78,6 +79,19 @@ function MaisPage() {
                         tone="bg-flow-2/15 text-flow-2"
                         title="Estatísticas comparadas"
                         description="Você, seu curso e a UnB, comparados no seu aparelho."
+                    />
+                )}
+                {(!user || user.level === 'Graduação') && show('simulador_ira') && (
+                    <MenuCard
+                        link={user ? { to: '/perfil/simulador' } : { to: '/login' }}
+                        icon={<Calculator className="size-5" aria-hidden="true" />}
+                        tone="bg-flow-6/15 text-flow-6"
+                        title="Simular IRA e MP"
+                        description={
+                            user
+                                ? 'Simule suas menções e veja o impacto no IRA e no MP.'
+                                : 'Entre com o SIGAA para simular seu IRA e MP.'
+                        }
                     />
                 )}
             </MenuGroup>

@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import type { Classroom } from '#/queries/classrooms';
 
 import {
+    evolutionChartPoints,
     isFreeModule,
     simulateIndexes,
     simulationClassrooms,
@@ -118,4 +119,32 @@ test('sem ingresso calcula só MP e ignora cargas não positivas', () => {
         {}
     );
     expect(result).toEqual({ ira: null, mp: 5, evolution: [] });
+});
+
+test('separa a série de evolução para destacar o trecho até o semestre projetado', () => {
+    expect(
+        evolutionChartPoints([
+            { semester: '2025.2', ira: 3.5, projected: false },
+            { semester: '2026.1', ira: 4, projected: false }
+        ])
+    ).toEqual([
+        { semester: '2025.2', ira: 3.5, projectedIra: null, projected: false },
+        { semester: '2026.1', ira: 4, projectedIra: null, projected: false }
+    ]);
+
+    expect(
+        evolutionChartPoints([
+            { semester: '2025.2', ira: 3.5, projected: false },
+            { semester: '2026.1', ira: 4, projected: false },
+            { semester: '2026.2', ira: 4.5, projected: true }
+        ])
+    ).toEqual([
+        { semester: '2025.2', ira: 3.5, projectedIra: null, projected: false },
+        { semester: '2026.1', ira: 4, projectedIra: 4, projected: false },
+        { semester: '2026.2', ira: null, projectedIra: 4.5, projected: true }
+    ]);
+
+    expect(evolutionChartPoints([{ semester: '2026.2', ira: 5, projected: true }])).toEqual([
+        { semester: '2026.2', ira: null, projectedIra: 5, projected: true }
+    ]);
 });
