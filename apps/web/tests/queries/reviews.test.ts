@@ -47,9 +47,35 @@ test('avaliação criada depois da troca de conta guarda a chave somente na cont
         return Response.json({ review: { id: own.id }, token: own.token });
     };
     await saveReview({ siape: 111, body: { rating: 60 } });
+    const { credential } = await requests[0].json();
+    expect(credential).toMatch(/^[a-f0-9]{64}$/);
     expect(ownReviews.getSnapshot()[111]).toBeUndefined();
     selectLocalAccount('251000001');
-    expect(ownReviews.getSnapshot()[111]).toEqual(own);
+    expect(ownReviews.getSnapshot()[111]).toEqual({ ...own, token: credential });
+});
+
+test('cada nova avaliação envia e guarda uma credencial aleatória própria', async () => {
+    await saveReview({ siape: 111, body: { rating: 60 } });
+    await saveReview({ siape: 222, body: { rating: 70 } });
+    const first = await requests[0].json();
+    const second = await requests[1].json();
+    expect(first.credential).toMatch(/^[a-f0-9]{64}$/);
+    expect(second.credential).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.credential).not.toBe(second.credential);
+    expect(ownReviews.getSnapshot()[111]?.token).toBe(first.credential);
+    expect(ownReviews.getSnapshot()[222]?.token).toBe(second.credential);
+});
+
+test('edição e exclusão preservam o token legado de 43 caracteres', async () => {
+    const token = 'A_b-'.repeat(10) + 'xyz';
+    ownReviews.set({ 111: { ...own, token } });
+    respond = () => Response.json({ ...own, rating: 80 });
+    await saveReview({ siape: 111, body: { rating: 80 } });
+    expect(ownReviews.getSnapshot()[111]?.token).toBe(token);
+    await deleteReview(111);
+    expect(requests.map((request) => request.method)).toEqual(['PUT', 'DELETE']);
+    expect(requests.every((request) => request.headers.get('X-Review-Token') === token)).toBe(true);
+    expect(await requests[0].json()).toEqual({ rating: 80 });
 });
 
 test('edição apagada pela moderação vira nova avaliação e falha de rede não duplica', async () => {

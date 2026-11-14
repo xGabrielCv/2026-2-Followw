@@ -3,6 +3,7 @@ import { useSyncExternalStore } from 'react';
 
 import type { components } from '#/queries/schema.gen';
 
+import { newKey } from '#/lib/author';
 import { flushLocalStorage, localAccount, STORAGE_KEYS, storedValue } from '#/lib/local-storage';
 import { api } from '#/queries/api';
 import { apiClient } from '#/queries/client';
@@ -88,11 +89,13 @@ export async function saveReview({ siape, body }: SaveReview) {
             if (!(error instanceof ApiError && error.isNotFound)) throw error;
         }
     }
-    const { data } = await apiClient.POST('/reviews', { body: { ...body, siape } });
+    const credential = newKey();
+    const payload = { ...body, siape, credential };
+    const { data } = await apiClient.POST('/reviews', { body: payload });
     if (!data) throw new Error('Não foi possível salvar a avaliação');
     store.set({
         ...store.getSnapshot(),
-        [siape]: { ...body, id: data.review.id, token: data.token }
+        [siape]: { ...body, id: data.review.id, token: credential }
     });
     await flushLocalStorage();
 }

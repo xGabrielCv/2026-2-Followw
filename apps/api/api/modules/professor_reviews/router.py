@@ -22,7 +22,7 @@ Token = Annotated[
         alias="X-Review-Token",
         min_length=16,
         max_length=128,
-        description="O segredo devolvido ao criar a avaliação.",
+        description="A credencial da avaliação guardada no navegador.",
     ),
 ]
 _NOT_FOUND = {404: {"description": "Avaliação não encontrada ou segredo errado."}}

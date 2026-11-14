@@ -47,7 +47,7 @@ test('avisa do anonimato e de que o texto pode identificar', () => {
     expect(page.getByLabelText(/Nota de Tiago Alves Fonseca/)).toBeDefined();
 });
 
-test('envia só a nota, a chamada, o comentário e a matéria, e guarda o segredo para editar', async () => {
+test('envia a avaliação com credencial gerada no navegador e guarda o segredo para editar', async () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- resposta parcial da API
     const post = spyOn(apiClient, 'POST').mockResolvedValue(created as never);
     const done: string[] = [];
@@ -68,6 +68,7 @@ test('envia só a nota, a chamada, o comentário e a matéria, e guarda o segred
             {
                 body: {
                     siape: 111,
+                    credential: expect.stringMatching(/^[a-f0-9]{64}$/),
                     rating: 85,
                     semester: null,
                     criteria: null,
@@ -79,7 +80,7 @@ test('envia só a nota, a chamada, o comentário e a matéria, e guarda o segred
         ]);
         expect(ownReviews.getSnapshot()[111]).toMatchObject({
             id: 'r1',
-            token: 'segredo-do-navegador-123456',
+            token: expect.stringMatching(/^[a-f0-9]{64}$/),
             rating: 85
         });
     } finally {

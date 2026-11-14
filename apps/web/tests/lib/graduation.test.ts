@@ -98,6 +98,26 @@ describe('planejamento de formatura', () => {
         expect(codes(reprovando)[0]).toEqual(['E']);
     });
 
+    test('reprovação simulada em matéria em curso exige repetição antes de liberar a seguinte', () => {
+        const modelo = model([materia('A', 1), materia('B', 2, { pre: [['A']] })]);
+        const plan = planGraduation(
+            modelo,
+            (subject) => (subject.code === 'A' ? 'enrolled' : 'pending'),
+            cenario({ failures: ['A'] })
+        );
+
+        expect(codes(plan)).toEqual([[], ['A'], ['B']]);
+        expect(plan.terms.map((term) => term.failed.map((subject) => subject.code))).toEqual([
+            ['A'],
+            [],
+            []
+        ]);
+        expect(plan.terms.map((term) => term.hours)).toEqual([60, 60, 60]);
+        expect(plan.remainingSubjects).toBe(2);
+        expect(plan.remainingHours).toBe(120);
+        expect(plan.blocked).toEqual([]);
+    });
+
     test('reprovar fora da cadeia crítica não atrasa a formatura', () => {
         const plan = planGraduation(fluxo, nada, cenario({ failures: ['E'] }));
         expect(plan.terms).toHaveLength(4);
@@ -174,5 +194,21 @@ describe('planejamento de formatura', () => {
             materia('B', 2, { pre: [['A']] })
         ]);
         expect(codes(planGraduation(eq, concluidaZ, cenario()))).toEqual([['B']]);
+    });
+
+    test('aprovação simulada cobre equivalência pendente e libera dependente sem cursar a equivalente', () => {
+        const eq = model([
+            materia('X', 1),
+            {
+                ...materia('Z', 1, { pre: [['EXTERNA']] }),
+                equivalences: req(['X'])
+            },
+            materia('B', 2, { pre: [['Z']] })
+        ]);
+        const plan = planGraduation(eq, nada, cenario());
+
+        expect(codes(plan)).toEqual([['X'], ['B']]);
+        expect(plan.terms.map((term) => term.hours)).toEqual([60, 60]);
+        expect(plan.blocked).toEqual([]);
     });
 });

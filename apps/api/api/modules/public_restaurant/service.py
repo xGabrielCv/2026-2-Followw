@@ -28,6 +28,10 @@ def today() -> date:
     return datetime.now(BRASILIA).date()
 
 
+class RestaurantPersistenceError(RuntimeError):
+    """O cardápio foi consultado, mas não pôde ser persistido."""
+
+
 class RestaurantService:
     def __init__(
         self,
@@ -128,9 +132,11 @@ class RestaurantService:
 
     async def refresh(self, campus: Campus) -> tuple[DailyMenu, ...]:
         """Atualização agendada: uma consulta à UnB, com o mesmo circuito e a mesma fila dos pedidos."""
-        days, _fetched_at, _saved = await RESTAURANT_ORIGIN.fetch(
+        days, _fetched_at, saved = await RESTAURANT_ORIGIN.fetch(
             f"menu:{campus}", lambda: self._refresh(campus)
         )
+        if not saved:
+            raise RestaurantPersistenceError("Falha ao persistir o cardápio do RU.")
         return days
 
     async def _refresh(

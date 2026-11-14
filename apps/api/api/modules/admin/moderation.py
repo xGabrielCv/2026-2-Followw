@@ -255,6 +255,7 @@ async def decide(session, kind: str, id_: UUID, body: Decision, actor) -> None:
                 (
                     getattr(target, "uploader_key", None)
                     or getattr(target, "author_key", None)
+                    or getattr(target, "token_hash", None)
                 )
                 if target
                 else None
@@ -298,9 +299,17 @@ async def decide_report(
 async def decide_tutorial(
     id_: UUID, body: Decision, request: Request, db: DatabaseDep
 ) -> None:
-    await db.write(
-        lambda session: decide(session, "tutorial", id_, body, request.state.admin)
-    )
+    async def write(session):
+        row = await session.scalar(
+            select(Tutorial).where(Tutorial.id == id_).with_for_update()
+        )
+        if row is None:
+            raise HTTPException(404, "Guia não encontrado.")
+        if row.status != "pending":
+            raise HTTPException(409, "Este guia já foi decidido; atualize a fila.")
+        await decide(session, "tutorial", id_, body, request.state.admin)
+
+    await db.write(write)
 
 
 @router.post("/moderation/batch")

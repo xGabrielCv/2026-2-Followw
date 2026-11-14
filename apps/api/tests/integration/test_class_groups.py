@@ -1,8 +1,14 @@
+import asyncio
+
 import pytest
 from pydantic import SecretStr
 from sigaa_client import Credentials
 from sqlalchemy import inspect, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.dml import Delete
 
+from api.db.context import use_context
+from api.db.main import Database
 from api.db.models import (
     Classroom,
     ClassroomGroup,
@@ -10,6 +16,7 @@ from api.db.models import (
     Professor,
     Subject,
 )
+from api.modules.class_groups.service import GroupService, GroupsInput
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
 WHATSAPP = "https://chat.whatsapp.com/AbCdEf123"
@@ -202,3 +209,71 @@ def test_grupos_somem_com_a_turma(logado, turmas, database):
         )
     with database() as session:
         assert session.scalar(select(ClassroomGroup)) is None
+
+
+@pytest.mark.parametrize("com_grupos", [False, True])
+async def test_trocas_concorrentes_preservam_lista_inteira_e_limite_de_tres(
+    async_database, turmas, monkeypatch, com_grupos
+):
+    service = GroupService(Database(async_database))
+
+    def lista(prefixo):
+        return GroupsInput.model_validate(
+            {
+                "groups": [
+                    {"platform": "telegram", "url": f"https://t.me/{prefixo}{i}"}
+                    for i in range(3)
+                ]
+            }
+        )
+
+    primeira_apagou = asyncio.Event()
+    segunda_apagou = asyncio.Event()
+    segunda_iniciou = asyncio.Event()
+    liberar_primeira = asyncio.Event()
+    execute = AsyncSession.execute
+
+    async def executar(session, statement, *args, **kwargs):
+        result = await execute(session, statement, *args, **kwargs)
+        if isinstance(statement, Delete) and statement.table.name == "classroom_groups":
+            if asyncio.current_task() is primeira:
+                primeira_apagou.set()
+                await liberar_primeira.wait()
+            else:
+                segunda_apagou.set()
+        return result
+
+    async def segunda_troca():
+        segunda_iniciou.set()
+        return await service.save("FGA0003", "2026.2", "01", lista("segunda"))
+
+    with use_context(
+        scope="community_write",
+        community_operation="groups_put",
+        group_subject="FGA0003",
+        group_semester="2026.2",
+        group_number="01",
+    ):
+        if com_grupos:
+            await service.save("FGA0003", "2026.2", "01", lista("anterior"))
+        monkeypatch.setattr(AsyncSession, "execute", executar)
+        primeira = asyncio.create_task(
+            service.save("FGA0003", "2026.2", "01", lista("primeira"))
+        )
+        segunda = None
+        try:
+            await asyncio.wait_for(primeira_apagou.wait(), 5)
+            segunda = asyncio.create_task(segunda_troca())
+            await asyncio.wait_for(segunda_iniciou.wait(), 5)
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(segunda_apagou.wait(), 0.2)
+        finally:
+            liberar_primeira.set()
+            results = await asyncio.wait_for(
+                asyncio.gather(primeira, *([segunda] if segunda else [])), 5
+            )
+        assert [len(result.groups) for result in results] == [3, 3]
+        final = await service.get("FGA0003", "2026.2", "01")
+        assert [group.url for group in final.groups] == [
+            group.url for group in lista("segunda").groups
+        ]

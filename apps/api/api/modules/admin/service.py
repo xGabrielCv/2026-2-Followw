@@ -595,7 +595,11 @@ class AdminService:
         async def write(session: AsyncSession) -> None:
             row = await session.get(_MODELS[kind], content_id)
             proof = (
-                (getattr(row, "uploader_key", None) or getattr(row, "author_key", None))
+                (
+                    getattr(row, "uploader_key", None)
+                    or getattr(row, "author_key", None)
+                    or getattr(row, "token_hash", None)
+                )
                 if row
                 else None
             )

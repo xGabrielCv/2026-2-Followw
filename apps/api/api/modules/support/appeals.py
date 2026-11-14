@@ -1,5 +1,6 @@
 """Vincula recursos anônimos aos chamados existentes, sem tornar a auditoria pública."""
 
+import hmac
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -8,6 +9,15 @@ from sqlalchemy import Text, or_, select
 from api.anonymous import owns
 from api.db.context import use_context
 from api.db.models import AdminLog, Report
+from api.modules.professor_reviews.service import _hash as review_hash
+
+
+def _owns(kind: str, verifier: str | None, proof: str | None) -> bool:
+    if kind == "review":
+        return bool(
+            verifier and proof and hmac.compare_digest(verifier, review_hash(proof))
+        )
+    return owns(verifier, proof, "resource")
 
 
 async def reference(db, kind: str, identifier: UUID, proof: str | None):
@@ -35,18 +45,19 @@ async def reference(db, kind: str, identifier: UUID, proof: str | None):
             .limit(1)
         )
         decision = await session.scalar(query)
-        proven = bool(
-            proof and decision and owns(decision.content_proof, proof, "resource")
-        )
+        proven = bool(proof and decision and _owns(kind, decision.content_proof, proof))
         if proof:
             from api.modules.reports.service import TARGETS
 
             row = await session.get(TARGETS[kind], identifier)
             if row:
-                verifier = getattr(row, "uploader_key", None) or getattr(
-                    row, "author_key", None
+                verifier = (
+                    row.token_hash
+                    if kind == "review"
+                    else getattr(row, "uploader_key", None)
+                    or getattr(row, "author_key", None)
                 )
-                proven = proven or owns(verifier, proof, "resource")
+                proven = proven or _owns(kind, verifier, proof)
         return decision.id if decision else None, proven
 
     # Somente essa consulta fixa é privilegiada; nenhuma auditoria ou existência é devolvida ao público.

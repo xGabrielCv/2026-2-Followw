@@ -87,7 +87,10 @@ class TicketInput(BaseModel):
     related_type: RelatedType | None = None
     related_id: uuid.UUID | None = None
     author_proof: (
-        Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")] | None
+        Annotated[
+            str, StringConstraints(pattern=r"^(?:[a-f0-9]{64}|[A-Za-z0-9_-]{43})$")
+        ]
+        | None
     ) = None
 
 

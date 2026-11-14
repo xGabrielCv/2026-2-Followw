@@ -1849,6 +1849,8 @@ export interface components {
             subject?: string | null;
             /** Siape */
             siape: number;
+            /** Credential */
+            credential: string;
         };
         /** NewsAttachment */
         NewsAttachment: {
@@ -2784,6 +2786,8 @@ export interface components {
             course: components["schemas"]["CourseRef"] | null;
             /** Entry Semester */
             entry_semester: string | null;
+            /** Curriculum Subject Codes */
+            curriculum_subject_codes?: string[] | null;
             /** Integralization */
             integralization: number | null;
             workload: components["schemas"]["CurriculumWorkload"] | null;
@@ -4737,7 +4741,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description O segredo devolvido ao criar a avaliação. */
+                /** @description A credencial da avaliação guardada no navegador. */
                 "X-Review-Token": string;
             };
             path: {
@@ -4782,7 +4786,7 @@ export interface operations {
         parameters: {
             query?: never;
             header: {
-                /** @description O segredo devolvido ao criar a avaliação. */
+                /** @description A credencial da avaliação guardada no navegador. */
                 "X-Review-Token": string;
             };
             path: {

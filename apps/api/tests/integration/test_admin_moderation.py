@@ -1,12 +1,160 @@
+import asyncio
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
+from sqlalchemy import select
 
-from api.db.models import ForumPost, Report, Tutorial
+from api.db.context import use_context
+from api.db.main import Database
+from api.db.models import AdminLog, ForumPost, Report, Tutorial
+from api.modules.admin import moderation
 
 from . import test_admin_security as admin
 
 owner, roles = admin.owner, admin.roles
+
+
+def guia_pendente(database):
+    with database.begin() as session:
+        guia = Tutorial(
+            title="Guia sintético",
+            summary="Orientação para teste",
+            body="Conteúdo público sintético",
+            category="matricula",
+            status="pending",
+            author_key=None,
+        )
+        session.add(guia)
+        session.flush()
+        return guia.id
+
+
+@pytest.mark.parametrize("em_lote", [False, True])
+@pytest.mark.parametrize("acao", ["accept", "reject"])
+def test_guia_decidido_retorna_409_sem_alterar_decisao_ou_auditoria(
+    owner, client, database, em_lote, acao
+):
+    id_ = guia_pendente(database)
+    path = f"/admin/api/tutorials/{id_}"
+    body = {"action": acao, "reason": "Decisão inicial conferida"}
+    response = client.post(
+        "/admin/api/moderation/batch" if em_lote else path,
+        headers=admin.HEADERS,
+        json={**body, "kind": "tutorial", "ids": [str(id_)]} if em_lote else body,
+    )
+    assert response.status_code == (200 if em_lote else 204)
+    with database() as session:
+        aprovado_em = session.get(Tutorial, id_).approved_at
+    for tentativa in ("accept", "reject"):
+        assert (
+            client.post(
+                path,
+                headers=admin.HEADERS,
+                json={"action": tentativa, "reason": "Fila desatualizada"},
+            ).status_code
+            == 409
+        )
+    with database() as session:
+        guia = session.get(Tutorial, id_)
+        assert guia.status == ("approved" if acao == "accept" else "rejected")
+        assert guia.approved_at == aprovado_em
+        logs = list(
+            session.scalars(select(AdminLog).where(AdminLog.target_id == str(id_)))
+        )
+        assert len(logs) == 1
+        assert logs[0].action == f"tutorial.{acao}"
+        assert logs[0].detail == body["reason"]
+
+
+def test_decisao_de_guia_inexistente_retorna_404(owner, client):
+    assert (
+        client.post(
+            f"/admin/api/tutorials/{uuid4()}",
+            headers=admin.HEADERS,
+            json={"action": "accept", "reason": "Guia inexistente"},
+        ).status_code
+        == 404
+    )
+
+
+@pytest.mark.parametrize("segunda_em_lote", [False, True])
+async def test_decisoes_concorrentes_de_guia_gravam_so_uma_decisao_e_auditoria(
+    async_database, database, monkeypatch, segunda_em_lote
+):
+    id_ = guia_pendente(database)
+    primeira_decidindo = asyncio.Event()
+    segunda_decidindo = asyncio.Event()
+    segunda_iniciou = asyncio.Event()
+    liberar = asyncio.Event()
+    decide = moderation.decide
+
+    async def decidir(*args, **kwargs):
+        if primeira_decidindo.is_set():
+            segunda_decidindo.set()
+        else:
+            primeira_decidindo.set()
+        await liberar.wait()
+        return await decide(*args, **kwargs)
+
+    monkeypatch.setattr(moderation, "decide", decidir)
+    request = SimpleNamespace(state=SimpleNamespace(admin=None))
+    db = Database(async_database)
+
+    async def segunda_decisao():
+        segunda_iniciou.set()
+        try:
+            if segunda_em_lote:
+                await moderation.batch(
+                    moderation.BatchDecision(
+                        kind="tutorial",
+                        ids=[id_],
+                        action="reject",
+                        reason="Outra decisão",
+                    ),
+                    request,
+                    db,
+                )
+            else:
+                await moderation.decide_tutorial(
+                    id_,
+                    moderation.Decision(action="reject", reason="Outra decisão"),
+                    request,
+                    db,
+                )
+        except HTTPException as error:
+            return error.status_code
+        return 204
+
+    with use_context(scope="admin"):
+        primeira = asyncio.create_task(
+            moderation.decide_tutorial(
+                id_,
+                moderation.Decision(action="accept", reason="Primeira decisão"),
+                request,
+                db,
+            )
+        )
+        segunda = None
+        try:
+            await asyncio.wait_for(primeira_decidindo.wait(), 5)
+            segunda = asyncio.create_task(segunda_decisao())
+            await asyncio.wait_for(segunda_iniciou.wait(), 5)
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(segunda_decidindo.wait(), 0.2)
+        finally:
+            liberar.set()
+            results = await asyncio.wait_for(
+                asyncio.gather(primeira, *([segunda] if segunda else [])), 5
+            )
+        assert results == [None, 409]
+    with database() as session:
+        assert session.get(Tutorial, id_).status == "approved"
+        logs = list(
+            session.scalars(select(AdminLog).where(AdminLog.target_id == str(id_)))
+        )
+        assert [log.action for log in logs] == ["tutorial.accept"]
 
 
 def seed(database, count=2):

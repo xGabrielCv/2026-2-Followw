@@ -165,9 +165,25 @@ def test_carrega_dados_das_turmas_do_aluno_e_apaga_so_os_ficticios(
 
 
 def test_notas_em_lote_trazem_a_chamada(logado, aluno):
-    logado.post("/reviews", json={"siape": 111, "rating": 80, "attendance": "cobra"})
-    logado.post("/reviews", json={"siape": 111, "rating": 60, "attendance": "varia"})
-    logado.post("/reviews", json={"siape": 111, "rating": 70})
+    logado.post(
+        "/reviews",
+        json={
+            "siape": 111,
+            "rating": 80,
+            "attendance": "cobra",
+            "credential": "a" * 64,
+        },
+    )
+    logado.post(
+        "/reviews",
+        json={
+            "siape": 111,
+            "rating": 60,
+            "attendance": "varia",
+            "credential": "b" * 64,
+        },
+    )
+    logado.post("/reviews", json={"siape": 111, "rating": 70, "credential": "c" * 64})
     assert logado.get("/public/professors/ratings?siape=111").json() == {
         "111": {
             "count": 3,

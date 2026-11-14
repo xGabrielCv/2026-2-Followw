@@ -264,7 +264,8 @@ def test_guias_pendentes_tem_limite_e_exigem_login(client, ana, base):
 def test_denuncia_sem_login_e_moderacao_apaga(client, base, database, painel, cookies):
     client.cookies.update(cookies(refresh=ANA))
     review = client.post(
-        "/reviews", json={"siape": 111, "rating": 10, "comment": "Ruim"}
+        "/reviews",
+        json={"siape": 111, "rating": 10, "comment": "Ruim", "credential": "a" * 64},
     )
     review_id = review.json()["review"]["id"]
     client.cookies.clear()

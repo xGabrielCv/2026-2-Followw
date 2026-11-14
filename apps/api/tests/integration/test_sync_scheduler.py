@@ -3,11 +3,18 @@
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+from unb_browser import Campus, DailyMenu
 
 from api.db.context import use_context
+from api.db.models import RestaurantMenu
+from api.modules.public_restaurant.repository import RestaurantRepository
+from api.modules.sync import sources
 from api.modules.sync.models import SyncRun, SyncState
 from api.modules.sync.schedule import SyncSettings, next_run
 from api.modules.sync.scheduler import SyncScheduler
@@ -394,3 +401,82 @@ async def test_cancelamento_coordenado_entre_workers(async_database):
     await s.tick()
     await aguardar(s)
     assert (await execucoes(async_database))[0].status == "cancelled"
+
+
+@pytest.mark.parametrize("etapa", ["save", "commit"])
+@pytest.mark.parametrize("todos_campi", [False, True])
+async def test_falha_ao_persistir_ru_registra_falha_e_backoff_preservando_ultimo_sucesso(
+    async_database, database, monkeypatch, etapa, todos_campi
+):
+    monkeypatch.setattr(
+        "api.modules.sync.service.next_run",
+        lambda agora, _horarios: agora + timedelta(hours=8),
+    )
+    dia = DailyMenu(date=datetime.now(UTC).date())
+    browser = MagicMock()
+    browser.__aenter__.return_value = browser
+    browser.restaurant.get_menu = AsyncMock(return_value=(dia,))
+    monkeypatch.setattr(
+        "api.modules.public_restaurant.service.UnbBrowser", lambda: browser
+    )
+    scheduler = agendador(
+        async_database,
+        Fonte(Outcome("success", 1, "catalogo")),
+        lambda settings: sources.run_restaurant(
+            async_database, settings.timeout_seconds
+        ),
+    )
+    assert "restaurant" in await scheduler.tick()
+    await aguardar(scheduler)
+    valido = await estado(async_database, "restaurant")
+    assert valido.last_status == "success"
+    with database() as session:
+        cache_anterior = {
+            row.campus: (row.id, row.synced_at)
+            for row in session.scalars(select(RestaurantMenu))
+        }
+    assert len(cache_anterior) == len(Campus)
+    salvar = RestaurantRepository.save
+    commit = AsyncSession.commit
+
+    async def salvar_com_falha(repository, campus, *args):
+        await salvar(repository, campus, *args)
+        if todos_campi or campus == Campus.DARCY_RIBEIRO:
+            if etapa == "save":
+                raise SQLAlchemyError("detalhe privado de persistência")
+            repository._session.info["falhar_commit_ru"] = True
+
+    async def commit_com_falha(session):
+        if session.info.get("falhar_commit_ru"):
+            raise SQLAlchemyError("detalhe privado de commit")
+        return await commit(session)
+
+    monkeypatch.setattr(RestaurantRepository, "save", salvar_com_falha)
+    monkeypatch.setattr(AsyncSession, "commit", commit_com_falha)
+    await alterar(
+        async_database,
+        fonte="restaurant",
+        next_run_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    assert "restaurant" in await scheduler.tick()
+    await aguardar(scheduler)
+    atual = await estado(async_database, "restaurant")
+    assert atual.last_status == "failed"
+    assert atual.consecutive_failures == 1
+    assert (
+        timedelta(minutes=14)
+        < atual.next_run_at - datetime.now(UTC)
+        <= timedelta(minutes=15)
+    )
+    assert atual.content_hash == valido.content_hash
+    assert atual.records == valido.records
+    assert atual.last_success_at == valido.last_success_at
+    assert atual.last_change_at == valido.last_change_at
+    runs = await execucoes(async_database, "restaurant")
+    assert [run.status for run in runs] == ["success", "failed"]
+    assert runs[-1].error == "Falha ao persistir o cardápio do RU."
+    assert browser.restaurant.get_menu.await_count == 2 * len(Campus)
+    with database() as session:
+        for row in session.scalars(select(RestaurantMenu)):
+            if todos_campi or row.campus == Campus.DARCY_RIBEIRO.value:
+                assert (row.id, row.synced_at) == cache_anterior[row.campus]

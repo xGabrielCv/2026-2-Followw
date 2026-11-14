@@ -149,18 +149,22 @@ export function planGraduation(
         if (current === 'completed') done.add(subject.code);
         else if (current === 'enrolled') enrolled.push(subject);
     }
-    if (scenario.enrolledPass !== false) for (const subject of enrolled) done.add(subject.code);
-    // matéria coberta por um grupo de equivalências concluído vale como concluída (e libera as seguintes)
-    let changed = true;
-    while (changed) {
-        changed = false;
-        for (const subject of model.subjects) {
-            if (!done.has(subject.code) && covers(subject, done)) {
-                done.add(subject.code);
-                changed = true;
+    if (scenario.enrolledPass !== false)
+        for (const subject of enrolled)
+            if (!scenario.failures.includes(subject.code)) done.add(subject.code);
+    const completeEquivalences = () => {
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const subject of model.subjects) {
+                if (!done.has(subject.code) && covers(subject, done)) {
+                    done.add(subject.code);
+                    changed = true;
+                }
             }
         }
-    }
+    };
+    completeEquivalences();
     const open = model.subjects.filter((subject) => !done.has(subject.code));
     const remainingHours = open.reduce((total, subject) => total + (subject.hours ?? 0), 0);
 
@@ -206,10 +210,9 @@ export function planGraduation(
         );
         for (const subject of failed) failedOnce.add(subject.code);
         const passed = chosen.filter((subject) => !failed.includes(subject));
-        for (const subject of passed) {
-            done.add(subject.code);
-            pending.delete(subject.code);
-        }
+        for (const subject of passed) done.add(subject.code);
+        completeEquivalences();
+        for (const code of pending.keys()) if (done.has(code)) pending.delete(code);
         terms.push({ index: terms.length + 1, subjects: passed, failed, hours });
     }
 

@@ -1,3 +1,7 @@
+import hashlib
+import secrets
+from uuid import UUID
+
 import pytest
 from pydantic import SecretStr
 from sigaa_client import Credentials
@@ -52,7 +56,15 @@ def logado(client, cookies):
 
 
 def _avaliar(client, siape, rating, **body):
-    response = client.post("/reviews", json={"siape": siape, "rating": rating, **body})
+    response = client.post(
+        "/reviews",
+        json={
+            "siape": siape,
+            "rating": rating,
+            "credential": secrets.token_hex(32),
+            **body,
+        },
+    )
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -60,7 +72,12 @@ def _avaliar(client, siape, rating, **body):
 def test_avaliar_exige_login_e_docente_do_catalogo(client, docentes, cookies):
     assert client.post("/reviews", json={"siape": 111, "rating": 80}).status_code == 401
     client.cookies.update(cookies(refresh=CREDENCIAIS))
-    assert client.post("/reviews", json={"siape": 999, "rating": 80}).status_code == 404
+    assert (
+        client.post(
+            "/reviews", json={"siape": 999, "rating": 80, "credential": "a" * 64}
+        ).status_code
+        == 404
+    )
 
 
 @pytest.mark.parametrize(
@@ -74,7 +91,12 @@ def test_avaliar_exige_login_e_docente_do_catalogo(client, docentes, cookies):
     ],
 )
 def test_avaliacao_invalida_retorna_422(logado, docentes, body):
-    assert logado.post("/reviews", json={"siape": 111, **body}).status_code == 422
+    assert (
+        logado.post(
+            "/reviews", json={"siape": 111, "credential": "a" * 64, **body}
+        ).status_code
+        == 422
+    )
 
 
 def test_avaliacoes_guardam_criterios_contexto_e_filtram_semestre(logado, docentes):
@@ -117,6 +139,7 @@ def test_avaliacoes_guardam_criterios_contexto_e_filtram_semestre(logado, docent
 
 def test_comentario_duplicado_e_recusado_sem_identificar_estudante(logado, docentes):
     body = {
+        "credential": "a" * 64,
         "siape": 111,
         "rating": 80,
         "semester": "2026.2",
@@ -193,6 +216,62 @@ def test_avaliacao_anonima_aparece_no_perfil_com_media_e_chamada(logado, docente
         "created_at",
         "updated_at",
     }
+
+
+@pytest.mark.parametrize("credential", [None, "a" * 43, "g" * 64, "A" * 64, "a" * 63])
+def test_nova_avaliacao_exige_credencial_hexadecimal_do_navegador(
+    logado, docentes, credential
+):
+    body = {"siape": 111, "rating": 80}
+    if credential is not None:
+        body["credential"] = credential
+    assert logado.post("/reviews", json=body).status_code == 422
+
+
+def test_avaliacao_guarda_so_hmac_no_dominio_review(logado, docentes, database):
+    import hmac
+
+    from api.anonymous import resource_key
+    from api.cookies import derive_key
+
+    credential = secrets.token_hex(32)
+    criada = _avaliar(logado, 111, 80, credential=credential)
+    assert criada["token"] == credential
+    with database() as session:
+        verifier = session.get(ProfessorReview, UUID(criada["review"]["id"])).token_hash
+    assert (
+        verifier
+        == hmac.digest(
+            derive_key("followw:review"), credential.encode(), "sha256"
+        ).hex()
+    )
+    assert verifier not in (
+        credential,
+        hashlib.sha256(credential.encode()).hexdigest(),
+        resource_key(credential),
+    )
+
+
+def test_token_real_legado_edita_e_apaga_sem_regravar_verificador(
+    logado, docentes, database
+):
+    token = secrets.token_urlsafe(32)
+    assert len(token) == 43
+    verifier = hashlib.sha256(token.encode()).hexdigest()
+    criada = _avaliar(logado, 111, 40)
+    identifier = UUID(criada["review"]["id"])
+    with database.begin() as session:
+        session.get(ProfessorReview, identifier).token_hash = verifier
+    headers = {"X-Review-Token": token}
+    assert (
+        logado.put(
+            f"/reviews/{identifier}", json={"rating": 90}, headers=headers
+        ).status_code
+        == 200
+    )
+    with database() as session:
+        assert session.get(ProfessorReview, identifier).token_hash == verifier
+    assert logado.delete(f"/reviews/{identifier}", headers=headers).status_code == 204
 
 
 def test_so_quem_tem_login_e_o_segredo_edita_ou_apaga(

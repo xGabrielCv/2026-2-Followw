@@ -203,7 +203,9 @@ class GroupService:
         self, code: str, semester: str, number: str, body: GroupsInput
     ) -> ClassroomGroups:
         async def write(session: AsyncSession) -> ClassroomGroups:
-            classroom, name = await _classroom(session, code, semester, number)
+            classroom, name = await _classroom(
+                session, code, semester, number, for_update=True
+            )
             # A lista inteira é trocada: quem edita vê e manda todos os grupos.
             await session.execute(
                 delete(ClassroomGroup).where(
@@ -230,19 +232,25 @@ class GroupService:
 
 
 async def _classroom(
-    session: AsyncSession, code: str, semester: str, number: str
+    session: AsyncSession,
+    code: str,
+    semester: str,
+    number: str,
+    *,
+    for_update: bool = False,
 ) -> tuple[Classroom, str]:
-    row = (
-        await session.execute(
-            select(Classroom, Subject.name)
-            .join(Subject)
-            .where(
-                Classroom.subject_code == code,
-                Classroom.semester == semester,
-                Classroom.number == number,
-            )
+    query = (
+        select(Classroom, Subject.name)
+        .join(Subject)
+        .where(
+            Classroom.subject_code == code,
+            Classroom.semester == semester,
+            Classroom.number == number,
         )
-    ).first()
+    )
+    if for_update:
+        query = query.with_for_update(of=Classroom)
+    row = (await session.execute(query)).first()
     if row is None:
         raise HTTPException(404, "Turma não encontrada.")
     return row[0], row[1]

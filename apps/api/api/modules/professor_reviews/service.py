@@ -1,12 +1,10 @@
 """Avaliações anônimas de docentes: nota de 0 a 100, comentário e se cobram chamada.
 
-Nada de quem avaliou é gravado. Quem cria recebe um segredo aleatório (só o hash fica no
-banco) que permite ao próprio navegador editar ou apagar a avaliação depois.
+Nada de quem avaliou é gravado. O navegador gera a credencial; o banco guarda só o verificador.
 """
 
 import hashlib
 import hmac
-import secrets
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -15,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.cookies import derive_key
 from api.db.context import set_context
 from api.db.main import DatabaseDep
 from api.db.models import Professor, ProfessorReview, Subject
@@ -54,6 +53,7 @@ class ReviewInput(BaseModel):
 
 class NewReview(ReviewInput):
     siape: int = Field(gt=0, le=2**31 - 1)
+    credential: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{64}$")]
 
 
 class Rating(BaseModel):
@@ -91,7 +91,10 @@ class ProfessorReviews(BaseModel):
 
 
 def _hash(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+    # Tokens já emitidos pelo servidor têm 43 caracteres; seu verificador não muda.
+    if len(token) == 43:
+        return hashlib.sha256(token.encode()).hexdigest()
+    return hmac.digest(derive_key("followw:review"), token.encode(), "sha256").hex()
 
 
 def _review(review: ProfessorReview, names: dict[str, str]) -> Review:
@@ -209,7 +212,7 @@ class ReviewService:
                 )
 
     async def create(self, body: NewReview) -> CreatedReview:
-        token = secrets.token_urlsafe(32)
+        token = body.credential
         set_context(review_hash=_hash(token))
 
         async def write(session: AsyncSession) -> Review:

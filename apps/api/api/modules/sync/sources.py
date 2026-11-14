@@ -17,7 +17,10 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from unb_browser import Campus
 
-from api.modules.public_restaurant.service import RestaurantService
+from api.modules.public_restaurant.service import (
+    RestaurantPersistenceError,
+    RestaurantService,
+)
 from api.modules.sync.service import Outcome
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -193,11 +196,16 @@ async def run_restaurant(
     digest = hashlib.sha256()
     days_total = 0
     failures = 0
+    persistence_failed = False
     last_error = "erro"
     campuses = list(Campus)
     for campus in campuses:
         try:
             days = await asyncio.wait_for(service.refresh(campus), min(timeout, 120))
+        except RestaurantPersistenceError:
+            failures += 1
+            persistence_failed = True
+            continue
         except Exception as error:  # noqa: BLE001 — uma origem fora do ar não derruba as outras
             failures += 1
             last_error = type(error).__name__
@@ -206,6 +214,8 @@ async def run_restaurant(
         for day in sorted(days, key=lambda item: item.date):
             digest.update(day.model_dump_json(exclude_unset=True).encode())
         days_total += len(days)
+    if persistence_failed:
+        return Outcome("failed", error="Falha ao persistir o cardápio do RU.")
     if failures == len(campuses):
         return Outcome("failed", error=f"Site do RU indisponível ({last_error}).")
     return Outcome("success", records=days_total, content_hash=digest.hexdigest())

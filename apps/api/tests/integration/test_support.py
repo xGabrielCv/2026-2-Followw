@@ -120,6 +120,21 @@ def test_recurso_anonimo_vincula_decisao_e_exige_revisor_independente(roles, dat
     assert final["body"] not in audit
 
 
+@pytest.mark.parametrize("proof", ["a" * 42, "a" * 44, "g" * 64, "+" * 43, "a" * 63])
+def test_prova_de_autoria_exige_hexadecimal_novo_ou_token_urlsafe_legado(client, proof):
+    response = client.post(
+        "/support/tickets",
+        json={
+            **NOVO,
+            "category": "moderation_review",
+            "related_type": "review",
+            "related_id": str(uuid4()),
+            "author_proof": proof,
+        },
+    )
+    assert response.status_code == 422
+
+
 def test_recurso_sem_referencia_e_recusado_sem_enumerar_conteudo(client):
     assert (
         client.post(
@@ -213,6 +228,161 @@ def test_credencial_de_conteudo_removido_comprova_posse_sem_identificar_aluno(
         ]
         is True
     )
+
+
+@pytest.mark.parametrize("removida", [False, True])
+@pytest.mark.parametrize("prova_correta", [False, True])
+@pytest.mark.parametrize("legada", [False, True])
+def test_credencial_da_avaliacao_comprova_so_posse_antes_e_depois_da_remocao(
+    client, database, removida, prova_correta, legada
+):
+    from api.db.models import AdminLog, Professor, ProfessorReview
+    from api.modules.professor_reviews.service import _hash
+
+    identifier = uuid4()
+    credential = secrets.token_urlsafe(32) if legada else secrets.token_hex(32)
+    unrelated = secrets.token_urlsafe(32) if legada else secrets.token_hex(32)
+    with database.begin() as session:
+        if removida:
+            session.add(
+                AdminLog(
+                    action="delete",
+                    target_type="review",
+                    target_id=str(identifier),
+                    content_proof=_hash(credential),
+                )
+            )
+        else:
+            professor = Professor(
+                siape=111, name="DOCENTE TESTE", unit_id=673, disciplines=[]
+            )
+            session.add(professor)
+            session.flush()
+            session.add(
+                ProfessorReview(
+                    id=identifier,
+                    professor_id=professor.id,
+                    rating=80,
+                    token_hash=_hash(credential),
+                )
+            )
+    ticket, key = abrir(
+        client,
+        category="moderation_review",
+        related_type="review",
+        related_id=str(identifier),
+        author_proof=credential if prova_correta else unrelated,
+    )
+    view = client.get(f"/support/tickets/{ticket['id']}", headers=key).json()
+    assert view["appeal_author_proven"] is prova_correta
+    assert "appeal_decision_id" not in view
+    assert credential not in str(view)
+
+
+def test_prova_de_avaliacao_nao_aceita_verificador_do_dominio_resource(
+    client, database
+):
+    from api.anonymous import resource_key
+    from api.db.models import AdminLog
+
+    identifier = uuid4()
+    credential = secrets.token_hex(32)
+    with database.begin() as session:
+        session.add(
+            AdminLog(
+                action="delete",
+                target_type="review",
+                target_id=str(identifier),
+                content_proof=resource_key(credential),
+            )
+        )
+    ticket, key = abrir(
+        client,
+        category="moderation_review",
+        related_type="review",
+        related_id=str(identifier),
+        author_proof=credential,
+    )
+    assert (
+        client.get(f"/support/tickets/{ticket['id']}", headers=key).json()[
+            "appeal_author_proven"
+        ]
+        is False
+    )
+
+
+@pytest.mark.parametrize("via_denuncia", [False, True])
+def test_moderacao_preserva_verificador_da_avaliacao_para_recurso(
+    roles, database, via_denuncia
+):
+    from api.db.models import AdminLog, Professor, ProfessorReview, Report
+    from api.modules.professor_reviews.service import _hash
+
+    http, cookies, _ = roles
+    identifier, report_id = uuid4(), uuid4()
+    credential = secrets.token_hex(32)
+    with database.begin() as session:
+        professor = Professor(
+            siape=111, name="DOCENTE TESTE", unit_id=673, disciplines=[]
+        )
+        session.add(professor)
+        session.flush()
+        session.add(
+            ProfessorReview(
+                id=identifier,
+                professor_id=professor.id,
+                rating=80,
+                token_hash=_hash(credential),
+            )
+        )
+        if via_denuncia:
+            session.add(
+                Report(
+                    id=report_id,
+                    target_type="review",
+                    target_id=identifier,
+                    reason="spam",
+                )
+            )
+    como(http, cookies["moderator"])
+    if via_denuncia:
+        response = http.post(
+            f"/admin/api/reports/{report_id}",
+            headers=HEADERS,
+            json={"action": "accept", "reason": "Conteúdo removido pela moderação."},
+        )
+    else:
+        response = http.delete(
+            f"/admin/api/content/review/{identifier}", headers=HEADERS
+        )
+    assert response.status_code == 204, response.text
+    with database() as session:
+        assert session.get(ProfessorReview, identifier) is None
+        decision = session.scalar(
+            select(AdminLog).where(
+                AdminLog.target_id == str(report_id if via_denuncia else identifier),
+                AdminLog.action == ("report.accept" if via_denuncia else "delete"),
+            )
+        )
+        assert decision.content_proof == _hash(credential)
+    http.cookies.clear()
+    for proof, expected in [(credential, True), (secrets.token_hex(32), False)]:
+        ticket, key = abrir(
+            http,
+            category="moderation_review",
+            related_type="review",
+            related_id=str(identifier),
+            author_proof=proof,
+            title="Revisar remoção da avaliação própria"
+            if expected
+            else "Revisar remoção com outra prova",
+        )
+        assert (
+            http.get(f"/support/tickets/{ticket['id']}", headers=key).json()[
+                "appeal_author_proven"
+            ]
+            is expected
+        )
 
 
 def test_terceiros_nao_acessam_nem_enumeram_chamados(client):

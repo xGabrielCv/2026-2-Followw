@@ -20,7 +20,7 @@ import {
 import { Input } from '#/components/ui/input';
 import { Label } from '#/components/ui/label';
 import { Textarea } from '#/components/ui/textarea';
-import { keyFor, newKey } from '#/lib/author';
+import { newKey } from '#/lib/author';
 import { useOnline } from '#/lib/online';
 import {
     hasPersonalData,
@@ -30,7 +30,7 @@ import {
     TICKET_STATUS_LABELS,
     type TicketCategory
 } from '#/lib/support';
-import { parseSupportReference, supportParsers } from '#/lib/support-reference';
+import { parseSupportReference, supportAuthorProof, supportParsers } from '#/lib/support-reference';
 import { apiMessage } from '#/queries/community';
 import {
     rememberTicket,
@@ -206,15 +206,8 @@ function NewTicketDialog({
                                               related_type: parsedReference.type,
                                               related_id: parsedReference.id,
                                               author_proof:
-                                                  category === 'moderation_review' &&
-                                                  (parsedReference.type === 'post' ||
-                                                      parsedReference.type === 'reply' ||
-                                                      parsedReference.type === 'material' ||
-                                                      parsedReference.type === 'tutorial')
-                                                      ? keyFor(
-                                                            parsedReference.type,
-                                                            parsedReference.id
-                                                        )
+                                                  category === 'moderation_review'
+                                                      ? supportAuthorProof(parsedReference)
                                                       : undefined
                                           }
                                         : {})
