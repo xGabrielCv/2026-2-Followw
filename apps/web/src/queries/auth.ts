@@ -18,25 +18,35 @@ import { sendTechnicalEvent } from '#/queries/telemetry';
 // todo o cache é apagado no logout; só o /me fica a cargo de quem chama
 const isAccountQuery = ({ queryKey: [, path] }: Query) => path !== '/me';
 const refreshing = new Set<AbortController>();
+let refreshedRegistration: string | undefined;
 
 function cancelRefresh() {
+    refreshedRegistration = undefined;
     for (const controller of refreshing) controller.abort();
     refreshing.clear();
 }
 
-async function clearUserData(queryClient: QueryClient, removeCache = true) {
+async function clearUserData(
+    queryClient: QueryClient,
+    removeCache = true,
+    preserveProfileRequest = false
+) {
     cancelRefresh();
-    const cancelled = queryClient.cancelQueries();
+    const cancelled = queryClient.cancelQueries(
+        preserveProfileRequest ? { predicate: isAccountQuery } : undefined
+    );
     clearAccountStorage();
     queryClient.removeQueries({ predicate: isAccountQuery });
     await cancelled;
     if (removeCache) await clearOfflineData();
 }
 
-export function clearSession(queryClient: QueryClient) {
+// O /me que confirmou a expiração precisa concluir sem cancelar a si próprio.
+export function clearSession(queryClient: QueryClient, preserveProfileRequest = false) {
     cancelRefresh();
-    if (queryClient.getQueryData(meQueryOptions.queryKey)) announceSessionChange();
-    const cleared = clearUserData(queryClient);
+    if (preserveProfileRequest || queryClient.getQueryData(meQueryOptions.queryKey))
+        announceSessionChange();
+    const cleared = clearUserData(queryClient, true, preserveProfileRequest);
     queryClient.setQueryData(meQueryOptions.queryKey, null);
     return cleared;
 }
@@ -61,7 +71,7 @@ export async function startSession(queryClient: QueryClient) {
         await queryClient.cancelQueries({ queryKey: meQueryOptions.queryKey });
         const user = await queryClient.query({ ...meQueryOptions, staleTime: 0 });
         if (!user) throw new SessionNotStoredError();
-        selectLocalAccount(user.registration);
+        await Promise.resolve(selectLocalAccount(user.registration));
         await restoreAccountCache(queryClient);
         return user;
     });
@@ -87,16 +97,17 @@ export function useLogin() {
 export function useLogout(onLoggedOut?: () => void) {
     const queryClient = useQueryClient();
     return api.useMutation('delete', '/auth/sigaa', {
-        onMutate: () => cancelRefresh(),
-        onSuccess: async () => {
-            await clearSession(queryClient);
+        onMutate: async () => {
+            cancelRefresh();
+            await queryClient.cancelQueries();
+        },
+        onSuccess: () => {
+            const cleared = clearSession(queryClient);
             onLoggedOut?.();
+            return cleared;
         }
     });
 }
-
-// por matrícula: outra conta na mesma aba também renova
-let refreshedRegistration: string | undefined;
 
 export function useSessionRefresh() {
     const queryClient = useQueryClient();
@@ -111,7 +122,7 @@ export function useSessionRefresh() {
                 void withPausedOfflineWrites(queryClient, async () => {
                     await cancelled;
                     const fresh = await queryClient.query({ ...meQueryOptions, staleTime: 0 });
-                    selectLocalAccount(fresh?.registration);
+                    await Promise.resolve(selectLocalAccount(fresh?.registration));
                     await restoreAccountCache(queryClient);
                 }).catch(() => {});
             }),

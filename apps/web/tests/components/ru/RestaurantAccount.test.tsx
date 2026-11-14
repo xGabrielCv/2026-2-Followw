@@ -1,15 +1,100 @@
+import * as baseUILayout from '@base-ui/utils/useIsoLayoutEffect';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
+import { useLayoutEffect } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import {
-    RestaurantAccount,
-    StatementDetails,
-    StudentCard
-} from '#/components/ru/RestaurantAccount';
-import { credentialsQueryOptions } from '#/queries/restaurant-account';
+import { credentialsQueryOptions, statementQueryOptions } from '#/queries/restaurant-account';
+
+import { useDom } from '../../helpers/dom';
+
+const dom = useDom();
+let RestaurantAccount: typeof import('#/components/ru/RestaurantAccount').RestaurantAccount;
+let StatementDetails: typeof import('#/components/ru/RestaurantAccount').StatementDetails;
+let StudentCard: typeof import('#/components/ru/RestaurantAccount').StudentCard;
+let restoreLayoutEffect: () => Promise<void>;
+beforeAll(async () => {
+    // A importação SSR anterior ao DOM deixa este hook vazio no cache do Bun.
+    const previous = baseUILayout.useIsoLayoutEffect;
+    await mock.module('@base-ui/utils/useIsoLayoutEffect', () => ({
+        useIsoLayoutEffect: useLayoutEffect
+    }));
+    restoreLayoutEffect = async () => {
+        await mock.module('@base-ui/utils/useIsoLayoutEffect', () => ({
+            useIsoLayoutEffect: previous
+        }));
+    };
+    ({ RestaurantAccount, StatementDetails, StudentCard } =
+        await import('#/components/ru/RestaurantAccount'));
+});
+afterAll(() => restoreLayoutEffect());
 
 describe('RestaurantAccount', () => {
+    test('consome uma vez o pedido com credenciais atrasadas e não reabre ao chegar o saldo', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
+        const registration = '202600001';
+        const consumed = mock(() => {});
+        const account = (openCard = true) => (
+            <QueryClientProvider client={client}>
+                <RestaurantAccount
+                    registration={registration}
+                    openCard={openCard}
+                    onCardConsumed={consumed}
+                />
+            </QueryClientProvider>
+        );
+        const { render, act, waitFor, fireEvent } = dom.testing;
+        const view = render(account());
+        const trigger = () => view.getByLabelText('Ver QR code da carteirinha');
+        await waitFor(() => expect(trigger().getAttribute('aria-expanded')).toBe('true'));
+        expect(consumed).toHaveBeenCalledTimes(1);
+        expect(view.getByText('Carregando carteirinha...')).toBeDefined();
+
+        view.rerender(account(false));
+        await act(async () => {
+            client.setQueryData(statementQueryOptions(registration).queryKey, {
+                balance: '12.50',
+                group: 2,
+                entries: []
+            });
+        });
+        await waitFor(() => {
+            expect(view.getByText('Saldo disponível')).toBeDefined();
+            expect(trigger().getAttribute('aria-expanded')).toBe('true');
+        });
+        fireEvent.click(view.getByText('Fechar'));
+        await waitFor(() => expect(trigger().getAttribute('aria-expanded')).toBe('false'));
+        await act(async () => {
+            client.setQueryData(credentialsQueryOptions(registration).queryKey, {
+                token: 'carteirinha-token',
+                valid_until: '2099-10-01'
+            });
+        });
+        view.rerender(account(false));
+        expect(trigger().getAttribute('aria-expanded')).toBe('false');
+        expect(consumed).toHaveBeenCalledTimes(1);
+        view.unmount();
+        client.clear();
+    });
+
+    test('fechar não repete um pedido ainda presente no histórico', async () => {
+        const client = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
+        const consumed = mock(() => {});
+        const { render, waitFor, fireEvent } = dom.testing;
+        const view = render(
+            <QueryClientProvider client={client}>
+                <RestaurantAccount registration="202600001" openCard onCardConsumed={consumed} />
+            </QueryClientProvider>
+        );
+        const trigger = () => view.getByLabelText('Ver QR code da carteirinha');
+        await waitFor(() => expect(trigger().getAttribute('aria-expanded')).toBe('true'));
+        fireEvent.click(view.getByText('Fechar'));
+        await waitFor(() => expect(trigger().getAttribute('aria-expanded')).toBe('false'));
+        expect(consumed).toHaveBeenCalledTimes(1);
+        view.unmount();
+        client.clear();
+    });
+
     test('oferece botão para abrir o QR code em um drawer sem exibi-lo na página', () => {
         const queryClient = new QueryClient();
         const registration = '202600001';

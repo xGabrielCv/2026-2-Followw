@@ -1,4 +1,4 @@
-import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { environmentManager, noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -95,7 +95,7 @@ export const Route = createFileRoute('/_app/buscar')({
             offerSemestersQueryOptions.queryKey
         );
         const apiSemester = offerSemester(offer ?? [], semester).param;
-        await Promise.all([
+        const pending = Promise.all([
             showsSubjects(category) && user && loadPersonal(queryClient, allClassroomsQueryOptions),
             view?.kind === 'recommendations' &&
                 user &&
@@ -129,6 +129,8 @@ export const Route = createFileRoute('/_app/buscar')({
                     )
                 ).catch(noop)
         ]);
+        if (environmentManager.isServer()) await pending;
+        else pending.catch(noop);
     },
     staticData: {
         header: () => (

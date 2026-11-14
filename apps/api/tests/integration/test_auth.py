@@ -1,8 +1,9 @@
+import asyncio
 from datetime import date
 
 import pytest
 from pydantic import SecretStr
-from sigaa_client import Credentials
+from sigaa_client import Credentials, SigaaClient
 from sqlalchemy import inspect, select
 
 from api.anonymous import anonymous_key
@@ -17,6 +18,31 @@ from api.modules.auth.account import periods
 
 CREDENCIAIS = Credentials(registration="251000000", password=SecretStr("senha123"))
 LOGIN = {"registration": "251000000", "password": "senha123"}
+
+
+def test_logout_com_sigaa_lento_cancela_consulta_e_expira_os_cookies(
+    client, cookies, ler_cookies, monkeypatch
+):
+    cancelled = False
+
+    async def logout_lento(self):
+        nonlocal cancelled
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled = True
+
+    monkeypatch.setattr(SigaaClient, "logout", logout_lento)
+    monkeypatch.setattr("api.modules.auth.router._SIGAA_LOGOUT_TIMEOUT", 0.01)
+    client.cookies.update(cookies(access="app14~VIVO", refresh=CREDENCIAIS))
+    response = client.delete("/auth/sigaa")
+    assert cancelled
+    assert response.status_code == 200
+    assert _expirados(ler_cookies(response)) == {
+        ACCESS_COOKIE_NAME,
+        REFRESH_COOKIE_NAME,
+        PROFILE_COOKIE_NAME,
+    }
 
 
 def test_login_guarda_o_perfil_no_cookie_e_nada_do_aluno_no_banco(

@@ -24,7 +24,7 @@ import { themeScript } from '#/lib/theme';
 import { observeViewport } from '#/lib/viewport';
 import { useSessionRefresh } from '#/queries/auth';
 import { loadQuery } from '#/queries/load';
-import { meQueryOptions } from '#/queries/me';
+import { meQueryOptions, seedAnonymousProfile } from '#/queries/me';
 import appCss from '#/styles.css?url';
 
 interface MyRouterContext {
@@ -33,10 +33,11 @@ interface MyRouterContext {
 
 export const Route = createRootRouteWithContext<MyRouterContext>()({
     beforeLoad: async ({ context }) => {
+        await seedAnonymousProfile(context.queryClient);
         await initializeLocalVault();
         if (typeof window !== 'undefined') {
             const user = await loadQuery(context.queryClient, meQueryOptions);
-            selectLocalAccount(user?.registration);
+            await Promise.resolve(selectLocalAccount(user?.registration));
         }
     },
     head: ({ match }) => ({

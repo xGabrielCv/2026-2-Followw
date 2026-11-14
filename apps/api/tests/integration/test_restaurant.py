@@ -19,6 +19,34 @@ from api.db.models import RestaurantMenu
 from api.modules.public_restaurant.repository import RestaurantRepository
 
 CREDENTIALS = Credentials(registration="251000000", password=SecretStr("senha"))
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"start_date": "2026-09-21", "end_date": "2026-10-05"},
+        {"start_date": "9999-12-31"},
+        {"end_date": "0001-01-01"},
+    ],
+)
+def test_intervalo_excessivo_ou_invalido_e_recusado_antes_de_consultar_origem(
+    client, browser, params
+):
+    response = client.get("/public/restaurant", params=params)
+    assert response.status_code == 422
+    browser.restaurant.get_menu.assert_not_called()
+
+
+def test_intervalo_de_quatorze_dias_e_aceito(client, browser):
+    assert (
+        client.get(
+            "/public/restaurant",
+            params={"start_date": "2026-09-21", "end_date": "2026-10-04"},
+        ).status_code
+        == 200
+    )
+
+
 NO_CACHE = {"Cache-Control": "no-cache"}
 DAY = DailyMenu(
     date=date(2026, 9, 25),

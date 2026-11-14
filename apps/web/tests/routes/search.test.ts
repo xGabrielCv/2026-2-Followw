@@ -46,6 +46,19 @@ const loadWith = async (user: User | null, searchStr = '') => {
 };
 
 describe('loader da busca de turmas', () => {
+    test('abre a busca no navegador sem esperar uma consulta pública lenta', async () => {
+        const paths: unknown[] = [];
+        await runLoader(Route, {
+            location: { searchStr: '?q=calculo' },
+            context: {
+                queryClient: fakeQueryClient((key) => {
+                    paths.push(key[1]);
+                    return key[1] === '/me' ? null : new Promise(() => {});
+                })
+            }
+        });
+        expect(paths).toEqual(['/me', '/public/search']);
+    });
     test('sem login carrega só o perfil', async () => {
         expect((await loadWith(null)).map((key) => key[1])).toEqual(['/me']);
     });

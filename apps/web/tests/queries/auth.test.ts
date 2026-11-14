@@ -1,16 +1,20 @@
 import type { Middleware } from 'openapi-fetch';
 
-import { QueryClientProvider, noop, onlineManager } from '@tanstack/react-query';
+import {
+    QueryClientProvider,
+    environmentManager,
+    noop,
+    onlineManager
+} from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createElement, type ReactNode } from 'react';
-
-import type { components } from '#/queries/schema.gen.ts';
 
 import { getContext } from '#/integrations/tanstack-query/root-provider.tsx';
 import {
     SessionNotStoredError,
     clearSession,
     startSession,
+    useLogin,
     useLogout,
     useSessionRefresh
 } from '#/queries/auth.ts';
@@ -21,25 +25,15 @@ import { meQueryOptions } from '#/queries/me.ts';
 import { menuQueryOptions } from '#/queries/restaurant.ts';
 
 import { useDom } from '../helpers/dom';
+import { userProfile } from '../helpers/profile';
 
-const user: components['schemas']['UserProfile'] = {
-    name: 'Fulano',
-    registration: '251000000',
-    photo: null,
-    bio: null,
-    unit: { id: 673, code: 'FCTE', name: 'CAMPUS UNB GAMA' },
-    course: { id: 1, name: 'Engenharia de Software', shift: 'DIURNO' },
-    entry_semester: null,
-    integralization: null,
-    workload: null,
-    period_max_workload: null,
-    ira: null,
-    mp: null,
-    level: 'Graduação'
-};
+const user = userProfile();
 
 describe('clearSession', () => {
+    const wasServer = environmentManager.isServer();
+    beforeEach(() => environmentManager.setIsServer(() => false));
     afterEach(() => {
+        environmentManager.setIsServer(() => wasServer);
         Reflect.deleteProperty(globalThis, 'caches');
     });
 
@@ -49,7 +43,10 @@ describe('clearSession', () => {
             configurable: true,
             value: {
                 keys: async () => ['followw-pages-x', 'outro-cache'],
-                delete: async (name: string) => deleted.push(name)
+                delete: async (name: string) => {
+                    deleted.push(name);
+                    return true;
+                }
             }
         });
         const { queryClient } = getContext();
@@ -275,6 +272,94 @@ describe('hooks de sessão', () => {
         await dom.testing.act(() => result.current.mutateAsync({}).catch(noop));
 
         expect(queryClient.getQueryData(meQueryOptions.queryKey)).not.toBeNull();
+    });
+
+    test('senha incorreta não apaga a conta nem o cache existente', async () => {
+        response = () => new ApiError(401, 'Senha incorreta');
+        const { result, queryClient } = renderHook(() => useLogin());
+        queryClient.setQueryData(classroomsQueryOptions.queryKey, []);
+
+        await dom.testing.act(() =>
+            result.current
+                .mutateAsync({ body: { registration: user.registration, password: 'errada' } })
+                .catch(noop)
+        );
+
+        expect(queryClient.getQueryData(meQueryOptions.queryKey)).toEqual(user);
+        expect(queryClient.getQueryData(classroomsQueryOptions.queryKey)).toEqual([]);
+    });
+
+    test('perfil que expira avisa as outras abas mesmo depois de receber null', async () => {
+        const { queryClient } = getContext();
+        queryClient.setQueryData(meQueryOptions.queryKey, user);
+        const before = Number(window.localStorage.getItem('followw:session-version') ?? 0);
+        response = () => new ApiError(401, 'Expirada');
+        expect(await queryClient.query({ ...meQueryOptions, staleTime: 0 })).toBeNull();
+        expect(Number(window.localStorage.getItem('followw:session-version'))).toBe(before + 1);
+        queryClient.clear();
+    });
+
+    test('cancela consultas antes de enviar o logout', async () => {
+        const { result, queryClient } = renderHook(() => useLogout());
+        let signal: AbortSignal | undefined;
+        void queryClient
+            .query({
+                queryKey: classroomsQueryOptions.queryKey,
+                queryFn: (context) => {
+                    signal = context.signal;
+                    return new Promise(noop);
+                }
+            })
+            .catch(noop);
+        response = () => {
+            expect(signal?.aborted).toBe(true);
+            return Response.json(null);
+        };
+        await dom.testing.act(() => result.current.mutateAsync({}));
+    });
+
+    test('limpar a sessão permite renovar a mesma matrícula novamente', async () => {
+        const first = renderHook(() => useSessionRefresh(), '251000009');
+        await dom.testing.waitFor(() => expect(requests).toHaveLength(1));
+        first.unmount();
+        await clearSession(first.queryClient);
+        renderHook(() => useSessionRefresh(), '251000009');
+        await dom.testing.waitFor(() => expect(requests).toHaveLength(2));
+        expect(paths()).toEqual(['POST /api/auth/sigaa/refresh', 'POST /api/auth/sigaa/refresh']);
+    });
+
+    test('login que aborta a renovação permite renovar a mesma conta novamente', async () => {
+        const gate = Promise.withResolvers<void>();
+        middleware.onRequest = async ({ request }) => {
+            requests.push(request);
+            if (new URL(request.url).pathname.endsWith('/refresh') && requests.length === 1) {
+                await gate.promise;
+                expect(request.signal.aborted).toBe(true);
+                throw new DOMException('Cancelada', 'AbortError');
+            }
+            if (new URL(request.url).pathname === '/api/auth/sigaa')
+                throw new ApiError(401, 'Senha incorreta');
+            return Response.json(null);
+        };
+        const first = renderHook(() => useSessionRefresh(), '251000010');
+        await dom.testing.waitFor(() => expect(requests).toHaveLength(1));
+        first.unmount();
+        const login = renderHook(() => useLogin(), '251000010');
+        await dom.testing.act(() =>
+            login.result.current
+                .mutateAsync({
+                    body: { registration: '251000010', password: 'errada' }
+                })
+                .catch(noop)
+        );
+        gate.resolve();
+        renderHook(() => useSessionRefresh(), '251000010');
+        await dom.testing.waitFor(() => expect(requests).toHaveLength(3));
+        expect(paths()).toEqual([
+            'POST /api/auth/sigaa/refresh',
+            'POST /api/auth/sigaa',
+            'POST /api/auth/sigaa/refresh'
+        ]);
     });
 
     // a renovação é lembrada por matrícula no módulo: cada teste usa uma

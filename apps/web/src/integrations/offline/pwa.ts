@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -37,7 +39,9 @@ export const pwaPlugins = (buildId: string) =>
                 // public/ só é copiado pelo nitro depois do build do client
                 additionalManifestEntries: ['/favicon.svg', '/manifest.json'].map((url) => ({
                     url,
-                    revision: buildId
+                    revision: createHash('sha256')
+                        .update(readFileSync(new URL(`../../../public${url}`, import.meta.url)))
+                        .digest('hex')
                 })),
                 navigateFallback: null,
                 cleanupOutdatedCaches: true,

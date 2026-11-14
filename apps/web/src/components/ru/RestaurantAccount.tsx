@@ -53,10 +53,12 @@ const validity = new Intl.DateTimeFormat('pt-BR', {
 
 export function RestaurantAccount({
     registration,
-    openCard = false
+    openCard = false,
+    onCardConsumed
 }: {
     registration: string;
     openCard?: boolean;
+    onCardConsumed?: () => void;
 }) {
     const queryClient = useQueryClient();
     const statementOptions = statementQueryOptions(registration);
@@ -65,7 +67,19 @@ export function RestaurantAccount({
     const credentials = useQuery(credentialsOptions);
     const [refreshing, setRefreshing] = useState(false);
     const [coolingDown, setCoolingDown] = useState(false);
+    const [cardOpen, setCardOpen] = useState(false);
+    const cardRequestHandled = useRef(false);
     const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => {
+        if (!openCard) {
+            cardRequestHandled.current = false;
+        } else if (!cardRequestHandled.current) {
+            cardRequestHandled.current = true;
+            setCardOpen(true);
+            onCardConsumed?.();
+        }
+    }, [openCard, onCardConsumed]);
+
     useEffect(
         () => () => {
             if (cooldownTimer.current !== null) clearTimeout(cooldownTimer.current);
@@ -97,7 +111,8 @@ export function RestaurantAccount({
     const cardDrawer = (
         <StudentCardDrawer
             credentials={credentials}
-            requested={openCard}
+            open={cardOpen}
+            onOpenChange={setCardOpen}
             onRetry={() => refresh('credentials')}
             retryDisabled={refreshDisabled}
         />
@@ -164,20 +179,19 @@ export function RestaurantAccount({
 
 function StudentCardDrawer({
     credentials,
-    requested,
+    open,
+    onOpenChange,
     onRetry,
     retryDisabled
 }: {
     credentials: UseQueryResult<RestaurantCredentials>;
-    requested: boolean;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
     onRetry: () => Promise<void>;
     retryDisabled: boolean;
 }) {
-    const [open, setOpen] = useState(false);
-    if (requested && !open) setOpen(true);
-
     return (
-        <Drawer showSwipeHandle open={open} onOpenChange={setOpen}>
+        <Drawer showSwipeHandle open={open} onOpenChange={onOpenChange}>
             <DrawerTrigger
                 render={
                     <Button

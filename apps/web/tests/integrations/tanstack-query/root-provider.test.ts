@@ -1,28 +1,14 @@
 import { environmentManager, noop, onlineManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import type { components } from '#/queries/schema.gen.ts';
-
 import { getContext } from '#/integrations/tanstack-query/root-provider.tsx';
 import { ApiError } from '#/queries/errors.ts';
 import { meQueryOptions } from '#/queries/me.ts';
 
+import { userProfile } from '../../helpers/profile';
+
 const queryKey = ['get', '/classrooms'];
-const user: components['schemas']['UserProfile'] = {
-    name: 'Fulano',
-    registration: '251000000',
-    photo: null,
-    bio: null,
-    unit: { id: 673, code: 'FCTE', name: 'CAMPUS UNB GAMA' },
-    course: { id: 1, name: 'Engenharia de Software', shift: 'DIURNO' },
-    entry_semester: null,
-    integralization: null,
-    workload: null,
-    period_max_workload: null,
-    ira: null,
-    mp: null,
-    level: 'Graduação'
-};
+const user = userProfile();
 const isServer = environmentManager.isServer();
 
 // as regras de retry e rede valem só no navegador
@@ -78,6 +64,8 @@ describe('QueryClient do app no navegador', () => {
 });
 
 describe('sessão expirada', () => {
+    beforeEach(() => environmentManager.setIsServer(() => false));
+    afterEach(() => environmentManager.setIsServer(() => isServer));
     test.each([
         [401, true],
         [502, false]
@@ -93,5 +81,22 @@ describe('sessão expirada', () => {
 
         const cached: unknown = queryClient.getQueryData(meQueryOptions.queryKey);
         expect(cached).toEqual(cleared ? null : user);
+    });
+
+    test('erro de autenticação no SSR não limpa dados globais nem outra requisição', async () => {
+        environmentManager.setIsServer(() => true);
+        const first = getContext().queryClient;
+        const second = getContext().queryClient;
+        first.setQueryData(meQueryOptions.queryKey, user);
+        second.setQueryData(meQueryOptions.queryKey, userProfile({ registration: 'outra' }));
+        await first
+            .query({ queryKey, queryFn: () => Promise.reject(new ApiError(401, 'Expirada')) })
+            .catch(noop);
+        expect(first.getQueryData(meQueryOptions.queryKey)).toEqual(user);
+        expect(second.getQueryData(meQueryOptions.queryKey)).toMatchObject({
+            registration: 'outra'
+        });
+        first.clear();
+        second.clear();
     });
 });

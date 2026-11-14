@@ -1,6 +1,6 @@
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 
 import { getNoClassReason } from '#/calendar';
 import { ErrorState } from '#/components/ErrorState';
@@ -8,7 +8,6 @@ import { HeaderBar, HeaderTitle } from '#/components/HeaderBar';
 import { DayAgenda } from '#/components/home/DayAgenda';
 import { DaySummary } from '#/components/home/DaySummary';
 import { HomeInsights } from '#/components/home/HomeInsights';
-import { LatestNewsSection } from '#/components/home/LatestNewsSection';
 import { PublicInfoSection } from '#/components/home/PublicInfoSection';
 import { RemindersSection } from '#/components/home/RemindersSection';
 import { usePageState } from '#/components/PageState';
@@ -21,6 +20,12 @@ import { useCalendarEntries } from '#/queries/events';
 import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 import { campusOf, menuQueryOptions } from '#/queries/restaurant';
+
+const LatestNewsSection = lazy(() =>
+    import('#/components/home/LatestNewsSection').then((module) => ({
+        default: module.LatestNewsSection
+    }))
+);
 
 const WEEKDAYS = [
     'Domingo',
@@ -133,7 +138,11 @@ function HomePage() {
     return (
         <div className="flex flex-col gap-6 desk:grid desk:grid-cols-[minmax(0,1fr)_22rem] desk:items-start desk:gap-8">
             <div className="flex min-w-0 flex-col gap-6">
-                {user && <LatestNewsSection />}
+                {user && (
+                    <Suspense fallback={null}>
+                        <LatestNewsSection />
+                    </Suspense>
+                )}
                 <DayAgenda
                     date={date}
                     today={now.date}

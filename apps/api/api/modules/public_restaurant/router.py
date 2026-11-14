@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated, Literal, Self
 
 from fastapi import APIRouter, Query
@@ -6,9 +6,11 @@ from pydantic import BaseModel, Field, model_validator
 from unb_browser import Campus, DailyMenu
 
 from api.cache import CacheControlDep
+from api.modules.public_restaurant import service as restaurant
 from api.modules.public_restaurant.service import Meal, RestaurantServiceDep
 
 router = APIRouter()
+_MAX_DAYS = 14
 _CAMPUSES = {
     "Darcy": Campus.DARCY_RIBEIRO,
     "Gama": Campus.GAMA,
@@ -44,6 +46,20 @@ class MenuQuery(BaseModel):
             and self.start_date > self.end_date
         ):
             raise ValueError("start_date must not be after end_date")
+        try:
+            current = restaurant.today()
+            monday = current - timedelta(days=current.weekday())
+            start = (
+                self.day
+                or self.start_date
+                or (self.end_date - timedelta(days=6) if self.end_date else monday)
+            )
+            end = self.day or self.end_date or (start + timedelta(days=6))
+        except OverflowError as error:
+            raise ValueError("Dates must form a valid menu interval") from error
+        if end - start >= timedelta(days=_MAX_DAYS):
+            raise ValueError(f"The interval must have at most {_MAX_DAYS} days")
+        self.start_date, self.end_date = start, end
         return self
 
 

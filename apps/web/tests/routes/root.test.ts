@@ -1,11 +1,36 @@
-import { describe, expect, test } from 'bun:test';
+import { QueryClient } from '@tanstack/react-query';
+import * as StartServer from '@tanstack/react-start/server';
+import { describe, expect, spyOn, test } from 'bun:test';
 
+import { meQueryOptions } from '#/queries/me';
 import { Route as RootRoute } from '#/routes/__root';
 
 import manifest from '../../public/manifest.json';
 import { callRoute } from '../helpers/route';
 
 describe('rota raiz e manifest PWA', () => {
+    test('beforeLoad sem cookie prepara o perfil anônimo apenas na requisição atual', async () => {
+        const request = spyOn(StartServer, 'getRequest').mockReturnValue(
+            new Request('http://localhost/')
+        );
+        const cookie = spyOn(StartServer, 'getCookie').mockReturnValue(undefined);
+        const anonymous = new QueryClient();
+        const authenticated = new QueryClient();
+        try {
+            await callRoute(RootRoute.options.beforeLoad, { context: { queryClient: anonymous } });
+            expect(anonymous.getQueryData(meQueryOptions.queryKey)).toBeNull();
+            cookie.mockReturnValue('sintetico');
+            await callRoute(RootRoute.options.beforeLoad, {
+                context: { queryClient: authenticated }
+            });
+            expect(authenticated.getQueryData(meQueryOptions.queryKey)).toBeUndefined();
+        } finally {
+            request.mockRestore();
+            cookie.mockRestore();
+            anonymous.clear();
+            authenticated.clear();
+        }
+    });
     test('configura tags no head para suporte a PWA e instalação na tela inicial', async () => {
         const head = await callRoute(RootRoute.options.head);
         expect(head).toBeDefined();

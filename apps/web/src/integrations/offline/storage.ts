@@ -48,7 +48,26 @@ export function encryptedQueryPersister(
                 const owner = cacheOwner(client);
                 const snapshot = owner ? client : accountSnapshot(client, null, true);
                 const sealed = await sealLocal(
-                    { ...snapshot, buster: cacheBuster() },
+                    {
+                        ...snapshot,
+                        buster: cacheBuster(),
+                        clientState: {
+                            ...snapshot.clientState,
+                            mutations: [],
+                            // oxlint-disable-next-line oxc/no-map-spread -- o estado em memória conserva a falha
+                            queries: snapshot.clientState.queries.map((query) => ({
+                                ...query,
+                                state: {
+                                    ...query.state,
+                                    status: 'success',
+                                    fetchStatus: 'idle',
+                                    error: null,
+                                    fetchFailureReason: null,
+                                    fetchFailureCount: 0
+                                }
+                            }))
+                        }
+                    },
                     'query-cache'
                 );
                 if (current === generation) await set(owner ? key : publicKey, sealed);
@@ -181,7 +200,7 @@ export function shouldPersistQuery(query: Query, now = Date.now()) {
         !isRecommendationsKey(query.queryKey) &&
         // chamados: a chave secreta vai nos parâmetros da consulta e o texto não precisa de cópia no cache
         !isSupportKey(query.queryKey) &&
-        query.state.status === 'success' &&
+        query.state.data !== undefined &&
         now - query.state.dataUpdatedAt < localRetentionMs()
     );
 }
@@ -193,16 +212,18 @@ export function persistQueryCache(queryClient: QueryClient, onRestored: () => vo
         onRestored();
         return noop;
     }
-    const [unsubscribe, restoring] = persistQueryClient({
+    const options = {
         queryClient,
         persister: current,
         maxAge: localRetentionMs(),
         buster: cacheBuster(),
         dehydrateOptions: {
-            shouldDehydrateQuery: (query) => shouldPersistQuery(query),
+            shouldDehydrateQuery: (query: Query) => shouldPersistQuery(query),
             shouldDehydrateMutation: () => false
         }
-    });
+    };
+    const [unsubscribe, restoring] = persistQueryClient(options);
+    let stopped = false;
     // falha ao restaurar já descarta o cache salvo; IndexedDB travado (ex.: exclusão pendente
     // noutra aba) não pode prender o app sem dados: depois do limite, segue pela rede
     let done = false;
@@ -214,9 +235,15 @@ export function persistQueryCache(queryClient: QueryClient, onRestored: () => vo
     const timer = setTimeout(finish, RESTORE_TIMEOUT_MS);
     restoring.catch(noop).finally(() => {
         clearTimeout(timer);
+        if (stopped) return;
         finish();
+        if (!stopped) void persistQueryClientSave(options).catch(noop);
     });
-    return unsubscribe;
+    return () => {
+        stopped = true;
+        clearTimeout(timer);
+        unsubscribe();
+    };
 }
 
 async function deletePageCaches(keep?: string) {

@@ -1,3 +1,4 @@
+import * as baseUILayout from '@base-ui/utils/useIsoLayoutEffect';
 import { QueryClient, QueryClientProvider, environmentManager } from '@tanstack/react-query';
 import {
     Outlet,
@@ -7,15 +8,39 @@ import {
     createRoute,
     createRouter
 } from '@tanstack/react-router';
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, mock, test } from 'bun:test';
 import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
+import { useLayoutEffect } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+import type { UserProfile } from '#/queries/me';
 
 import { PageStateProvider } from '#/components/PageState';
 import { meQueryOptions } from '#/queries/me';
-import { Route } from '#/routes/_app/ru';
+import { menuQueryOptions } from '#/queries/restaurant';
+import { credentialsQueryOptions, statementQueryOptions } from '#/queries/restaurant-account';
 
+import { useDom } from '../helpers/dom';
+import { userProfile } from '../helpers/profile';
 import { callRoute, fakeQueryClient, runLoader } from '../helpers/route';
+
+const dom = useDom();
+let Route: typeof import('#/routes/_app/ru').Route;
+let restoreLayoutEffect: () => Promise<void>;
+beforeAll(async () => {
+    // A importação SSR anterior ao DOM deixa este hook vazio no cache do Bun.
+    const previous = baseUILayout.useIsoLayoutEffect;
+    await mock.module('@base-ui/utils/useIsoLayoutEffect', () => ({
+        useIsoLayoutEffect: useLayoutEffect
+    }));
+    restoreLayoutEffect = async () => {
+        await mock.module('@base-ui/utils/useIsoLayoutEffect', () => ({
+            useIsoLayoutEffect: previous
+        }));
+    };
+    ({ Route } = await import('#/routes/_app/ru'));
+});
+afterAll(() => restoreLayoutEffect());
 
 function contextWith(
     user: {
@@ -77,20 +102,102 @@ describe('loader do RU', () => {
         expect(context.paths).toEqual(['/me', '/public/restaurant']);
     });
 
-    test('carrega a conta autenticada sem bloquear o cardápio quando a carteirinha falha', async () => {
+    test('carrega o cardápio autenticado sem iniciar saldo e carteirinha no loader', async () => {
         const context = contextWith({ registration: '251000000' }, '/me/ru-token');
         environmentManager.setIsServer(() => false);
         const data = await runLoader(Route, context).finally(() =>
             environmentManager.setIsServer(() => true)
         );
-        expect(context.paths).toEqual([
-            '/me',
-            '/public/restaurant',
-            '/me/ru-statement',
-            '/me/ru-token'
-        ]);
+        expect(context.paths).toEqual(['/me', '/public/restaurant']);
         expect(data).toHaveProperty('defaultMeal');
     });
+});
+
+test('consome o pedido após montar a conta lazy e preserva histórico e filtros sem reabrir', async () => {
+    environmentManager.setIsServer(() => false);
+    const registration = '251000000';
+    const loaded = await runLoader(Route, contextWith({ registration }));
+    const client = new QueryClient({
+        defaultOptions: { queries: { enabled: false, retry: false, staleTime: Infinity } }
+    });
+    client.setQueryData<UserProfile | null>(meQueryOptions.queryKey, userProfile({ registration }));
+    client.setQueryData(
+        menuQueryOptions({ date: loaded.defaultDate, campus: 'Gama' }).queryKey,
+        []
+    );
+    const Page = Route.options.component;
+    if (!Page) throw new Error('Página do RU ausente');
+    const root = createRootRoute();
+    const app = createRoute({
+        getParentRoute: () => root,
+        id: '_app',
+        component: () => (
+            <PageStateProvider page="/ru">
+                <Outlet />
+            </PageStateProvider>
+        )
+    });
+    const ru = createRoute({
+        getParentRoute: () => app,
+        path: 'ru',
+        validateSearch: Route.options.validateSearch,
+        loader: () => loaded,
+        component: Page
+    });
+    const history = createMemoryHistory({ initialEntries: ['/ru?campus=Gama'] });
+    const retained = { returnTo: '/perfil', filters: { campus: 'Gama' } };
+    history.replace('/ru?campus=Gama', { studentCard: true, ...retained });
+    const router = createRouter({
+        routeTree: root.addChildren([app.addChildren([ru])]),
+        history,
+        isServer: false,
+        origin: 'http://localhost'
+    });
+    await router.load();
+    expect(history.location.state.studentCard).toBe(true);
+    const { render, waitFor, act, fireEvent } = dom.testing;
+    const view = render(
+        <QueryClientProvider client={client}>
+            <NuqsTestingAdapter searchParams="?campus=Gama">
+                <RouterProvider router={router} />
+            </NuqsTestingAdapter>
+        </QueryClientProvider>
+    );
+    const trigger = () => view.getByLabelText('Ver QR code da carteirinha');
+    // O chunk lazy ainda não recebeu o pedido nesta renderização.
+    expect(view.queryByLabelText('Ver QR code da carteirinha')).toBeNull();
+    expect(history.location.state.studentCard).toBe(true);
+    await waitFor(() => {
+        expect(trigger().getAttribute('aria-expanded')).toBe('true');
+        expect(history.location.state.studentCard).toBeUndefined();
+    });
+    expect(history.location.state).toMatchObject(retained);
+    expect(history.location.search).toBe('?campus=Gama');
+    expect(history.length).toBe(1);
+
+    await act(async () => {
+        client.setQueryData(statementQueryOptions(registration).queryKey, {
+            balance: '12.50',
+            group: 2,
+            entries: []
+        });
+    });
+    await waitFor(() => {
+        expect(view.getByText('Saldo disponível')).toBeDefined();
+        expect(trigger().getAttribute('aria-expanded')).toBe('true');
+    });
+    fireEvent.click(view.getByText('Fechar'));
+    await waitFor(() => expect(trigger().getAttribute('aria-expanded')).toBe('false'));
+    await act(async () => {
+        client.setQueryData(credentialsQueryOptions(registration).queryKey, {
+            token: 'carteirinha-token',
+            valid_until: '2099-10-01'
+        });
+    });
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+    expect(history.location.state).toMatchObject(retained);
+    view.unmount();
+    client.clear();
 });
 
 test('header do RU renderiza enquanto o loader ainda carrega', async () => {
