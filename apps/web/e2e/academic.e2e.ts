@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
 
 import { login, ready } from './helpers/student';
+
+const artifacts = fileURLToPath(new URL('../../../.local/e2e-artifacts/', import.meta.url));
 
 for (const [width, theme] of [
     [320, 'dark'],
@@ -40,7 +43,7 @@ for (const [width, theme] of [
             true
         );
         await page.screenshot({
-            path: `../../.local/p009-2026-11-14/simulator-${width}-${theme}.png`,
+            path: `${artifacts}/simulator-${width}-${theme}.png`,
             fullPage: true
         });
 
