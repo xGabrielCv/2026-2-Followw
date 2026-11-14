@@ -12,7 +12,7 @@ export const CONTENT_PARTS: Record<string, string[]> = {
     forum: ['/forum'],
     tutorials: ['/tutorials'],
     statistics: ['/public/subjects', '/public/professors'],
-    config: ['/public/config']
+    config: ['/public/config', '/materials']
 };
 
 // barato (uma consulta curta no banco): o app confere com frequência

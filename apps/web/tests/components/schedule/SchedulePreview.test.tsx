@@ -16,6 +16,7 @@ import type { CatalogSubject, SubjectClassroom } from '#/queries/subjects';
 import { getContext } from '#/integrations/tanstack-query/root-provider';
 import { localStorageRepository, STORAGE_KEYS } from '#/lib/local-storage';
 import { schedulePlans } from '#/lib/planned-schedule';
+import { appConfigQueryOptions } from '#/queries/app-config';
 import { clearSession, startSession } from '#/queries/auth';
 import { apiClient } from '#/queries/client';
 import { ApiError } from '#/queries/errors';
@@ -85,6 +86,11 @@ function render(ui: React.ReactNode, maxHours: number | null = null) {
     const { queryClient } = getContext();
     const profile: typeof user = { ...user, period_max_workload: maxHours };
     queryClient.setQueryData(meQueryOptions.queryKey, profile);
+    queryClient.setQueryData(appConfigQueryOptions.queryKey, {
+        menu: {},
+        links: { automatricula: null, monitor: null },
+        flags: { current_plan: true }
+    });
     const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
     return dom.testing.render(
         <QueryClientProvider client={queryClient}>

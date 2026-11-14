@@ -15,9 +15,15 @@ export const catalogQueryOptions = {
     professors: professorsQueryOptions(null)
 };
 
-/** Sem texto, as abas Cursos e Docentes listam o catálogo inteiro. */
-export function CatalogResults({ category }: { category: CatalogCategory }) {
-    return category === 'courses' ? <CourseCatalog /> : <ProfessorCatalog />;
+/** Sem texto, as abas Cursos e Docentes listam o catálogo inteiro (docentes filtrados pelo semestre quando escolhido). */
+export function CatalogResults({
+    category,
+    semester
+}: {
+    category: CatalogCategory;
+    semester?: string;
+}) {
+    return category === 'courses' ? <CourseCatalog /> : <ProfessorCatalog semester={semester} />;
 }
 
 function CourseCatalog() {
@@ -32,14 +38,14 @@ function CourseCatalog() {
     );
 }
 
-function ProfessorCatalog() {
+function ProfessorCatalog({ semester }: { semester?: string }) {
     return (
         <Catalog
-            query={useQuery(catalogQueryOptions.professors)}
+            query={useQuery(professorsQueryOptions(null, 1, semester))}
             noun="docentes"
-            empty="Nenhum docente cadastrado."
+            empty="Nenhum docente cadastrado neste semestre."
         >
-            {(page) => <ProfessorSection page={page} q={null} />}
+            {(page) => <ProfessorSection page={page} q={null} semester={semester} />}
         </Catalog>
     );
 }

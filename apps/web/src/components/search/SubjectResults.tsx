@@ -35,7 +35,7 @@ export function SubjectResults({
                     return (
                         <>
                             <TurmaSection
-                                key={unit}
+                                key={`${unit}:${semester ?? ''}`}
                                 title={`Matérias da ${unit}`}
                                 subjects={subjects}
                                 currentPeriod={currentPeriod}

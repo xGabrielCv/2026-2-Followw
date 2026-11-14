@@ -15,7 +15,13 @@ export const professorQueryOptions = (siape: number) =>
         }
     });
 
-export const professorsQueryOptions = (q: string | null, page = 1) =>
+export const professorsQueryOptions = (q: string | null, page = 1, semester?: string | null) =>
     api.queryOptions('get', '/public/professors', {
-        params: { query: { q: q ?? undefined, page } }
+        params: {
+            query: {
+                q: q ?? undefined,
+                ...(semester ? { semester } : {}),
+                page
+            }
+        }
     });

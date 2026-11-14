@@ -105,7 +105,7 @@ class PublicSubjectService:
             if account is None:
                 raise _invalid("Informe `q`, `code` ou `unit`.")
             ranking = await RecommendationService(account, self._db).recommend(
-                completed, history
+                completed, history, semester=semester
             )
             return await self._db.read(lambda session: _recommended(session, ranking))
         # O perfil vem do cookie do navegador: a matriz do aluno marca as matérias.

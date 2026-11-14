@@ -27,6 +27,7 @@ from api.db.main import DatabaseDep, after_commit
 from api.db.models import Classroom, Material, Subject
 from api.db.search import contains_term
 from api.modules.community.quotas import MAX_DAILY_UPLOAD_ATTEMPTS
+from api.modules.materials import av
 from api.modules.materials.sanitize import EXTENSIONS, InvalidFile, sanitize, sniff
 from api.schemas import SubjectReference
 from api.storage import LocalStorage, material_storage
@@ -34,8 +35,9 @@ from api.storage import LocalStorage, material_storage
 MaterialKind = Literal["prova", "lista", "resumo", "anotacao", "outro"]
 
 MAX_FILE_BYTES = 20 * 1024 * 1024
-MAX_PER_SUBJECT = 50
-MAX_SUBJECT_BYTES = 100 * 1024 * 1024
+MAX_PER_SUBJECT = 30
+MAX_SUBJECT_BYTES = 30 * 1024 * 1024
+MAX_TOTAL_BYTES = 50 * 1024**3
 # O semestre atual e os cinco anteriores.
 KEEP_SEMESTERS = 6
 _SANITIZERS = CapacityLimiter(2)
@@ -229,6 +231,7 @@ class MaterialService:
             raise HTTPException(422, str(error)) from error
         if len(clean) > MAX_FILE_BYTES:
             raise HTTPException(413, "Arquivo maior que 20 MB.")
+        await av.scan(clean)
         digest = hashlib.sha256(clean).hexdigest()
         key = resource_key(author)
         storage_key = uuid.uuid4().hex
@@ -236,7 +239,9 @@ class MaterialService:
 
         async def write(session: AsyncSession) -> MaterialItem:
             await _subject(session, code)
+            raw_limits = await read_limits(session)
             configured = await effective_limits(session)
+            total_cap = min(MAX_TOTAL_BYTES, raw_limits.materials_total_gb * 1024**3)
             if max(len(data), len(clean)) > configured.max_file_bytes:
                 raise HTTPException(
                     413,
@@ -248,6 +253,15 @@ class MaterialService:
                 {"scope": _scope(code)},
             )
             await purge_expired(session, self._storage)
+            total_bytes = (
+                await session.scalar(select(func.coalesce(func.sum(Material.size), 0)))
+                or 0
+            )
+            if total_bytes + len(clean) > total_cap:
+                raise HTTPException(
+                    409,
+                    "Limite global de armazenamento de materiais atingido no momento.",
+                )
             files, size, duplicate = (
                 await session.execute(
                     select(

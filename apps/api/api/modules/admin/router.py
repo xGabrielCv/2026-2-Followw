@@ -294,7 +294,7 @@ async def edit_tutorial(
 @api.put("/flags/{key}", dependencies=[auth.require_permission("configure")])
 async def set_flag(
     service: AdminServiceDep,
-    key: Annotated[str, Field(pattern=r"^[a-z]{3,16}$")],
+    key: Annotated[str, Field(pattern=r"^[a-z_]{3,32}$")],
     body: FlagInput,
 ) -> dict[str, bool]:
     return await service.set_flag(key, body.enabled)
@@ -473,6 +473,7 @@ async def reset_metrics(service: AdminServiceDep) -> None:
     metrics.reset()
 
 
+from api.modules.admin.calendar_alert import router as calendar_alert_router
 from api.modules.admin.demo import router as demo_router
 from api.modules.admin.limits import router as limits_router
 from api.modules.admin.logs import router as logs_router
@@ -487,6 +488,7 @@ api.include_router(statistics_router, prefix="/statistics")
 api.include_router(operations_router, prefix="/operations")
 api.include_router(moderation_router)
 api.include_router(limits_router, prefix="/limits")
+api.include_router(calendar_alert_router)
 api.include_router(sync_router, prefix="/sync")
 api.include_router(logs_router, prefix="/logs")
 api.include_router(demo_router, prefix="/demo")

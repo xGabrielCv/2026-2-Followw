@@ -268,12 +268,93 @@ async function breakdown() {
   ];
 }
 
+function alertPanel(info) {
+  if (!info) return null;
+  const cfg = info.config;
+  const titleInput = el("input", { type:"text", value:cfg.title, maxlength:120, required:true });
+  const messageInput = el("textarea", { rows:3, maxlength:600, required:true }, cfg.message);
+  const presetSelect = el("select", { "aria-label":"Modelo de aviso" }, [
+    ["custom", "Personalizado"],
+    ["first_day", "Primeiro dia do semestre"],
+    ["last_day", "Último dia do semestre"],
+  ].map(([value, label]) => el("option", { value, selected: cfg.preset === value }, label)));
+  presetSelect.addEventListener("change", () => {
+    const preset = info.presets?.[presetSelect.value];
+    if (!preset) return;
+    titleInput.value = preset.title;
+    messageInput.value = preset.message;
+  });
+  const enabledInput = el("input", { type:"checkbox", checked: cfg.enabled });
+  const alwaysOnInput = el("input", { type:"checkbox", checked: cfg.always_on });
+  const midEnabledInput = el("input", { type:"checkbox", checked: cfg.mid_semester_enabled });
+  const midChanceInput = el("input", { type:"number", min:0, max:100, step:1, value: cfg.mid_semester_chance, required:true });
+  const midTitleInput = el("input", { type:"text", value: cfg.mid_semester_title, maxlength:120, required:true });
+  const midMessageInput = el("textarea", { rows:2, maxlength:600, required:true }, cfg.mid_semester_message);
+  const readPayload = () => ({
+    enabled: enabledInput.checked,
+    always_on: alwaysOnInput.checked,
+    preset: presetSelect.value,
+    title: titleInput.value.trim(),
+    message: messageInput.value.trim(),
+    mid_semester_enabled: midEnabledInput.checked,
+    mid_semester_chance: Number(midChanceInput.value),
+    mid_semester_title: midTitleInput.value.trim(),
+    mid_semester_message: midMessageInput.value.trim(),
+    trigger_id: cfg.trigger_id,
+    triggered_at: cfg.triggered_at,
+  });
+  return el("div", { class:"panel" },
+    el("h3", {}, "Aviso de avaliações e estatísticas (ao abrir o app)"),
+    el("p", { class:"muted" }, `Semestre atual: ${info.current_semester}${info.progress_percent != null ? ` (${info.progress_percent}% das aulas concluídas)` : ""}. Campanha atual: ${cfg.trigger_id}${cfg.triggered_at ? ` · disparada ${when(cfg.triggered_at)}` : ""}.`),
+    el("div", { class:"grid g2" },
+      el("label", { class:"switch" }, el("span", {}, "Sistema de aviso ativo"), enabledInput),
+      el("label", { class:"switch" }, el("span", {}, "Sempre ativado ao abrir (modo de teste)"), alwaysOnInput),
+      el("label", {}, "Modelo rápido", presetSelect),
+      el("label", {}, "Título da campanha atual", titleInput)),
+    el("label", {}, "Mensagem da campanha", messageInput),
+    el("div", { class:"grid g2" },
+      el("label", { class:"switch" }, el("span", {}, "Ativar aviso automático na metade do semestre (>= 50%)"), midEnabledInput),
+      el("label", {}, "Chance ao abrir após 50% do semestre (%)", midChanceInput),
+      el("label", {}, "Título na metade do semestre", midTitleInput),
+      el("label", {}, "Mensagem na metade do semestre", midMessageInput)),
+    el("div", { class:"toolbar" },
+      el("button", { class:"primary", type:"button", onclick:async () => {
+        try {
+          await call("/alert", { method:"PUT", body:JSON.stringify(readPayload()) });
+          notice("Configuração do aviso salva.");
+          void render();
+        } catch (error) { notice(error.message, true); }
+      } }, "Salvar configuração"),
+      el("button", { type:"button", onclick:async () => {
+        if (!await confirmation("Disparar aviso agora?", "Gera uma nova campanha: mesmo quem clicou em 'Não mostrar novamente' verá este aviso (a menos que já tenha avaliado todos os professores do semestre atual).")) return;
+        try {
+          await call("/alert", { method:"PUT", body:JSON.stringify(readPayload()) });
+          await call("/alert/trigger", { method:"POST", body:JSON.stringify({ title: titleInput.value.trim(), message: messageInput.value.trim() }) });
+          notice("Aviso disparado para todos os alunos com turmas atuais.");
+          void render();
+        } catch (error) { notice(error.message, true); }
+      } }, "Disparar agora para todos")));
+}
+
 async function system() {
-  const [o, health] = await Promise.all([call("/overview"), call("/health")]);
+  const [o, health, alertInfo] = await Promise.all([
+    call("/overview"),
+    call("/health"),
+    hasPermission("configure") ? call("/alert").catch(() => null) : Promise.resolve(null),
+  ]);
   const toggle = (key, enabled) => el("input", { type:"checkbox", checked:enabled, "aria-label":key, onchange:async (e) => {
     try { await call(`/flags/${key}`, { method:"PUT", body:JSON.stringify({ enabled:e.target.checked }) }); } catch (error) { notice(error.message, true); e.target.checked = !e.target.checked; }
   } });
-  const FLAG_LABELS = { materials:"Envio de materiais", forum:"Novas dúvidas, posts e respostas", reviews:"Novas avaliações de docentes", groups:"Edição dos grupos das turmas", tutorials:"Envio de guias", reports:"Denúncias e pedidos de exclusão", telemetry:"Contagem opcional de uso (exige consentimento)" };
+  const FLAG_LABELS = {
+    materials:"Envio de materiais",
+    forum:"Novas dúvidas, posts e respostas",
+    reviews:"Novas avaliações de docentes",
+    groups:"Edição dos grupos das turmas",
+    tutorials:"Envio de guias",
+    reports:"Denúncias e pedidos de exclusão",
+    telemetry:"Contagem opcional de uso (exige consentimento)",
+    current_plan:"Permitir adicionar turmas do semestre atual no simulador (fora da matrícula)",
+  };
   const meter = (label, used, total, detail) => el("div", {}, el("div", { class:"toolbar" }, el("span", { class:"grow" }, label), el("span", { class:"muted" }, detail)),
     el("div", { class:"meter" }, el("span", { widthPercent:Math.min(100, used / Math.max(total, 1) * 100).toFixed(1) })));
   const sys = o.system;
@@ -300,7 +381,7 @@ async function system() {
         meter("Disco (pasta dos materiais)", sys.disk_total_bytes - sys.disk_free_bytes, sys.disk_total_bytes, `${bytes(sys.disk_free_bytes)} livres de ${bytes(sys.disk_total_bytes)}`),
         el("p", { class:"muted" }, `Processo da API: ${bytes(o.process.memory_bytes)} de memória, ${o.process.threads} threads, no ar há ${duration(o.uptime_seconds)} · máquina ligada há ${duration(sys.boot_seconds)}`),
         el("p", { class:"muted" }, `Banco: ${bytes(o.database_bytes)}, ${o.database_connections} conexões · materiais: ${fmt(o.materials_files)} arquivos, ${bytes(o.materials_bytes)}`))),
-    el("div", { class:"grid g2" },
+        el("div", { class:"grid g2" },
       el("div", { class:"panel" }, el("h3", {}, "Cartões do menu Mais"),
         el("p", { class:"muted" }, "Esconda ou mostre cada cartão para todos os alunos (vale em até 1 minuto). As ferramentas de matrícula extraordinária ficam ligadas só no período que você escolher."),
         o.menu.map((item) => el("label", { class:"switch" }, el("span", {}, item.label), el("input", { type:"checkbox", checked:item.visible, "aria-label":item.label, onchange:async (e) => {
@@ -317,6 +398,7 @@ async function system() {
               catch (error) { status.textContent = error.message; }
             } }, "Salvar"), status)));
         }))),
+    alertPanel(alertInfo),
     el("div", { class:"grid g2" },
       el("div", { class:"panel" }, el("h3", {}, "Armazenamento"),
         el("table", {}, el("tbody", {},

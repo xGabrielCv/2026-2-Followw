@@ -67,16 +67,22 @@ function WhyDialog(subject: CatalogSubject) {
 
 export function RecommendationsSection({
     currentPeriod,
-    taken
+    taken,
+    semester
 }: {
     currentPeriod?: number | null;
     taken?: Set<string> | null;
+    semester?: string;
 }) {
     const client = useQueryClient();
     const { codes } = useCompletedSubjects();
     // o histórico vem das turmas salvas no navegador; sem elas, espera a lista chegar
     const classrooms = useQuery(allClassroomsQueryOptions);
-    const options = recommendationsQueryOptions([...codes], classroomHistory(classrooms.data));
+    const options = recommendationsQueryOptions(
+        [...codes],
+        classroomHistory(classrooms.data),
+        semester
+    );
     const query = useQuery({
         ...options,
         enabled: classrooms.data !== undefined || classrooms.isError
@@ -106,7 +112,9 @@ export function RecommendationsSection({
                     )}
                     {subjects.length === 0 ? (
                         <p className="rounded-2xl border bg-card p-4 text-sm">
-                            Nenhuma matéria da oferta atual foi recomendada para você.
+                            {semester
+                                ? `Nenhuma matéria de ${semester} foi recomendada para você.`
+                                : 'Nenhuma matéria da oferta atual foi recomendada para você.'}
                         </p>
                     ) : (
                         <TurmaSection

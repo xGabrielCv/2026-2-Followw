@@ -55,6 +55,7 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
     await page.getByRole('button', { name: 'Sistema e armazenamento', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Saúde e latência' })).toBeVisible();
     await expect(page.locator('#main')).toContainText('PostgreSQL respondeu');
+    await expect(page.locator('#main')).toContainText('Sistema de aviso ativo');
     await page.getByRole('button', { name: 'Redefinir estatísticas…' }).click();
     const reset = page.getByRole('dialog', { name: 'Detalhes' });
     await expect(reset).toContainText('Não será apagado');
@@ -169,6 +170,7 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
     await drawer.getByRole('button', { name: 'Criar conta', exact: true }).click();
     await expect(page.locator('#main')).toContainText('administrador-sintetico');
     await page.getByRole('button', { name: 'Limites da comunidade', exact: true }).click();
+    await expect(page.locator('#main')).toContainText('50 GB');
     await page.getByRole('spinbutton', { name: /^MB por arquivo/ }).fill('19');
     await page.getByRole('button', { name: 'Salvar limites', exact: true }).click();
     await page

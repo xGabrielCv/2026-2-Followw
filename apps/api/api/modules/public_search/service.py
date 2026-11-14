@@ -56,7 +56,7 @@ class SearchService:
                 q, unit, 1, COURSES_PAGE_SIZE
             ),
             "professors": lambda: self._professors.list(
-                q, unit, None, 1, PROFESSORS_PAGE_SIZE
+                q, unit, semester, 1, PROFESSORS_PAGE_SIZE
             ),
         }
         wanted = [name for name in searches if not types or name in types]

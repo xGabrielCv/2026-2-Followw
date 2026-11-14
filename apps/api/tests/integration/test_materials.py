@@ -327,3 +327,53 @@ def test_zip_comum_e_texto_sem_extensao_txt_continuam_recusados(logado, materia)
         arquivo.writestr("a.txt", "x")
     assert _enviar(logado, saida.getvalue(), name="coisa.zip").status_code == 415
     assert _enviar(logado, b"so texto", name="notas.md").status_code == 415
+
+
+def test_pdf_com_arquivos_embutidos_ou_launch_e_recusado(logado, materia):
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.add_attachment("payload.txt", b"conteudo oculto")
+    saida = BytesIO()
+    writer.write(saida)
+    resposta = _enviar(logado, saida.getvalue(), name="embutido.pdf")
+    assert resposta.status_code == 422
+
+
+def test_clamav_configurado_rejeita_arquivo_infectado_e_permite_limpo(
+    logado, materia, monkeypatch
+):
+    from api.modules.materials import av
+
+    monkeypatch.setattr(settings, "clamav_host", "127.0.0.1")
+
+    def _fake_conn(reply: bytes):
+        class _Reader:
+            async def readuntil(self, _sep):
+                return reply
+
+        class _Writer:
+            def write(self, _data):
+                pass
+
+            async def drain(self):
+                pass
+
+            def close(self):
+                pass
+
+        async def _open(_host, _port):
+            return _Reader(), _Writer()
+
+        return _open
+
+    monkeypatch.setattr(
+        av.asyncio,
+        "open_connection",
+        _fake_conn(b"stream: Eicar-Test-Signature FOUND\x00"),
+    )
+    infectado = _enviar(logado, _png(), name="eicar.png")
+    assert infectado.status_code == 422
+
+    monkeypatch.setattr(av.asyncio, "open_connection", _fake_conn(b"stream: OK\x00"))
+    limpo = _enviar(logado, _png(), name="limpo.png")
+    assert limpo.status_code == 201

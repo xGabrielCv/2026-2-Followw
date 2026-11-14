@@ -3,6 +3,7 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { Search } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import type { SemesterCalendar } from '#/calendar';
 import type { SearchCategory } from '#/lib/search-categories';
 import type { UserProfile } from '#/queries/me';
 
@@ -15,14 +16,13 @@ import {
     type CatalogCategory,
     catalogQueryOptions
 } from '#/components/search/CatalogResults';
-import { OfferSemesterBar } from '#/components/search/OfferSemesterBar';
 import { PlanningGuide } from '#/components/search/PlanningGuide';
 import { RecommendationsSection } from '#/components/search/RecommendationsSection';
 import { SearchResults } from '#/components/search/SearchResults';
 import { SubjectResults } from '#/components/search/SubjectResults';
 import { TabFilter } from '#/components/TabFilter';
 import { Input } from '#/components/ui/input';
-import { offerChoices, semesterParam } from '#/lib/offer';
+import { canAddToSchedule, offerChoices, semesterParam } from '#/lib/offer';
 import { nowInBrasilia } from '#/lib/schedule';
 import {
     SEARCH_CATEGORIES,
@@ -32,6 +32,7 @@ import {
     showsSubjects
 } from '#/lib/search-categories';
 import { loadSearchParams, useSearchState, validateSearch } from '#/lib/search-params';
+import { useAppConfig } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
@@ -74,9 +75,13 @@ function searchView(
     return subjects && unit ? { kind: 'unit', unit } : null;
 }
 
-/** Semestre exibido (o escolhido com oferta ou o atual) e o parâmetro que vai à API. */
-function offerSemester(available: string[], picked: string | null) {
-    const { choices, resolve } = offerChoices(available, nowInBrasilia().date);
+/** Semestre exibido (o escolhido com oferta, ou próximo se publicado, ou o atual) e o parâmetro da API. */
+function offerSemester(
+    available: string[],
+    picked: string | null,
+    custom?: Record<string, SemesterCalendar>
+) {
+    const { choices, resolve } = offerChoices(available, nowInBrasilia().date, custom);
     const selected = resolve(picked);
     return { choices, selected, param: semesterParam(selected, available) };
 }
@@ -106,7 +111,8 @@ export const Route = createFileRoute('/_app/buscar')({
                         settingsStore(user.registration).getSnapshot().completedSubjects,
                         classroomHistory(
                             queryClient.getQueryData(allClassroomsQueryOptions.queryKey)
-                        )
+                        ),
+                        apiSemester
                     )
                 ),
             view?.kind === 'search' &&
@@ -147,11 +153,22 @@ function BuscarPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const [{ q, category, semester }, setSearch] = useSearchState();
     const subjects = showsSubjects(category);
-    const { data: offer } = useQuery({ ...offerSemestersQueryOptions, enabled: subjects });
-    const { choices, selected, param: apiSemester } = offerSemester(offer ?? [], semester);
+    const { calendar, allowCurrentSchedule } = useAppConfig();
+    const today = nowInBrasilia().date;
+    const { data: offer } = useQuery(offerSemestersQueryOptions);
+    const { choices, selected } = offerSemester(offer ?? [], semester, calendar);
+    const defaultSemester = choices.find((choice) => choice.available)?.semester ?? offer?.[0];
+    const availableOptions = choices.filter((choice) => choice.available);
+    const canPlanSelected = selected
+        ? canAddToSchedule(selected, {
+              today,
+              allowCurrentOutsideEnrollment: allowCurrentSchedule,
+              custom: calendar
+          })
+        : false;
     const currentPeriod = currentCurriculumPeriod(
         user?.entry_semester,
-        getCurrentSemester()?.semester
+        getCurrentSemester(undefined, calendar)?.semester
     );
     // Texto aplicado após o debounce de 300 ms; inválido mantém o anterior.
     const [text, setText] = useState(() => searchText(q));
@@ -190,23 +207,35 @@ function BuscarPage() {
                     className="h-11 bg-card pl-10 text-sm"
                 />
             </div>
-            <TabFilter
-                label="Categoria da busca"
-                value={category}
-                options={SEARCH_CATEGORIES}
-                labels={searchCategoryLabels}
-                onChange={(value) => void setSearch({ category: value })}
-                className="-my-2"
-            />
-            {subjects && (view?.kind === 'search' || view?.kind === 'unit') && (
-                <OfferSemesterBar
-                    choices={choices}
-                    selected={selected}
-                    onChange={(value) =>
-                        void setSearch({ semester: value === choices[0]?.semester ? null : value })
-                    }
+            <div className="-my-2 flex flex-wrap items-center justify-between gap-2">
+                <TabFilter
+                    label="Categoria da busca"
+                    value={category}
+                    options={SEARCH_CATEGORIES}
+                    labels={searchCategoryLabels}
+                    onChange={(value) => void setSearch({ category: value })}
+                    className="min-w-0 flex-1"
                 />
-            )}
+                {availableOptions.length > 0 && selected && (
+                    <select
+                        aria-label="Semestre da oferta"
+                        value={selected}
+                        onChange={(event) => {
+                            const nextValue = event.target.value;
+                            void setSearch({
+                                semester: nextValue === defaultSemester ? null : nextValue
+                            });
+                        }}
+                        className="h-9 shrink-0 rounded-xl border border-border bg-card px-2.5 text-xs font-semibold text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                        {availableOptions.map((choice) => (
+                            <option key={choice.semester} value={choice.semester}>
+                                {`${choice.semester} · ${choice.kind === 'next' ? 'Planejado' : 'Atual'}`}
+                            </option>
+                        ))}
+                    </select>
+                )}
+            </div>
             <SchedulePreview />
             <div aria-live="polite" className="flex flex-col gap-5 pb-8">
                 {!view && (
@@ -222,19 +251,28 @@ function BuscarPage() {
                 )}
                 {view?.kind === 'recommendations' && (
                     <>
-                        <PlanningGuide choices={choices} />
-                        <RecommendationsSection currentPeriod={currentPeriod} taken={taken} />
+                        <PlanningGuide
+                            choices={choices}
+                            selected={selected}
+                            canPlan={canPlanSelected}
+                            customCalendar={calendar}
+                        />
+                        <RecommendationsSection
+                            currentPeriod={currentPeriod}
+                            taken={taken}
+                            semester={selected}
+                        />
                     </>
                 )}
                 {view?.kind === 'search' && (
                     <SearchResults
-                        key={category}
+                        key={`${category}:${selected ?? ''}`}
                         text={view.text}
                         types={searchTypes[category]}
                         empty={searchEmptyMessages[category]}
                         currentPeriod={currentPeriod}
                         taken={taken}
-                        semester={apiSemester}
+                        semester={selected}
                         onShowCategory={
                             category === 'all'
                                 ? (value) => void setSearch({ category: value })
@@ -242,13 +280,15 @@ function BuscarPage() {
                         }
                     />
                 )}
-                {view?.kind === 'catalog' && <CatalogResults category={view.category} />}
+                {view?.kind === 'catalog' && (
+                    <CatalogResults category={view.category} semester={selected} />
+                )}
                 {view?.kind === 'unit' && (
                     <SubjectResults
                         unit={view.unit}
                         currentPeriod={currentPeriod}
                         taken={taken}
-                        semester={apiSemester}
+                        semester={selected}
                     />
                 )}
             </div>

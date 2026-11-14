@@ -59,7 +59,19 @@ class ProfessorRepository:
         if unit_id is not None:
             conditions.append(Professor.unit_id == unit_id)
         if semester is not None:
-            conditions.append(Professor.disciplines.contains([{"semester": semester}]))
+            seen = aliased(Professor)
+            in_semester_classrooms = (
+                select(lookup_sql(seen.name))
+                .join(ClassroomProfessor, ClassroomProfessor.professor_id == seen.id)
+                .join(Classroom, Classroom.id == ClassroomProfessor.classroom_id)
+                .where(Classroom.semester == semester)
+            )
+            conditions.append(
+                or_(
+                    Professor.disciplines.contains([{"semester": semester}]),
+                    lookup_sql(Professor.name).in_(in_semester_classrooms),
+                )
+            )
         if subject is not None:
             conditions.append(_taught(subject))
         ratings = (

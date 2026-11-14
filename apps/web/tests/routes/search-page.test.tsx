@@ -26,6 +26,7 @@ import {
     useSearchState,
     validateSearch
 } from '#/lib/search-params';
+import { appConfigQueryOptions } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { apiClient } from '#/queries/client';
 import { meQueryOptions } from '#/queries/me';
@@ -172,6 +173,7 @@ describe('página de busca com estado na URL', () => {
     let gate: Promise<void> | null;
 
     beforeEach(() => {
+        offerSemesters = [];
         failPage = null;
         gate = null;
         requests = [];
@@ -183,6 +185,11 @@ describe('página de busca com estado na URL', () => {
             defaultOptions: { queries: { retry: false, staleTime: Infinity } }
         });
         client.setQueryData(meQueryOptions.queryKey, null);
+        client.setQueryData(appConfigQueryOptions.queryKey, {
+            menu: {},
+            links: { automatricula: null, monitor: null },
+            flags: { current_plan: true }
+        });
         const subjects = [
             {
                 code: 'MAT0023',
@@ -219,9 +226,15 @@ describe('página de busca com estado na URL', () => {
                             number: '01'
                         }
                     });
-                // os semestres da oferta não são uma busca
+                // os semestres da oferta e a config não são uma busca
                 if (url.pathname.endsWith('/public/subjects/semesters'))
                     return Response.json(offerSemesters);
+                if (url.pathname.endsWith('/public/config'))
+                    return Response.json({
+                        menu: {},
+                        links: { automatricula: null, monitor: null },
+                        flags: { current_plan: true }
+                    });
                 requests.push(url);
                 const q = url.searchParams.get('q');
                 const page = Number(url.searchParams.get('page') ?? 1);
@@ -802,9 +815,15 @@ describe('página de busca com estado na URL', () => {
                             number: '01'
                         }
                     });
-                // os semestres da oferta não são uma busca
+                // os semestres da oferta e a config não são uma busca
                 if (url.pathname.endsWith('/public/subjects/semesters'))
                     return Response.json(offerSemesters);
+                if (url.pathname.endsWith('/public/config'))
+                    return Response.json({
+                        menu: {},
+                        links: { automatricula: null, monitor: null },
+                        flags: { current_plan: true }
+                    });
                 requests.push(url);
                 return Response.json({
                     subjects: [
@@ -915,5 +934,34 @@ describe('página de busca com estado na URL', () => {
             expect(page.queryByRole('heading', { name: 'Docentes' })).toBeNull();
             expect(page.getByText('Cálculo 1')).toBeDefined();
         });
+    });
+
+    test('seletor de semestre na barra de categorias alterna entre próximo e atual e bloqueia matrícula fora do prazo', async () => {
+        offerSemesters = ['2027.1', '2026.2'];
+        client.setQueryData(appConfigQueryOptions.queryKey, {
+            menu: {},
+            links: { automatricula: null, monitor: null },
+            flags: { current_plan: false }
+        });
+        const page = renderPage('?q=calculo');
+        const select = await page.findByRole('combobox', {
+            name: 'Semestre da oferta'
+        });
+        expect('value' in select ? select.value : undefined).toBe('2027.1');
+        testing.fireEvent.change(select, { target: { value: '2026.2' } });
+        await testing.waitFor(() =>
+            expect(
+                requests.some(
+                    (url) =>
+                        url.pathname.endsWith('/public/search') &&
+                        url.searchParams.get('semester') === '2026.2'
+                )
+            ).toBe(true)
+        );
+        testing.fireEvent.click(page.getByRole('button', { name: /MAT0023/ }));
+        const add = await page.findByRole('button', {
+            name: 'Disponível para adicionar à grade apenas durante o período de matrícula: MAT0023, turma 02'
+        });
+        expect(add.hasAttribute('disabled')).toBe(true);
     });
 });

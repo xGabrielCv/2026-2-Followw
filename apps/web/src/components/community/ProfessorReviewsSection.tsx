@@ -18,6 +18,7 @@ import {
     DialogTitle
 } from '#/components/ui/dialog';
 import { Input } from '#/components/ui/input';
+import { currentRegularSemester } from '#/lib/offer';
 import { titleCase } from '#/lib/profile';
 import {
     ATTENDANCE_LABELS,
@@ -26,6 +27,7 @@ import {
     ratingTone,
     reviewMonth
 } from '#/lib/reviews';
+import { nowInBrasilia } from '#/lib/schedule';
 import { cn } from '#/lib/shadcn';
 import { meQueryOptions } from '#/queries/me';
 import { professorReviewsQueryOptions } from '#/queries/reviews';
@@ -229,7 +231,7 @@ function ReviewsBrowser({ siape }: { siape: number }) {
                     <Input
                         name="semester"
                         id={`review-semester-filter-${siape}`}
-                        placeholder="2026.2"
+                        placeholder={currentRegularSemester(nowInBrasilia().date)}
                         maxLength={6}
                         pattern="20[0-9]{2}\.[12]"
                     />

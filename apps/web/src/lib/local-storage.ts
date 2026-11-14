@@ -12,7 +12,8 @@ export const STORAGE_KEYS = {
     // chamados de suporte: a chave de cada um é a única prova de posse
     SUPPORT: 'support',
     // credenciais aleatórias de cada publicação (e o segredo antigo, até migrar)
-    AUTHOR: 'author'
+    AUTHOR: 'author',
+    ALERT_DISMISSED: 'semester-alert-dismissed'
 } as const;
 
 function getStorage(): Storage | null {
@@ -42,6 +43,7 @@ const SCOPED_KEYS = new Set<string>([
     STORAGE_KEYS.SCHEDULE_PLANS,
     STORAGE_KEYS.REVIEWS,
     STORAGE_KEYS.ACADEMIC_SIMULATION,
+    STORAGE_KEYS.ALERT_DISMISSED,
     'author'
 ]);
 let activeAccount: string | undefined;

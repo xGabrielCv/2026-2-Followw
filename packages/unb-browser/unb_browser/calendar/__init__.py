@@ -5,6 +5,7 @@ from .models import (
     CalendarPeriod,
     ClassesPeriod,
     SemesterCalendar,
+    estimate_regular_semester,
 )
 from .resource import Calendar, load_academic_calendar
 
@@ -16,5 +17,6 @@ __all__ = [
     "CalendarPeriod",
     "ClassesPeriod",
     "SemesterCalendar",
+    "estimate_regular_semester",
     "load_academic_calendar",
 ]

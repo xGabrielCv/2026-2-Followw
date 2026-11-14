@@ -106,8 +106,16 @@ class Settings(BaseSettings):
     # Assina o IP original que o SSR encaminha; sem ele, o encaminhamento é ignorado.
     rate_limit_secret_key: str | None = Field(default=None, min_length=32)
 
+    # ClamAV opcional via socket TCP (`clamd` INSTREAM); sem host configurado não executa antivírus.
+    clamav_host: str | None = None
+    clamav_port: int = Field(default=3310, ge=1, le=65535)
+
     @field_validator(
-        "rate_limit_secret_key", "admin_username", "admin_password_hash", mode="before"
+        "rate_limit_secret_key",
+        "admin_username",
+        "admin_password_hash",
+        "clamav_host",
+        mode="before",
     )
     @classmethod
     def _empty_as_none(cls, value: str | None) -> str | None:

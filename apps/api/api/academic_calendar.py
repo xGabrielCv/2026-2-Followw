@@ -1,14 +1,27 @@
 """Regras que dependem do calendário acadêmico da UnB (`unb_browser`)."""
 
 import enum
+import json
 import re
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
-from unb_browser import CalendarEventCategory, load_academic_calendar
+from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+from unb_browser import (
+    AcademicCalendar,
+    CalendarEventCategory,
+    SemesterCalendar,
+    estimate_regular_semester,
+    load_academic_calendar,
+)
 
 from api.db.enums import ClassroomStatus
+from api.db.models import SystemText
+
+CALENDAR_KEY = "academic_calendar"
 
 _BRASILIA = ZoneInfo("America/Sao_Paulo")
 _SEMESTER = re.compile(r"([0-9]{4})\.([0-9])")
@@ -43,8 +56,9 @@ def ended(
     event: Event,
     tolerance: timedelta = timedelta(),
     on: date | None = None,
+    calendar: AcademicCalendar | None = None,
 ) -> bool:
-    calendar = load_academic_calendar()
+    calendar = calendar or load_academic_calendar()
     semester_calendar = calendar.get_semester(semester)
     if semester_calendar is None:
         # Fora do calendário: o semestre anterior a ele já acabou, o posterior não.
@@ -108,15 +122,99 @@ def _days(start: date, end: date) -> Iterator[date]:
         day += timedelta(days=1)
 
 
-def current_regular_semester(day: date | None = None) -> str:
+@lru_cache(maxsize=8)
+def merged_calendar(raw: str | None = None) -> AcademicCalendar:
+    base = load_academic_calendar()
+    if not raw or raw == "{}":
+        return base
+    try:
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            return base
+        payload = parsed.get("semesters") if "semesters" in parsed else parsed
+        extra = {
+            key: SemesterCalendar.model_validate(value)
+            for key, value in payload.items()
+            if isinstance(value, dict)
+        }
+    except ValueError, TypeError, ValidationError:
+        return base
+    return AcademicCalendar(semesters={**base.semesters, **extra})
+
+
+async def read_custom_calendar(session: AsyncSession) -> dict[str, dict]:
+    row = await session.get(SystemText, CALENDAR_KEY)
+    if row is None:
+        return {}
+    try:
+        parsed = json.loads(row.value)
+        payload = (
+            parsed.get("semesters")
+            if isinstance(parsed, dict) and "semesters" in parsed
+            else parsed
+        )
+        if not isinstance(payload, dict):
+            return {}
+        validated = {
+            key: SemesterCalendar.model_validate(value).model_dump(mode="json")
+            for key, value in payload.items()
+            if isinstance(value, dict)
+        }
+        return validated
+    except ValueError, TypeError, ValidationError:
+        return {}
+
+
+async def read_calendar(session: AsyncSession) -> AcademicCalendar:
+    row = await session.get(SystemText, CALENDAR_KEY)
+    return merged_calendar(row.value if row else None)
+
+
+def current_regular_semester(
+    day: date | None = None, calendar: AcademicCalendar | None = None
+) -> str:
     """O último semestre regular (`.1` ou `.2`) já iniciado; nas férias, o que terminou."""
     day = day or today()
-    started = [
-        semester.semester
-        for semester in load_academic_calendar().list_semesters()
-        if semester.semester[-1] in "12" and semester.period.start <= day
+    cal = calendar or load_academic_calendar()
+    regular = [
+        semester for semester in cal.list_semesters() if semester.semester[-1] in "12"
     ]
-    return max(started)
+    latest_end = max((s.period.end for s in regular), default=date.min)
+    started = [s.semester for s in regular if s.period.start <= day]
+    if started and day <= latest_end:
+        return max(started)
+    return estimate_regular_semester(day)
+
+
+def is_enrollment_period(
+    semester: str, day: date | None = None, calendar: AcademicCalendar | None = None
+) -> bool:
+    day = day or today()
+    cal = calendar or load_academic_calendar()
+    entry = cal.get_semester(semester)
+    if entry is None:
+        return False
+    return any(
+        event.category == CalendarEventCategory.ENROLLMENT
+        and event.start_date <= day <= event.end_date
+        for event in entry.events
+    )
+
+
+def semester_progress_percent(
+    day: date | None = None, calendar: AcademicCalendar | None = None
+) -> int | None:
+    day = day or today()
+    cal = calendar or load_academic_calendar()
+    current = next(
+        (s for s in cal.list_semesters() if s.period.start <= day <= s.period.end),
+        None,
+    )
+    if current is None:
+        return None
+    total = (current.classes.end - current.classes.start).days + 1
+    elapsed = min(total, max(0, (day - current.classes.start).days + 1))
+    return round((elapsed / total) * 100)
 
 
 def shift_regular_semester(semester: str, offset: int) -> str:

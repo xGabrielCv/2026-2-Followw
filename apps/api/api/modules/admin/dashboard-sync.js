@@ -85,11 +85,59 @@ function historyTable(page, state, render) {
 const historyState = { source: '', status: '', page: 1 };
 let refreshTimer;
 
+const SAMPLE_SEMESTER = JSON.stringify({
+    '2028.1': {
+        semester: '2028.1',
+        name: '1º Semestre de 2028',
+        period: { start: '2028-03-06', end: '2028-07-15' },
+        classes: { start: '2028-03-06', end: '2028-07-08', instructional_days: 100 },
+        events: [
+            { name: 'Matrícula', start_date: '2028-02-20', end_date: '2028-02-28', category: 'enrollment' },
+            { id: 'semester_end', name: 'Fim do período letivo', start_date: '2028-07-15', end_date: '2028-07-15', category: 'academic' },
+            { id: 'grades_consolidation', name: 'Consolidação de menções', start_date: '2028-07-16', end_date: '2028-07-22', category: 'academic' },
+        ],
+    },
+}, null, 2);
+
+function calendarPanel(calendar, render) {
+    if (!calendar) return null;
+    const editor = el('textarea', { rows: 8, spellcheck: 'false' }, JSON.stringify(calendar.custom || {}, null, 2));
+    return el('div', { class: 'panel' },
+        el('h3', {}, 'Calendário acadêmico estendido (10+ anos)'),
+        el('p', { class: 'muted' }, `Semestre regular atual: ${calendar.current_semester} · Próximo: ${calendar.next_semester} · Matrícula ativa agora: ${calendar.enrollment_active ? 'sim' : 'não'} · Base embutida até ${calendar.static_latest || '—'}. Após a base embutida, o cálculo automático mantém os semestres funcionando, e você pode cadastrar datas exatas de futuros semestres da UnB abaixo.`),
+        el('label', {}, 'Semestres customizados no banco (JSON)', editor),
+        el('div', { class: 'toolbar' },
+            el('button', { type: 'button', onclick: () => {
+                try {
+                    const current = JSON.parse(editor.value || '{}');
+                    const sample = JSON.parse(SAMPLE_SEMESTER);
+                    editor.value = JSON.stringify({ ...current, ...sample }, null, 2);
+                } catch { editor.value = SAMPLE_SEMESTER; }
+            } }, 'Inserir modelo de exemplo'),
+            el('button', { class: 'primary', type: 'button', onclick: async () => {
+                let parsed;
+                try { parsed = JSON.parse(editor.value || '{}'); }
+                catch { return notice('JSON inválido no calendário.', true); }
+                const semesters = parsed && typeof parsed === 'object' && 'semesters' in parsed ? parsed.semesters : parsed;
+                if (!await confirmation('Salvar calendário customizado?', 'Atualiza o calendário usado pela API e pelo app web em até 1 minuto.')) return;
+                try {
+                    await call('/calendar', { method: 'PUT', body: JSON.stringify({ semesters }) });
+                    notice('Calendário customizado salvo.');
+                    render();
+                } catch (error) { notice(error.message, true); }
+            } }, 'Salvar calendário')));
+}
+
 export async function syncView(render) {
     clearTimeout(refreshTimer);
     const query = new URLSearchParams({ page: String(historyState.page), page_size: '15' });
     for (const key of ['source', 'status']) if (historyState[key]) query.set(key, historyState[key]);
-    const [overview, history, resources] = await Promise.all([call('/sync'), call(`/sync/history?${query}`), call('/sync/resources')]);
+    const [overview, history, resources, calendar] = await Promise.all([
+        call('/sync'),
+        call(`/sync/history?${query}`),
+        call('/sync/resources'),
+        hasPermission('configure') ? call('/calendar').catch(() => null) : Promise.resolve(null),
+    ]);
     if (overview.sources.some((source) => source.running)) refreshTimer = setTimeout(() => { if (location.hash === '#sync') render(); }, 5000);
     return [
         el('div', { class: 'toolbar' }, el('h2', { class: 'grow' }, 'Sincronização e catálogos'), el('button', { onclick: render }, 'Atualizar')),
@@ -97,6 +145,7 @@ export async function syncView(render) {
         el('p', { class: 'muted' }, 'O catálogo e o cardápio são públicos: nada aqui envolve dados de alunos. Se uma fonte falhar, o último dado válido continua sendo servido e uma nova tentativa acontece com espera crescente.'),
         el('div', { class: 'panel' }, el('table', {}, el('thead', {}, el('tr', {}, ['Fonte', 'Situação', 'Última consulta', 'Último sucesso', 'Última mudança real', 'Próxima execução', 'Registros', ''].map((label) => el('th', {}, label)))),
             el('tbody', {}, overview.sources.map((source) => sourceRow(source, render))))),
+        calendarPanel(calendar, render),
         el('div', { class: 'panel' }, el('h3', {}, 'Atividade da comunidade'),
             el('p', { class: 'muted' }, 'Só agregados: a última atividade aparece em hora cheia e não há como ligar um item a quem o publicou.'),
             el('table', {}, el('thead', {}, el('tr', {}, ['Recurso', 'Última atividade (hora)', 'Nas últimas 24 h', 'Total'].map((label) => el('th', {}, label)))),

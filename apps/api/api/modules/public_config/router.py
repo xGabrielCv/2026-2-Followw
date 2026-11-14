@@ -5,7 +5,9 @@ from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
+from unb_browser import SemesterCalendar
 
+from api.academic_calendar import read_custom_calendar
 from api.cache import NoStore
 from api.cookies import ACCESS_COOKIE_NAME, PROFILE_COOKIE_NAME, REFRESH_COOKIE_NAME
 from api.db.main import DatabaseDep
@@ -23,6 +25,7 @@ from api.db.models import (
 from api.flags import flags, menu, texts
 from api.metrics import observe_client_event
 from api.rate_limit import publish_quota
+from api.semester_alert import SemesterAlertConfig, read_alert
 
 router = APIRouter()
 
@@ -58,16 +61,19 @@ class AppLinks(BaseModel):
 
 
 class AppConfig(BaseModel):
-    """O que o app mostra: cartões do Mais ligados pelo admin e os links das ferramentas."""
+    """O que o app mostra: cartões do Mais, bandeiras públicas, calendário estendido e alerta."""
 
     menu: dict[str, bool]
     links: AppLinks
+    flags: dict[str, bool]
+    calendar: dict[str, SemesterCalendar]
+    alert: SemesterAlertConfig
 
 
 @router.get(
     "",
     response_model=AppConfig,
-    summary="Configuração pública do app (cartões do Mais e links das ferramentas)",
+    summary="Configuração pública do app (cartões do Mais, bandeiras, calendário e alerta)",
 )
 async def get_config(db: DatabaseDep, response: Response) -> AppConfig:
     async def read(session: AsyncSession) -> AppConfig:
@@ -79,9 +85,15 @@ async def get_config(db: DatabaseDep, response: Response) -> AppConfig:
                 automatricula=links["automatricula_url"] or None,
                 monitor=links["monitor_url"] or None,
             ),
+            flags=await flags(session),
+            calendar={
+                key: SemesterCalendar.model_validate(value)
+                for key, value in (await read_custom_calendar(session)).items()
+            },
+            alert=await read_alert(session),
         )
 
-    response.headers["Cache-Control"] = "public, max-age=60"
+    response.headers["Cache-Control"] = "no-cache"
     return await db.read(read)
 
 

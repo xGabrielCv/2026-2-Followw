@@ -1,7 +1,7 @@
 import { Outlet, createFileRoute } from '@tanstack/react-router';
 
 import { AppLayout } from '#/components/AppLayout';
-import { SharePrompt } from '#/components/profile/SharePrompt';
+import { SemesterAlertPrompt } from '#/components/profile/SemesterAlertPrompt';
 import { BackgroundSync } from '#/integrations/prefetch/BackgroundSync';
 import { ContentSync } from '#/integrations/prefetch/ContentSync';
 import { loadQuery } from '#/queries/load';
@@ -14,7 +14,7 @@ export const Route = createFileRoute('/_app')({
     component: () => (
         <AppLayout>
             <Outlet />
-            <SharePrompt />
+            <SemesterAlertPrompt />
             <BackgroundSync />
             <ContentSync />
         </AppLayout>

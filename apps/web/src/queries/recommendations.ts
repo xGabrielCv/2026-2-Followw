@@ -25,11 +25,13 @@ export function classroomHistory(classrooms: readonly Classroom[] = []): string[
  */
 export const recommendationsQueryOptions = (
     completed: readonly string[] = NO_CODES,
-    history: readonly string[] = NO_CODES
+    history: readonly string[] = NO_CODES,
+    semester?: string | null
 ) => {
     const query = {
         ...(completed.length ? { completed: [...completed].toSorted() } : {}),
-        ...(history.length ? { history: [...history] } : {})
+        ...(history.length ? { history: [...history] } : {}),
+        ...(semester ? { semester } : {})
     };
     return api.queryOptions(
         'get',
@@ -52,7 +54,9 @@ export function isRecommendationsKey(key: readonly unknown[]) {
     return (
         typeof query !== 'object' ||
         query === null ||
-        Object.keys(query).every((name) => name === 'completed' || name === 'history')
+        Object.keys(query).every(
+            (name) => name === 'completed' || name === 'history' || name === 'semester'
+        )
     );
 }
 

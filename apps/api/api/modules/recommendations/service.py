@@ -53,8 +53,9 @@ class RecommendationService:
         self,
         completed: frozenset[str] = frozenset(),
         history: Sequence[HistoryItem] = (),
+        semester: str | None = None,
     ) -> Ranking:
-        """As matérias da oferta mais recente, ordenadas para o próximo semestre do aluno.
+        """As matérias da oferta pedida (ou a mais recente), ordenadas para o aluno.
 
         O histórico vem do navegador, que já o tem: o servidor não guarda nem relê as menções.
         """
@@ -64,7 +65,7 @@ class RecommendationService:
                 422, "Recomendações disponíveis somente para graduação."
             )
         return await self._db.write(
-            lambda session: _ranking(session, profile, completed, history)
+            lambda session: _ranking(session, profile, completed, history, semester)
         )
 
 
@@ -73,12 +74,13 @@ async def _ranking(
     profile: SigaaProfile,
     completed: frozenset[str],
     history: Sequence[HistoryItem],
+    semester: str | None = None,
 ) -> Ranking:
     found = await enrollment(session, profile)
     if found.curriculum_id is None:
         raise HTTPException(422, "Matriz curricular do aluno não identificada.")
     curriculum = await RecommendationRepository(session).components(found.curriculum_id)
-    reference = await ClassroomRepository(session).offer_semester()
+    reference = semester or await ClassroomRepository(session).offer_semester()
     items = await _rank(
         session,
         curriculum,

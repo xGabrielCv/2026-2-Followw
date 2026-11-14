@@ -451,7 +451,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Configuração pública do app (cartões do Mais e links das ferramentas) */
+        /** Configuração pública do app (cartões do Mais, bandeiras, calendário e alerta) */
         get: operations["get_config_public_config_get"];
         put?: never;
         post?: never;
@@ -1171,7 +1171,7 @@ export interface components {
     schemas: {
         /**
          * AppConfig
-         * @description O que o app mostra: cartões do Mais ligados pelo admin e os links das ferramentas.
+         * @description O que o app mostra: cartões do Mais, bandeiras públicas, calendário estendido e alerta.
          */
         AppConfig: {
             /** Menu */
@@ -1179,6 +1179,15 @@ export interface components {
                 [key: string]: boolean;
             };
             links: components["schemas"]["AppLinks"];
+            /** Flags */
+            flags: {
+                [key: string]: boolean;
+            };
+            /** Calendar */
+            calendar: {
+                [key: string]: components["schemas"]["SemesterCalendar"];
+            };
+            alert: components["schemas"]["SemesterAlertConfig"];
         };
         /** AppLinks */
         AppLinks: {
@@ -1202,6 +1211,42 @@ export interface components {
             semester: string;
             /** Classroom Number */
             classroom_number?: string | null;
+        };
+        /** CalendarEvent */
+        CalendarEvent: {
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            category: components["schemas"]["CalendarEventCategory"];
+        };
+        /**
+         * CalendarEventCategory
+         * @enum {string}
+         */
+        CalendarEventCategory: "academic" | "administrative" | "enrollment" | "holiday" | "optional_holiday" | "university_week" | "other";
+        /** CalendarPeriod */
+        CalendarPeriod: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
         };
         CatalogRequirements: components["schemas"]["SubjectRequirement"][][];
         /**
@@ -1231,6 +1276,21 @@ export interface components {
             /** Curriculum Period */
             curriculum_period?: number | null;
             recommendation?: components["schemas"]["SubjectRecommendation"] | null;
+        };
+        /** ClassesPeriod */
+        ClassesPeriod: {
+            /**
+             * Start
+             * Format: date
+             */
+            start: string;
+            /**
+             * End
+             * Format: date
+             */
+            end: string;
+            /** Instructional Days */
+            instructional_days: number;
         };
         /** ClassroomFrequencyResult */
         ClassroomFrequencyResult: {
@@ -1724,12 +1784,12 @@ export interface components {
             max_daily_upload_attempts: number;
             /**
              * Max Per Subject
-             * @default 50
+             * @default 30
              */
             max_per_subject: number;
             /**
              * Max Subject Bytes
-             * @default 104857600
+             * @default 31457280
              */
             max_subject_bytes: number;
             /**
@@ -2403,6 +2463,76 @@ export interface components {
         };
         /** @enum {string} */
         SearchType: "subjects" | "courses" | "professors";
+        /** SemesterAlertConfig */
+        SemesterAlertConfig: {
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Always On
+             * @default false
+             */
+            always_on: boolean;
+            /**
+             * Preset
+             * @default custom
+             * @enum {string}
+             */
+            preset: "first_day" | "last_day" | "custom";
+            /**
+             * Title
+             * @default Avalie seus professores do semestre
+             */
+            title: string;
+            /**
+             * Message
+             * @default Sua avaliação é anônima e ajuda outros alunos na escolha das turmas.
+             */
+            message: string;
+            /**
+             * Mid Semester Enabled
+             * @default true
+             */
+            mid_semester_enabled: boolean;
+            /**
+             * Mid Semester Chance
+             * @default 35
+             */
+            mid_semester_chance: number;
+            /**
+             * Mid Semester Title
+             * @default Metade do semestre: avalie seus professores!
+             */
+            mid_semester_title: string;
+            /**
+             * Mid Semester Message
+             * @default Já passamos da metade do semestre. Avalie como estão sendo suas aulas e ajude outros estudantes.
+             */
+            mid_semester_message: string;
+            /**
+             * Trigger Id
+             * @default default
+             */
+            trigger_id: string;
+            /** Triggered At */
+            triggered_at?: string | null;
+        };
+        /** SemesterCalendar */
+        SemesterCalendar: {
+            /** Semester */
+            semester: string;
+            /** Name */
+            name: string;
+            period: components["schemas"]["CalendarPeriod"];
+            classes: components["schemas"]["ClassesPeriod"];
+            /**
+             * Events
+             * @default []
+             */
+            events: components["schemas"]["CalendarEvent"][];
+        };
         /** SharingInput */
         SharingInput: {
             /** Shared */

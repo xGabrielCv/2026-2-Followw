@@ -51,9 +51,9 @@ def test_r_ano_05_limite_de_materiais_e_por_turma_e_nao_por_estudante():
     from api.community_limits import CommunityLimits
     from api.modules.materials.service import MAX_PER_SUBJECT
 
-    assert MAX_PER_SUBJECT == 50
+    assert MAX_PER_SUBJECT == 30
     campo = CommunityLimits.model_fields["materials_per_subject"]
-    assert campo.default == 50
+    assert campo.default == 30
     nomes = " ".join(CommunityLimits.model_fields)
     assert not re.search(r"student|aluno|author|user|per_person", nomes, re.IGNORECASE)
 

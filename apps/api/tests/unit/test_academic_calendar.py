@@ -67,3 +67,61 @@ def test_dias_letivos_cobrem_o_semestre_inteiro_e_so_existem_no_calendario():
     days = list(class_days("2026.2"))
     assert (days[0], days[-1]) == (date(2026, 8, 10), date(2026, 12, 14))
     assert list(class_days("2099.1")) == []
+
+
+@pytest.mark.parametrize(
+    ("dia", "esperado"),
+    [
+        (date(2028, 2, 5), "2027.2"),
+        (date(2028, 3, 15), "2028.1"),
+        (date(2029, 9, 10), "2029.2"),
+        (date(2035, 1, 20), "2034.2"),
+    ],
+)
+def test_estima_semestres_regulares_apos_calendario_estatico(hoje, dia, esperado):
+    from api.academic_calendar import (
+        current_regular_semester,
+        estimate_regular_semester,
+    )
+
+    hoje(dia)
+    assert estimate_regular_semester(dia) == esperado
+    assert current_regular_semester() == esperado
+
+
+def test_calendario_mesclado_controla_matricula_e_progresso(hoje):
+    import json
+
+    from api.academic_calendar import (
+        is_enrollment_period,
+        merged_calendar,
+        semester_progress_percent,
+    )
+
+    custom = {
+        "2030.1": {
+            "semester": "2030.1",
+            "name": "2030.1",
+            "period": {"start": "2030-03-01", "end": "2030-07-15"},
+            "classes": {
+                "start": "2030-03-01",
+                "end": "2030-07-10",
+                "instructional_days": 100,
+            },
+            "events": [
+                {
+                    "id": "enrollment",
+                    "name": "Matrícula regular",
+                    "start_date": "2030-03-01",
+                    "end_date": "2030-03-05",
+                    "category": "enrollment",
+                }
+            ],
+        }
+    }
+    cal = merged_calendar(json.dumps(custom))
+    hoje(date(2030, 3, 3))
+    assert is_enrollment_period("2030.1", calendar=cal) is True
+    hoje(date(2030, 5, 10))
+    assert is_enrollment_period("2030.1", calendar=cal) is False
+    assert semester_progress_percent(calendar=cal) >= 50

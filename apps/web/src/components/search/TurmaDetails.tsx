@@ -11,18 +11,32 @@ import { OCCUPANCY_COLOR } from '#/components/search/Seats';
 import { SubjectDisclosure } from '#/components/search/SubjectDisclosure';
 import { SubjectSearchLink } from '#/components/search/SubjectSearchLink';
 import { SubjectStatistics } from '#/components/search/SubjectStatistics';
+import { canAddToSchedule } from '#/lib/offer';
 import { unitLabel } from '#/lib/profile';
-import { describeSchedule } from '#/lib/schedule';
+import { describeSchedule, nowInBrasilia } from '#/lib/schedule';
 import { cn } from '#/lib/shadcn';
+import { useAppConfig } from '#/queries/app-config';
 import { displayedRequirements, seats } from '#/queries/subjects';
 
 export function TurmaDetails({ subject, classroom }: TurmaProps) {
     const { prerequisites, corequisites, equivalences } = displayedRequirements(subject);
     const status = seats(classroom);
     const ratings = useProfessorRatings(classroom.professors.map(({ siape }) => siape));
+    const { calendar, allowCurrentSchedule } = useAppConfig();
+    const canPlan = canAddToSchedule(classroom.semester, {
+        today: nowInBrasilia().date,
+        allowCurrentOutsideEnrollment: allowCurrentSchedule,
+        custom: calendar
+    });
 
     return (
         <div className="flex min-w-0 flex-col gap-4">
+            {!canPlan && (
+                <p className="rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                    Turma do semestre atual em modo visualização (adicionar ao simulador é liberado
+                    durante a matrícula).
+                </p>
+            )}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-muted/40 p-4">
                 <Detail label="Horário" className="col-span-2">
                     <span className="text-primary tabular-nums">

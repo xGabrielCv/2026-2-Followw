@@ -20,6 +20,7 @@ FLAGS: dict[str, str] = {
     "tutorials": "Envio de guias",
     "reports": "Denúncias e pedidos de exclusão",
     "telemetry": "Contagem de uso com consentimento",
+    "current_plan": "Adicionar turmas do semestre atual no simulador (fora da matrícula)",
 }
 
 # Cartões do menu Mais: (rótulo, visível por padrão).
@@ -49,11 +50,14 @@ TEXTS: dict[str, tuple[str, str]] = {
 }
 
 
+_DEFAULT_OFF = {"telemetry", "current_plan"}
+
+
 async def flags(session: AsyncSession) -> dict[str, bool]:
     saved = dict(
         (await session.execute(select(SystemFlag.key, SystemFlag.enabled))).all()
     )
-    return {key: saved.get(key, key != "telemetry") for key in FLAGS}
+    return {key: saved.get(key, key not in _DEFAULT_OFF) for key in FLAGS}
 
 
 async def menu(session: AsyncSession) -> dict[str, bool]:

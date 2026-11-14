@@ -7,6 +7,7 @@ from .calendar import (
     CalendarPeriod,
     ClassesPeriod,
     SemesterCalendar,
+    estimate_regular_semester,
     load_academic_calendar,
 )
 from .exceptions import UnbBrowserError, UnbParseError
@@ -27,5 +28,6 @@ __all__ = [
     "UnbBrowser",
     "UnbBrowserError",
     "UnbParseError",
+    "estimate_regular_semester",
     "load_academic_calendar",
 ]

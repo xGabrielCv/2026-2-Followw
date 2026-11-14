@@ -148,3 +148,38 @@ def test_docente_sem_siape_fica_fora_do_catalogo(client, catalog, database):
     data = client.get("/public/professors", params={"q": "joão"}).json()
     assert [item["siape"] for item in data["items"]] == [456]
     assert data["total"] == 1
+
+
+def test_busca_e_catalogo_filtram_docentes_por_semestre_de_turmas(
+    client, catalog, database
+):
+    from api.db.models import Classroom, ClassroomProfessor
+
+    with database.begin() as session:
+        prof = Professor(siape=789, name="CARLA DA TURMA", unit_id=508, disciplines=[])
+        turma = Classroom(subject_code="CIC0205", number="03", semester="2026.2")
+        session.add_all([prof, turma])
+        session.flush()
+        session.add(ClassroomProfessor(classroom_id=turma.id, professor_id=prof.id))
+
+    catalogo_atual = client.get(
+        "/public/professors", params={"q": "carla", "semester": "2026.2"}
+    ).json()
+    assert [item["siape"] for item in catalogo_atual["items"]] == [789]
+    assert (
+        client.get(
+            "/public/professors", params={"q": "carla", "semester": "2027.1"}
+        ).json()["total"]
+        == 0
+    )
+
+    busca = client.get(
+        "/public/search", params={"q": "carla", "semester": "2026.2"}
+    ).json()
+    assert [item["siape"] for item in busca["professors"]["items"]] == [789]
+    assert (
+        client.get(
+            "/public/search", params={"q": "carla", "semester": "2027.1"}
+        ).json()["professors"]["total"]
+        == 0
+    )

@@ -55,3 +55,12 @@ class AcademicCalendar(BaseModel):
 
     def list_semesters(self) -> tuple[SemesterCalendar, ...]:
         return tuple(self.semesters.values())
+
+
+def estimate_regular_semester(day: date) -> str:
+    """Estimativa determinística do semestre regular quando o calendário oficial ainda não foi importado."""
+    if day.month <= 2:
+        return f"{day.year - 1}.2"
+    if day.month <= 7:
+        return f"{day.year}.1"
+    return f"{day.year}.2"

@@ -198,7 +198,7 @@ test('turmas do semestre atual abre a busca pelo código da matéria sem herdar 
 });
 
 test('com a oferta do próximo semestre publicada, leva às turmas dele para montar a grade', async () => {
-    const current = currentRegularSemester(nowInBrasilia().date)!;
+    const current = currentRegularSemester(nowInBrasilia().date);
     const next = nextRegularSemester(current);
     const page = await renderDetails(subject, 'pending', undefined, null, [next, current]);
     const link = page.getByRole('link', { name: new RegExp(`Planejar ${next}`) });
@@ -216,7 +216,7 @@ test('sem a oferta do próximo semestre, avisa e matéria concluída não oferec
     const pending = await renderDetails(subject, 'pending');
     expect(pending.container.textContent).toContain('ainda não saiu');
     dom.testing.cleanup();
-    const current = currentRegularSemester(nowInBrasilia().date)!;
+    const current = currentRegularSemester(nowInBrasilia().date);
     const done = await renderDetails(subject, 'completed', undefined, null, [
         nextRegularSemester(current)
     ]);

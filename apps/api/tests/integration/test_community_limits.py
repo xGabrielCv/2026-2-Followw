@@ -78,7 +78,10 @@ def test_limites_exigem_permissao_de_configuracao(roles, cargo, status):
     [
         {"forum_replies": 501},
         {"materials_file_mb": 21},
+        {"materials_per_subject": 31},
+        {"materials_subject_mb": 31},
         {"materials_subject_mb": 0},
+        {"materials_total_gb": 0},
         {"forum_replies": "10"},
         {"terminal": "comando"},
     ],
@@ -88,3 +91,38 @@ def test_painel_nao_aumenta_tetos_nem_aceita_campos_livres(owner, client, body):
         client.put("/admin/api/limits", json=body, headers=admin.HEADERS).status_code
         == 422
     )
+
+
+def test_teto_global_de_materiais_recusa_upload_e_limpa_arquivo(
+    client, cookies, database, tmp_path, monkeypatch
+):
+    from io import BytesIO
+
+    from PIL import Image
+    from sigaa_client import Credentials
+
+    from api.core.config import settings
+    from api.db.models import Subject
+    from api.modules.materials import service as materials_service
+
+    monkeypatch.setattr(settings, "materials_dir", str(tmp_path))
+    monkeypatch.setattr(materials_service, "MAX_TOTAL_BYTES", 50)
+    with database.begin() as session:
+        session.add(Subject(code="FGA0999", name="MATERIA LIMITE GLOBAL"))
+
+    out = BytesIO()
+    Image.new("RGB", (20, 20), (10, 20, 30)).save(out, format="PNG")
+    client.cookies.update(
+        cookies(refresh=Credentials(registration="251", password="p"))
+    )
+    resposta = client.post(
+        "/materials/FGA0999",
+        data={
+            "title": "Arquivo acima do teto global",
+            "kind": "prova",
+            "semester": "2026.2",
+        },
+        files={"file": ("item.png", out.getvalue(), "image/png")},
+    )
+    assert resposta.status_code == 409
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []

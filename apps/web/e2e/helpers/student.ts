@@ -11,9 +11,22 @@ export async function login(page: Page, registration = '251000000') {
     await page.getByLabel('Senha do SIGAA', { exact: true }).fill('simulada123');
     await page.getByRole('button', { name: 'Entrar', exact: true }).click();
     await expect(page).toHaveURL(/\/perfil$/);
+    await page
+        .waitForFunction(
+            () =>
+                Boolean(document.querySelector('[role="alertdialog"], [role="dialog"]')) ||
+                window.sessionStorage.getItem('followw:share-prompt-session') === '1',
+            undefined,
+            { timeout: 10000 }
+        )
+        .catch(() => {});
     await expect(async () => {
         const consent = page.getByRole('button', { name: 'Agora não', exact: true });
         if (await consent.isVisible()) await consent.click();
+        const alertClose = page
+            .getByRole('dialog')
+            .getByRole('button', { name: 'Fechar', exact: true });
+        if (await alertClose.isVisible()) await alertClose.click();
         await expect(page.getByRole('button', { name: 'Editar perfil' })).toBeVisible();
     }).toPass({ timeout: 15000 });
 }

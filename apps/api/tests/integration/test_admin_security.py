@@ -402,3 +402,92 @@ def test_recuperacao_local_invalida_sessoes_fatores_e_codigos_sem_apagar_owner(
         ).status_code
         == 200
     )
+
+
+def test_calendario_alerta_e_bandeira_respeitam_rbac_e_refletem_no_public_config(roles):
+    client, cookies, _ = roles
+
+    client.cookies.clear()
+    client.cookies.update(cookies["moderator"])
+    assert client.get("/admin/api/calendar").status_code == 403
+    assert client.get("/admin/api/alert").status_code == 403
+    assert (
+        client.put(
+            "/admin/api/flags/current_plan", json={"enabled": True}, headers=HEADERS
+        ).status_code
+        == 403
+    )
+
+    client.cookies.clear()
+    client.cookies.update(cookies["administrator"])
+    assert (
+        client.put(
+            "/admin/api/flags/current_plan", json={"enabled": True}, headers=HEADERS
+        ).status_code
+        == 200
+    )
+
+    semestre_custom = {
+        "2030.1": {
+            "semester": "2030.1",
+            "name": "2030.1",
+            "period": {"start": "2030-03-01", "end": "2030-07-15"},
+            "classes": {
+                "start": "2030-03-01",
+                "end": "2030-07-10",
+                "instructional_days": 100,
+            },
+            "events": [
+                {
+                    "id": "enrollment",
+                    "name": "Matrícula regular",
+                    "start_date": "2030-03-01",
+                    "end_date": "2030-03-05",
+                    "category": "enrollment",
+                }
+            ],
+        }
+    }
+    assert (
+        client.put(
+            "/admin/api/calendar",
+            json={"semesters": semestre_custom},
+            headers=HEADERS,
+        ).status_code
+        == 200
+    )
+    alerta_res = client.put(
+        "/admin/api/alert",
+        json={
+            "enabled": True,
+            "always_on": False,
+            "preset": "first_day",
+            "title": "Avalie o semestre",
+            "message": "Mensagem personalizada de início do semestre.",
+            "mid_semester_enabled": True,
+            "mid_semester_chance": 50,
+            "mid_semester_title": "Metade",
+            "mid_semester_message": "Hora de avaliar seus docentes.",
+            "trigger_id": "t1",
+            "triggered_at": None,
+        },
+        headers=HEADERS,
+    )
+    assert alerta_res.status_code == 200
+
+    disparo = client.post(
+        "/admin/api/alert/trigger",
+        json={"title": "Avalie o semestre"},
+        headers=HEADERS,
+    )
+    assert disparo.status_code == 200
+    novo_id = disparo.json()["trigger_id"]
+    assert novo_id != "t1"
+    assert disparo.json()["triggered_at"] is not None
+
+    publico = client.get("/public/config")
+    assert publico.status_code == 200
+    dados = publico.json()
+    assert dados["flags"]["current_plan"] is True
+    assert "2030.1" in dados["calendar"]
+    assert dados["alert"]["trigger_id"] == novo_id

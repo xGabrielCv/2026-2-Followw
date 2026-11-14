@@ -1,0 +1,163 @@
+"""Configuração administrativa do calendário estendido e do alerta do semestre."""
+
+import json
+import re
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
+from unb_browser import SemesterCalendar, load_academic_calendar
+
+from api import academic_calendar
+from api.db.main import DatabaseDep
+from api.db.models import SystemText
+from api.modules.admin import auth
+from api.modules.admin.service import log
+from api.semester_alert import (
+    ALERT_PRESETS,
+    SemesterAlertConfig,
+    read_alert,
+    save_alert,
+)
+
+router = APIRouter(dependencies=[auth.require_permission("configure")])
+_SEMESTER_RE = re.compile(r"^\d{4}\.\d$")
+
+
+class CalendarUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    semesters: dict[str, SemesterCalendar]
+
+
+@router.get("/calendar")
+async def get_calendar_admin(db: DatabaseDep) -> dict:
+    async def read(session: AsyncSession) -> dict:
+        cal = await academic_calendar.read_calendar(session)
+        current = academic_calendar.current_regular_semester(calendar=cal)
+        custom = await academic_calendar.read_custom_calendar(session)
+        static = load_academic_calendar().list_semesters()
+        static_latest = max((s.semester for s in static), default=None)
+        return {
+            "current_semester": current,
+            "next_semester": academic_calendar.shift_regular_semester(current, 1),
+            "enrollment_active": academic_calendar.is_enrollment_period(
+                current, calendar=cal
+            ),
+            "static_latest": static_latest,
+            "custom": custom,
+        }
+
+    return await db.read(read)
+
+
+@router.put("/calendar")
+async def save_calendar_admin(
+    body: CalendarUpdate, request: Request, db: DatabaseDep
+) -> dict:
+    for key, value in body.semesters.items():
+        if not _SEMESTER_RE.fullmatch(key) or value.semester != key:
+            raise HTTPException(
+                422, f"Chave '{key}' precisa coincidir com o semestre (AAAA.P)."
+            )
+    payload = json.dumps(
+        {
+            key: value.model_dump(mode="json")
+            for key, value in sorted(body.semesters.items())
+        },
+        ensure_ascii=False,
+    )
+
+    async def write(session: AsyncSession) -> dict:
+        row = await session.get(SystemText, academic_calendar.CALENDAR_KEY)
+        if row is None:
+            session.add(SystemText(key=academic_calendar.CALENDAR_KEY, value=payload))
+        else:
+            row.value = payload
+        await log(
+            session,
+            "academic.calendar",
+            detail=f"{len(body.semesters)} semestre(s) customizado(s)",
+            actor=request.state.admin,
+        )
+        return {"saved": sorted(body.semesters)}
+
+    return await db.write(write)
+
+
+@router.get("/alert")
+async def get_alert_admin(db: DatabaseDep) -> dict:
+    async def read(session: AsyncSession) -> dict:
+        cal = await academic_calendar.read_calendar(session)
+        config = await read_alert(session)
+        return {
+            "config": config,
+            "presets": {
+                key: {"title": title, "message": message}
+                for key, (title, message) in ALERT_PRESETS.items()
+            },
+            "current_semester": academic_calendar.current_regular_semester(
+                calendar=cal
+            ),
+            "progress_percent": academic_calendar.semester_progress_percent(
+                calendar=cal
+            ),
+        }
+
+    return await db.read(read)
+
+
+@router.put("/alert")
+async def update_alert_admin(
+    body: SemesterAlertConfig, request: Request, db: DatabaseDep
+) -> SemesterAlertConfig:
+    async def write(session: AsyncSession) -> SemesterAlertConfig:
+        saved = await save_alert(session, body)
+        await log(
+            session,
+            "community.alert",
+            detail=f"enabled={saved.enabled} always_on={saved.always_on} mid={saved.mid_semester_enabled}:{saved.mid_semester_chance}%",
+            actor=request.state.admin,
+        )
+        return saved
+
+    return await db.write(write)
+
+
+class TriggerInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    title: str | None = None
+    message: str | None = None
+
+
+@router.post("/alert/trigger")
+async def trigger_alert_now(
+    request: Request, db: DatabaseDep, body: TriggerInput | None = None
+) -> SemesterAlertConfig:
+    async def write(session: AsyncSession) -> SemesterAlertConfig:
+        current = await read_alert(session)
+        updates: dict = {
+            "enabled": True,
+            "trigger_id": uuid.uuid4().hex[:12],
+            "triggered_at": datetime.now(UTC),
+        }
+        if body and body.title:
+            updates["title"] = body.title.strip()
+        if body and body.message:
+            updates["message"] = body.message.strip()
+        try:
+            updated = current.model_copy(update=updates)
+            SemesterAlertConfig.model_validate(updated.model_dump())
+        except ValidationError as error:
+            raise HTTPException(422, "Texto do alerta inválido.") from error
+        await save_alert(session, updated)
+        await log(
+            session,
+            "community.alert.trigger",
+            detail=updated.trigger_id,
+            actor=request.state.admin,
+        )
+        return updated
+
+    return await db.write(write)

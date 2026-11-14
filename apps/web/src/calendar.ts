@@ -10,7 +10,7 @@ export type CalendarEventCategory =
     | 'other';
 
 export interface CalendarEvent {
-    id?: string;
+    id?: string | null;
     name: string;
     start_date: string;
     end_date: string;
@@ -39,6 +39,52 @@ export interface AcademicCalendar {
 }
 
 export const academicCalendar: AcademicCalendar = calendarData;
+
+let customSemesters: Record<string, SemesterCalendar> = {};
+
+export function setCustomSemesters(next: Record<string, SemesterCalendar> = {}) {
+    customSemesters = next;
+}
+
+function semesterMap(custom: Record<string, SemesterCalendar> = customSemesters) {
+    return Object.keys(custom).length
+        ? { ...academicCalendar.semesters, ...custom }
+        : academicCalendar.semesters;
+}
+
+/** Estimativa determinística do semestre regular quando ainda não há calendário oficial importado. */
+export function estimateRegularSemesterFromDate(today: string): string {
+    const year = Number(today.slice(0, 4));
+    const month = Number(today.slice(5, 7));
+    if (month <= 2) return `${year - 1}.2`;
+    if (month <= 7) return `${year}.1`;
+    return `${year}.2`;
+}
+
+export function estimateRegularSemester(date: Date = new Date()): string {
+    return estimateRegularSemesterFromDate(
+        date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    );
+}
+
+function syntheticSemester(semester: string): SemesterCalendar {
+    const [year, term] = semester.split('.').map(Number);
+    const period =
+        term === 1
+            ? { start: `${year}-03-01`, end: `${year}-07-31` }
+            : { start: `${year}-08-01`, end: `${year + 1}-02-28` };
+    const classes =
+        term === 1
+            ? { start: `${year}-03-01`, end: `${year}-07-15`, instructional_days: 100 }
+            : { start: `${year}-08-01`, end: `${year}-12-15`, instructional_days: 100 };
+    return {
+        semester,
+        name: `${term}º Semestre de ${year}`,
+        period,
+        classes,
+        events: []
+    };
+}
 
 const NO_CLASS_EVENT_CATEGORIES: ReadonlySet<string> = new Set<CalendarEventCategory>([
     'holiday',
@@ -72,28 +118,47 @@ export function getNoClassReason(date: string): string | undefined {
     return undefined;
 }
 
-export function getSemester(semester: string): SemesterCalendar | undefined {
-    return academicCalendar.semesters[semester];
+export function getSemester(
+    semester: string,
+    custom?: Record<string, SemesterCalendar>
+): SemesterCalendar | undefined {
+    return semesterMap(custom)[semester];
 }
 
-export function listSemesters(): SemesterCalendar[] {
-    return Object.values(academicCalendar.semesters);
+export function listSemesters(custom?: Record<string, SemesterCalendar>): SemesterCalendar[] {
+    return Object.values(semesterMap(custom));
 }
 
-export function getCurrentSemester(date: Date = new Date()): SemesterCalendar | undefined {
+export function isEnrollmentPeriod(
+    semester: string,
+    date: string,
+    custom?: Record<string, SemesterCalendar>
+): boolean {
+    const entry = getSemester(semester, custom);
+    if (!entry) return false;
+    return entry.events.some(
+        (event) =>
+            event.category === 'enrollment' && event.start_date <= date && date <= event.end_date
+    );
+}
+
+export function getCurrentSemester(
+    date: Date = new Date(),
+    custom?: Record<string, SemesterCalendar>
+): SemesterCalendar | undefined {
     const today = date.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-    const semesters = listSemesters();
+    const semesters = listSemesters(custom);
 
-    // Retorna o semestre atual ou o futuro mais próximo
-    return (
+    // Retorna o semestre atual ou o futuro mais próximo; além da base conhecida, estima automaticamente
+    const found =
         semesters.find(({ period }) => period.start <= today && today <= period.end) ??
         semesters
             .filter(({ period }) => period.start > today)
             .reduce<SemesterCalendar | undefined>(
                 (next, s) => (!next || s.period.start < next.period.start ? s : next),
                 undefined
-            )
-    );
+            );
+    return found ?? syntheticSemester(estimateRegularSemesterFromDate(today));
 }
 
 const DAY_MS = 86_400_000;
@@ -111,10 +176,15 @@ export interface SemesterProgress {
 }
 
 /** Quanto do período de aulas do semestre de `date` já passou. */
-export function semesterProgress(date: string): SemesterProgress | undefined {
-    const current = listSemesters().find(
-        ({ period }) => period.start <= date && date <= period.end
-    );
+export function semesterProgress(
+    date: string,
+    custom?: Record<string, SemesterCalendar>
+): SemesterProgress | undefined {
+    const semesters = listSemesters(custom);
+    const knownEnd = semesters.reduce((max, s) => (s.period.end > max ? s.period.end : max), '');
+    const current =
+        semesters.find(({ period }) => period.start <= date && date <= period.end) ??
+        (date > knownEnd ? syntheticSemester(estimateRegularSemesterFromDate(date)) : undefined);
     if (!current) return undefined;
     const { start, end } = current.classes;
     const total = daysBetween(start, end) + 1;

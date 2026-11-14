@@ -121,7 +121,7 @@ export function UploadForm({
                     id="material-title"
                     value={title}
                     maxLength={80}
-                    placeholder="Ex.: P1 de 2026.1 resolvida"
+                    placeholder={`Ex.: P1 de ${semesters[1] ?? semesters[0] ?? '20XX.1'} resolvida`}
                     onChange={(event) => setTitle(event.target.value)}
                 />
             </div>

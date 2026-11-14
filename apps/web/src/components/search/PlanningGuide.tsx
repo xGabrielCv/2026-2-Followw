@@ -1,5 +1,6 @@
 import { CalendarPlus } from 'lucide-react';
 
+import type { SemesterCalendar } from '#/calendar';
 import type { OfferChoice } from '#/lib/offer';
 
 import { Card } from '#/components/ui/card';
@@ -7,11 +8,46 @@ import { enrollmentStart } from '#/lib/offer';
 
 const fullDate = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' });
 
-/** O passo a passo para montar a grade do próximo semestre, acima das recomendações. */
-export function PlanningGuide({ choices }: { choices: OfferChoice[] }) {
+/** O passo a passo para montar a grade ou consultar turmas do semestre selecionado. */
+export function PlanningGuide({
+    choices,
+    selected,
+    canPlan = true,
+    customCalendar
+}: {
+    choices: OfferChoice[];
+    selected?: string;
+    canPlan?: boolean;
+    customCalendar?: Record<string, SemesterCalendar>;
+}) {
     const next = choices.find((choice) => choice.kind === 'next');
+    const current = choices.find((choice) => choice.kind === 'current');
+    if (selected && current && selected === current.semester) {
+        return (
+            <Card size="sm" className="gap-1.5 px-3">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                    <CalendarPlus className="size-4 text-primary" aria-hidden="true" />
+                    Oferta do semestre atual ({current.semester})
+                </p>
+                <p className="text-sm text-muted-foreground">
+                    {canPlan
+                        ? `As recomendações e resultados mostram as turmas de ${current.semester}.`
+                        : `Exibindo turmas de ${current.semester} apenas para consulta. Adicionar à grade do semestre atual fica liberado só durante o período de matrícula.`}
+                </p>
+                {next && !next.available && (
+                    <p className="text-xs text-muted-foreground">
+                        A oferta de {next.semester} ainda não saiu no SIGAA
+                        {enrollmentStart(next.semester, customCalendar)
+                            ? `; a matrícula começa em ${fullDate.format(new Date(`${enrollmentStart(next.semester, customCalendar)}T00:00:00Z`))}`
+                            : ''}
+                        .
+                    </p>
+                )}
+            </Card>
+        );
+    }
     if (!next) return null;
-    const start = enrollmentStart(next.semester);
+    const start = enrollmentStart(next.semester, customCalendar);
     return (
         <Card size="sm" className="gap-2 px-3">
             <p className="flex items-center gap-2 text-sm font-semibold">
@@ -28,8 +64,7 @@ export function PlanningGuide({ choices }: { choices: OfferChoice[] }) {
                         Abra uma matéria e toque em + na turma para colocá-la na prévia da grade.
                     </li>
                     <li>
-                        Para outra matéria, busque pelo nome ou código e escolha {next.semester} em
-                        “Turmas de”. No fluxo, “Planejar {next.semester}” leva direto às turmas.
+                        Você também pode alternar para o semestre atual no seletor ao lado das abas.
                     </li>
                 </ol>
             ) : (

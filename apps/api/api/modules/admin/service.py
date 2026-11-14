@@ -42,6 +42,7 @@ from api.flags import FLAGS, MENU, TEXTS, flags, menu, texts
 from api.modules.admin.models import AdminAccount
 from api.modules.admin.permissions import Principal
 from api.modules.auth.account import periods
+from api.modules.materials import av as material_av
 from api.modules.materials.service import purge_expired
 from api.modules.reports.service import TARGETS, delete_target
 from api.storage import material_storage
@@ -83,6 +84,7 @@ class Overview(BaseModel):
     tables: list[dict[str, Any]]
     materials_bytes: int
     materials_files: int
+    clamav_enabled: bool = False
     counts: dict[str, int]
     pending: dict[str, int]
     users: dict[str, int]
@@ -390,6 +392,7 @@ class AdminService:
             tables=tables,
             materials_bytes=await storage.usage(),
             materials_files=counts[_LABELS["material"]],
+            clamav_enabled=material_av.enabled(),
             counts=counts,
             pending=pending,
             users=users,

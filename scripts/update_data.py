@@ -20,7 +20,7 @@ import tempfile
 from datetime import UTC, date, datetime
 from pathlib import Path
 
-from unb_browser import load_academic_calendar
+from unb_browser import estimate_regular_semester, load_academic_calendar
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "packages" / "sigaa-client" / "scripts"
@@ -36,12 +36,18 @@ _calls_measured = False
 
 def regular_semesters(today: date) -> tuple[str, str]:
     """O semestre regular em curso (ou o último, nas férias) e o seguinte."""
-    started = sorted(
-        semester.semester
+    regular = [
+        semester
         for semester in load_academic_calendar().list_semesters()
-        if semester.semester[-1] in "12" and semester.period.start <= today
+        if semester.semester[-1] in "12"
+    ]
+    latest_end = max((s.period.end for s in regular), default=date.min)
+    started = sorted(s.semester for s in regular if s.period.start <= today)
+    current = (
+        started[-1]
+        if started and today <= latest_end
+        else estimate_regular_semester(today)
     )
-    current = started[-1]
     year, term = map(int, current.split("."))
     return current, f"{year}.2" if term == 1 else f"{year + 1}.1"
 

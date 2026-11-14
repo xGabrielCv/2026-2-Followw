@@ -88,6 +88,41 @@ def _image(data: bytes, mime: str) -> bytes:
         raise InvalidFile("Imagem corrompida ou inválida.") from error
 
 
+_FORBIDDEN_PDF_ACTIONS = {
+    "/Launch",
+    "/RichMedia",
+    "/SubmitForm",
+    "/ImportData",
+}
+
+
+def _pdf_has_forbidden_content(reader: PdfReader) -> bool:
+    root = reader.trailer.get("/Root")
+    root_obj = root.get_object() if hasattr(root, "get_object") else root
+    if isinstance(root_obj, dict):
+        open_action = root_obj.get("/OpenAction")
+        open_obj = (
+            open_action.get_object()
+            if hasattr(open_action, "get_object")
+            else open_action
+        )
+        if isinstance(open_obj, dict) and open_obj.get("/S") in _FORBIDDEN_PDF_ACTIONS:
+            return True
+        names = root_obj.get("/Names")
+        names_obj = names.get_object() if hasattr(names, "get_object") else names
+        if isinstance(names_obj, dict) and "/EmbeddedFiles" in names_obj:
+            return True
+    for page in reader.pages:
+        aa = page.get("/AA")
+        aa_obj = aa.get_object() if hasattr(aa, "get_object") else aa
+        if isinstance(aa_obj, dict):
+            for value in aa_obj.values():
+                val = value.get_object() if hasattr(value, "get_object") else value
+                if isinstance(val, dict) and val.get("/S") in _FORBIDDEN_PDF_ACTIONS:
+                    return True
+    return False
+
+
 def _pdf(data: bytes) -> bytes:
     try:
         reader = PdfReader(BytesIO(data))
@@ -95,6 +130,10 @@ def _pdf(data: bytes) -> bytes:
             raise InvalidFile("PDF protegido por senha não é aceito.")
         if len(reader.pages) > _MAX_PAGES:
             raise InvalidFile(f"PDF com mais de {_MAX_PAGES} páginas.")
+        if _pdf_has_forbidden_content(reader):
+            raise InvalidFile(
+                "PDF com ações externas (Launch/RichMedia) ou arquivos embutidos não é aceito."
+            )
         writer = PdfWriter()
         for page in reader.pages:
             # Ações ao abrir a página (JavaScript) não vão junto.

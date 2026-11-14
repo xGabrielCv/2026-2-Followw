@@ -76,6 +76,7 @@ export function SearchResults({
                                 <ProfessorSection
                                     page={professors}
                                     q={text}
+                                    semester={semester}
                                     onShowAll={showCategory && (() => showCategory('professors'))}
                                 />
                             )}

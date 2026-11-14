@@ -6,6 +6,9 @@ import type { CatalogSubject, SubjectClassroom } from '#/queries/subjects';
 import { TurmaCard } from '#/components/search/TurmaCard';
 import { TurmaDetails } from '#/components/search/TurmaDetails';
 import { TurmaSection } from '#/components/search/TurmaSection';
+import { currentRegularSemester, nextRegularSemester } from '#/lib/offer';
+import { nowInBrasilia } from '#/lib/schedule';
+import { appConfigQueryOptions } from '#/queries/app-config';
 import { meQueryOptions } from '#/queries/me';
 
 import { professorRef } from '../../helpers/professor';
@@ -13,7 +16,7 @@ import { renderWithRouter } from '../../helpers/router';
 
 const classroom: SubjectClassroom = {
     number: '01',
-    semester: '2026.2',
+    semester: nextRegularSemester(currentRegularSemester(nowInBrasilia().date)),
     schedule: '35T23',
     room: 'S3',
     professors: [professorRef('Ana Silva'), professorRef('João Costa')],
@@ -33,6 +36,10 @@ const subject: CatalogSubject = {
 // O botão da grade lê a carga máxima do /me.
 const client = new QueryClient();
 client.setQueryData(meQueryOptions.queryKey, null);
+client.setQueryData(appConfigQueryOptions.queryKey, {
+    menu: {},
+    links: { automatricula: null, monitor: null }
+});
 
 const card = (turma: Partial<SubjectClassroom> = {}) =>
     renderWithRouter(

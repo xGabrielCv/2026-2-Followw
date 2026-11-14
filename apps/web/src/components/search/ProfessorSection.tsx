@@ -5,10 +5,12 @@ import { type ProfessorPage, professorsQueryOptions } from '#/queries/professors
 export function ProfessorSection({
     page,
     q,
+    semester,
     onShowAll
 }: {
     page: ProfessorPage;
     q: string | null;
+    semester?: string;
     onShowAll?: () => void;
 }) {
     return (
@@ -17,7 +19,7 @@ export function ProfessorSection({
             count={`${page.total} ${page.total === 1 ? 'docente encontrado' : 'docentes encontrados'}`}
             noun="docentes"
             first={page}
-            pageOptions={(number) => professorsQueryOptions(q, number)}
+            pageOptions={(number) => professorsQueryOptions(q, number, semester)}
             onShowAll={onShowAll}
         >
             {(professors) => (

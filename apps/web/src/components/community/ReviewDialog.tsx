@@ -23,8 +23,10 @@ import {
     SelectValue
 } from '#/components/ui/select';
 import { Textarea } from '#/components/ui/textarea';
+import { currentRegularSemester } from '#/lib/offer';
 import { titleCase } from '#/lib/profile';
 import { ATTENDANCE_LABELS, ATTENDANCE_OPTIONS, ratingLabel } from '#/lib/reviews';
+import { nowInBrasilia } from '#/lib/schedule';
 import { cn } from '#/lib/shadcn';
 import { apiMessage } from '#/queries/community';
 import { useDeleteReview, useOwnReview, useSaveReview } from '#/queries/reviews';
@@ -230,7 +232,7 @@ function ReviewFields({
                 <Input
                     id="review-semester"
                     value={semester}
-                    placeholder="2026.2"
+                    placeholder={currentRegularSemester(nowInBrasilia().date)}
                     pattern="20[0-9]{2}\.[12]"
                     maxLength={6}
                     onChange={(event) => setSemester(event.target.value)}

@@ -12,8 +12,10 @@ KEY = "community_limits"
 class CommunityLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     materials_file_mb: int = Field(default=20, ge=1, le=20)
-    materials_per_subject: int = Field(default=50, ge=1, le=50)
-    materials_subject_mb: int = Field(default=100, ge=1, le=100)
+    materials_per_subject: int = Field(default=30, ge=1, le=30)
+    materials_subject_mb: int = Field(default=30, ge=1, le=30)
+    # Teto global do projeto em GB (apenas no administrador).
+    materials_total_gb: int = Field(default=50, ge=1, le=500)
     forum_replies: int = Field(default=500, ge=1, le=500)
     # Autorizações de envio por navegador, matéria e dia (não é um limite por aluno).
     upload_attempts_per_day: int = Field(default=10, ge=1, le=10)

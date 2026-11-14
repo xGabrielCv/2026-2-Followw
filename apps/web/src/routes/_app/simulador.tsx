@@ -16,7 +16,7 @@ import { WeeklyTable } from '#/components/schedule/WeeklyTable';
 import { TabFilter } from '#/components/TabFilter';
 import { Button, buttonVariants } from '#/components/ui/button';
 import { Input } from '#/components/ui/input';
-import { currentRegularSemester, nextRegularSemester } from '#/lib/offer';
+import { canAddToSchedule, currentRegularSemester, nextRegularSemester } from '#/lib/offer';
 import {
     activePlan,
     createPlan,
@@ -31,6 +31,7 @@ import { formatRating, ratingTone } from '#/lib/reviews';
 import { nowInBrasilia } from '#/lib/schedule';
 import { averageRating, planMetrics } from '#/lib/schedule-compare';
 import { cn } from '#/lib/shadcn';
+import { useAppConfig } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { meQueryOptions } from '#/queries/me';
 import { useUserSettings } from '#/queries/settings';
@@ -72,9 +73,18 @@ function SimuladorPage() {
         history: 'replace',
         scroll: false
     });
-    const current = currentRegularSemester(nowInBrasilia().date);
+    const { calendar, allowCurrentSchedule } = useAppConfig();
+    const today = nowInBrasilia().date;
+    const current = currentRegularSemester(today, calendar);
     const options = current ? [nextRegularSemester(current), current] : [];
     const semester = picked && options.includes(picked) ? picked : options[0];
+    const canPlan = semester
+        ? canAddToSchedule(semester, {
+              today,
+              allowCurrentOutsideEnrollment: allowCurrentSchedule,
+              custom: calendar
+          })
+        : false;
     const [editing, setEditing] = useState(false);
     const active = value.plans.length ? activePlan(value) : undefined;
     const items = active?.items.filter((item) => item.semester === semester) ?? [];
@@ -183,14 +193,23 @@ function SimuladorPage() {
                         </div>
                     )}
                     {semester && (
-                        <Link
-                            to="/buscar"
-                            search={{ semester }}
-                            className={cn(buttonVariants({ variant: 'default' }), 'self-start')}
-                        >
-                            <Search aria-hidden="true" />
-                            Adicionar turmas de {semester} na Busca
-                        </Link>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <Link
+                                to="/buscar"
+                                search={{ semester }}
+                                className={cn(buttonVariants({ variant: 'default' }), 'self-start')}
+                            >
+                                <Search aria-hidden="true" />
+                                {canPlan
+                                    ? `Adicionar turmas de ${semester} na Busca`
+                                    : `Ver turmas de ${semester} na Busca`}
+                            </Link>
+                            {!canPlan && (
+                                <span className="text-xs text-muted-foreground">
+                                    Adicionar turmas do semestre atual abre durante a matrícula.
+                                </span>
+                            )}
+                        </div>
                     )}
                     {grid ? (
                         <>
@@ -206,7 +225,7 @@ function SimuladorPage() {
                     )}
                 </section>
             )}
-            {semester && (
+            {semester && canPlan && (
                 <SuggestedPlans
                     plans={value.plans}
                     semester={semester}

@@ -900,3 +900,17 @@ async def test_sem_matricula_mira_o_periodo_pendente_inferido(scene, ranked):
         "same_unit": 5,
         "hours": 4,
     }
+
+
+def test_recomendacao_aceita_semestre_especifico(scene):
+    scene.subject("ATUAL", kind="required", period=1, offer=False)
+    scene.subject("PROXIMA", kind="required", period=1, offer=False)
+    with scene.db.begin() as session:
+        session.add(Classroom(subject_code="ATUAL", number="01", semester="2026.2"))
+        session.add(Classroom(subject_code="PROXIMA", number="01", semester="2027.1"))
+
+    padrao = codes(scene.get())
+    assert padrao == ["PROXIMA"]
+
+    atual = codes(scene.get(params={"semester": "2026.2"}))
+    assert atual == ["ATUAL"]
