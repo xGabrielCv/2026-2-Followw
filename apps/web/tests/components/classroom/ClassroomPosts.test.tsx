@@ -8,6 +8,7 @@ import type { ClassroomPost } from '#/queries/classrooms';
 
 import { ClassroomPosts } from '#/components/classroom/ClassroomPosts';
 import { SIGAA_DOWN_MESSAGE } from '#/components/ErrorState';
+import { postReadingsStore } from '#/lib/post-reading';
 import { classroomPostsQueryOptions } from '#/queries/classrooms';
 import { apiClient } from '#/queries/client';
 
@@ -147,6 +148,24 @@ describe('postagens da turma com a API', () => {
                 <ClassroomPosts id="AAA" />
             </QueryClientProvider>
         );
+
+    test('confirma leitura no aparelho sem requisição de escrita e permite desfazer', async () => {
+        const store = postReadingsStore('leitura-componente');
+        store.clear();
+        const page = testing.render(
+            <QueryClientProvider client={client}>
+                <ClassroomPosts id="AAA" registration="leitura-componente" />
+            </QueryClientProvider>
+        );
+        testing.fireEvent.click(await page.findByRole('button', { name: /^Tópico de aula/ }));
+        testing.fireEvent.click(await page.findByRole('button', { name: 'Marcar como lida' }));
+        expect(page.getByText('Lida')).toBeDefined();
+        expect(requests).toHaveLength(1);
+        expect(requests.every((request) => request.method === 'GET')).toBe(true);
+        testing.fireEvent.click(page.getByRole('button', { name: 'Marcar como não lida' }));
+        expect(page.queryByText('Lida')).toBeNull();
+        expect(store.getSnapshot()).toEqual({});
+    });
 
     test('lista os quatro tipos e busca notícia somente ao abrir com ID opaco', async () => {
         const page = renderPosts();

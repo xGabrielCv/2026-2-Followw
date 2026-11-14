@@ -57,13 +57,15 @@ export interface AcademicIndex {
     value: string;
 }
 
+export const formatAcademicIndex = (value: number) => indexFormat.format(value);
+
 export function academicIndexes(user: Pick<UserProfile, 'ira' | 'mp'>): AcademicIndex[] {
     const indexes = [
         { label: 'IRA', description: 'Índice de rendimento acadêmico', value: user.ira },
         { label: 'MP', description: 'Média ponderada', value: user.mp }
     ];
     return indexes.flatMap(({ value, ...index }) =>
-        value == null ? [] : [{ ...index, value: indexFormat.format(value) }]
+        value == null ? [] : [{ ...index, value: formatAcademicIndex(value) }]
     );
 }
 

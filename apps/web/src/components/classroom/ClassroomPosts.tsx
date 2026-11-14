@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 
 import type { ClassroomPost, PostType } from '#/queries/classrooms';
 
@@ -18,6 +18,7 @@ import { Button } from '#/components/ui/button';
 import { Card, CardContent } from '#/components/ui/card';
 import { postDateLabel, postLink, postTypeLabels } from '#/lib/classroom-posts';
 import { Markdown } from '#/lib/markdown';
+import { NO_READINGS, postReadingsStore, postWasRead, setPostReading } from '#/lib/post-reading';
 import { cn } from '#/lib/shadcn';
 import { classroomPostDetailQueryOptions, classroomPostsQueryOptions } from '#/queries/classrooms';
 import { refreshQuery } from '#/queries/refresh';
@@ -30,12 +31,37 @@ const filters: { type: PostType | 'all'; label: string }[] = [
     { type: 'assessment', label: 'Avaliações' }
 ];
 
-export function ClassroomPosts({ id }: { id: string }) {
+const noSubscribe = () => () => {};
+const noReadings = () => NO_READINGS;
+type ReadingAction = { read: boolean; toggle: () => void };
+
+export function ClassroomPosts({ id, registration }: { id: string; registration?: string }) {
     const queryClient = useQueryClient();
     const options = classroomPostsQueryOptions(id);
     const posts = useQuery(options);
     const [openedId, setOpenedId] = useState<string | null>(null);
     const [type, setType] = useState<PostType | 'all'>('all');
+    const readingStore = registration ? postReadingsStore(registration) : null;
+    const readings = useSyncExternalStore(
+        readingStore?.subscribe ?? noSubscribe,
+        readingStore?.getSnapshot ?? noReadings,
+        noReadings
+    );
+    const readingAction = (post: ClassroomPost): ReadingAction | undefined =>
+        readingStore
+            ? {
+                  read: postWasRead(readings, id, post),
+                  toggle: () =>
+                      readingStore.set(
+                          setPostReading(
+                              readingStore.getSnapshot(),
+                              id,
+                              post,
+                              !postWasRead(readingStore.getSnapshot(), id, post)
+                          )
+                      )
+              }
+            : undefined;
 
     if (posts.isPending)
         return (
@@ -121,6 +147,14 @@ export function ClassroomPosts({ id }: { id: string }) {
                                             <Badge variant="secondary">
                                                 {postTypeLabels[post.type]}
                                             </Badge>
+                                            {postWasRead(readings, id, post) && (
+                                                <Badge
+                                                    variant="outline"
+                                                    title="Marcação guardada somente neste aparelho"
+                                                >
+                                                    Lida
+                                                </Badge>
+                                            )}
                                             {postDateLabel(post) && (
                                                 <span className="text-xs font-medium text-muted-foreground tabular-nums">
                                                     {postDateLabel(post)}
@@ -140,9 +174,16 @@ export function ClassroomPosts({ id }: { id: string }) {
                                 <AccordionContent className="pb-3">
                                     {openedId === post.id &&
                                         (post.type === 'news' ? (
-                                            <PostDetail classroomId={id} postId={post.id} />
+                                            <PostDetail
+                                                classroomId={id}
+                                                postId={post.id}
+                                                reading={readingAction(post)}
+                                            />
                                         ) : (
-                                            <PostContent post={post} />
+                                            <PostContent
+                                                post={post}
+                                                reading={readingAction(post)}
+                                            />
                                         ))}
                                 </AccordionContent>
                             </AccordionItem>
@@ -164,7 +205,15 @@ function PostsMessage({ children }: { children: React.ReactNode }) {
     );
 }
 
-function PostDetail({ classroomId, postId }: { classroomId: string; postId: string }) {
+function PostDetail({
+    classroomId,
+    postId,
+    reading
+}: {
+    classroomId: string;
+    postId: string;
+    reading?: ReadingAction;
+}) {
     const detail = useQuery(classroomPostDetailQueryOptions(classroomId, postId));
     if (detail.isPending) return <LoadingText>Carregando postagem...</LoadingText>;
     if (detail.isLoadingError)
@@ -172,12 +221,12 @@ function PostDetail({ classroomId, postId }: { classroomId: string; postId: stri
     return (
         <>
             {detail.isError && <StaleDataNotice subject="esta postagem" className="mb-3" />}
-            <PostContent post={detail.data} />
+            <PostContent post={detail.data} reading={reading} />
         </>
     );
 }
 
-function PostContent({ post }: { post: ClassroomPost }) {
+function PostContent({ post, reading }: { post: ClassroomPost; reading?: ReadingAction }) {
     const url = postLink(post.url);
     const attachments = post.attachments.flatMap((attachment) => {
         const href = postLink(attachment.url);
@@ -185,6 +234,17 @@ function PostContent({ post }: { post: ClassroomPost }) {
     });
     return (
         <div className="flex flex-col gap-3">
+            {reading && (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    aria-pressed={reading.read}
+                    onClick={reading.toggle}
+                >
+                    {reading.read ? 'Marcar como não lida' : 'Marcar como lida'}
+                </Button>
+            )}
             {post.content && <Markdown>{post.content}</Markdown>}
             {post.type === 'assessment' && postDateLabel(post) && (
                 <p className="text-sm text-muted-foreground">

@@ -1,6 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link, Navigate, createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
-import { GitFork, LogOut, ShieldCheck } from 'lucide-react';
+import { Calculator, GitFork, LogOut, ShieldCheck } from 'lucide-react';
 
 import { ErrorState } from '#/components/ErrorState';
 import { GitHubLink } from '#/components/GitHubLink';
@@ -79,7 +79,23 @@ function PerfilPage() {
             />
             <div className="my-4 flex flex-col gap-4">
                 <InstallPromptCard />
-                <AcademicPerformance user={user} />
+                <AcademicPerformance
+                    user={user}
+                    action={
+                        user.level === 'Graduação' ? (
+                            <Link
+                                to="/perfil/simulador"
+                                className={cn(
+                                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                                    'mt-2'
+                                )}
+                            >
+                                <Calculator aria-hidden="true" />
+                                Simular IRA e MP
+                            </Link>
+                        ) : undefined
+                    }
+                />
                 <ProgressSection user={user} />
                 <AccountSection
                     user={localProfile(user, settings.profile)}

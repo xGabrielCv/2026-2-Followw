@@ -80,6 +80,7 @@ def test_login_seguido_de_me_responde_do_cookie_do_navegador(client, sigaa):
         "unit": {"id": 673, "code": "FCTE", "name": "CAMPUS UNB GAMA"},
         "course": {"id": ANY, "name": "ENGENHARIA DE SOFTWARE", "shift": None},
         "entry_semester": "2025.1",
+        "curriculum_subject_codes": None,
         "integralization": 35,
         "workload": {
             "total": 3525,
@@ -724,3 +725,96 @@ def test_openapi_documenta_dados_privados_do_restaurante(client):
     assert schema["components"]["schemas"]["RestaurantStatement"]["properties"][
         "group"
     ]["anyOf"][0]["enum"] == [1, 2, 3, 4]
+
+
+@pytest.mark.parametrize("com_matriz", [False, True])
+def test_me_informa_codigos_nulos_ou_vazios_sem_consultar_sigaa(
+    client, sigaa, database, com_matriz
+):
+    sigaa.profile = PERFIL
+    assert (
+        client.post(
+            "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
+        ).status_code
+        == 200
+    )
+    assert client.get("/me").status_code == 200
+    if com_matriz:
+        with database.begin() as session:
+            course = session.scalars(select(Course)).one()
+            session.add(
+                Curriculum(
+                    course_id=course.id,
+                    sigaa_id=91001,
+                    code="6360/1",
+                    valid_from="2025.1",
+                    created_year=2025,
+                    active=True,
+                    matrix="ENGENHARIA DE SOFTWARE",
+                )
+            )
+    requests_before = sigaa.profile_requests
+    response = client.get("/me")
+    assert response.status_code == 200
+    assert response.json()["curriculum_subject_codes"] == ([] if com_matriz else None)
+    assert sigaa.profile_requests == requests_before
+
+
+def test_me_traz_codigos_normalizados_unicos_e_ordenados_so_da_matriz_publica(
+    client, sigaa, database
+):
+    from api.db.models import CurriculumComponent
+
+    sigaa.profile = PERFIL
+    assert (
+        client.post(
+            "/auth/sigaa", json={"registration": "251000000", "password": "senha123"}
+        ).status_code
+        == 200
+    )
+    assert client.get("/me").status_code == 200
+    with database.begin() as session:
+        course = session.scalars(select(Course)).one()
+        matrix = Curriculum(
+            course_id=course.id,
+            sigaa_id=91002,
+            code="6360/1",
+            valid_from="2025.1",
+            created_year=2025,
+            active=True,
+            matrix="ENGENHARIA DE SOFTWARE",
+        )
+        future = Curriculum(
+            course_id=course.id,
+            sigaa_id=91003,
+            code="6360/2",
+            valid_from="2027.1",
+            created_year=2027,
+            active=True,
+            matrix="ENGENHARIA DE SOFTWARE",
+        )
+        session.add_all([matrix, future])
+        session.flush()
+        for code, kind in [
+            (" zzz0001 ", "optional"),
+            ("AAA0001", "required"),
+            ("AAA0001", "optional"),
+        ]:
+            session.add(
+                CurriculumComponent(
+                    curriculum_id=matrix.id, subject_code=code, kind=kind, period=1
+                )
+            )
+        session.add(
+            CurriculumComponent(
+                curriculum_id=future.id,
+                subject_code="FUT0001",
+                kind="required",
+                period=1,
+            )
+        )
+    requests_before = sigaa.profile_requests
+    response = client.get("/me")
+    assert response.status_code == 200
+    assert response.json()["curriculum_subject_codes"] == ["AAA0001", "ZZZ0001"]
+    assert sigaa.profile_requests == requests_before

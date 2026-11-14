@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
     THEME: 'theme',
     SCHEDULE: 'schedule',
     SCHEDULE_PLANS: 'schedule-plans',
+    ACADEMIC_SIMULATION: 'academic-simulation',
     LAYOUT: 'layout',
     REVIEWS: 'reviews',
     // chamados de suporte: a chave de cada um é a única prova de posse
@@ -37,7 +38,12 @@ export function isStorageBlocked(): boolean {
     }
 }
 
-const SCOPED_KEYS = new Set<string>([STORAGE_KEYS.SCHEDULE_PLANS, STORAGE_KEYS.REVIEWS, 'author']);
+const SCOPED_KEYS = new Set<string>([
+    STORAGE_KEYS.SCHEDULE_PLANS,
+    STORAGE_KEYS.REVIEWS,
+    STORAGE_KEYS.ACADEMIC_SIMULATION,
+    'author'
+]);
 let activeAccount: string | undefined;
 export const localAccount = () => activeAccount ?? 'visitor';
 function formatKey(key: string): string {
@@ -133,7 +139,11 @@ export const localStorageRepository: LocalStorageRepository = {
 };
 
 // Dados da conta, apagados ao trocar de sessão.
-const ACCOUNT_KEYS: string[] = [STORAGE_KEYS.SCHEDULE_PLANS, STORAGE_KEYS.REVIEWS];
+const ACCOUNT_KEYS: string[] = [
+    STORAGE_KEYS.SCHEDULE_PLANS,
+    STORAGE_KEYS.REVIEWS,
+    STORAGE_KEYS.ACADEMIC_SIMULATION
+];
 const stores = new Map<string, { clear: () => void; reset: () => void }>();
 
 /** Valor salvo no storage e observável pelo `useSyncExternalStore`. */

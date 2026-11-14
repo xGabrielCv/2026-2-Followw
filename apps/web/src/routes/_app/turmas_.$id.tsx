@@ -178,7 +178,11 @@ function ClassroomPage() {
                             ))}
                         </TabsList>
                         <TabsContent value="posts">
-                            <ClassroomPosts key={id} id={id} />
+                            <ClassroomPosts
+                                key={`${user?.registration}:${id}`}
+                                id={id}
+                                registration={user?.registration}
+                            />
                         </TabsContent>
                         {classroom.current ? (
                             <TabsContent value="frequency">

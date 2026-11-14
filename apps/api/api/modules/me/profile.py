@@ -16,6 +16,7 @@ from api.db.main import DatabaseDep
 from api.db.models import Course, Curriculum
 from api.modules.public_courses.repository import PublicCourseRepository
 from api.modules.recommendations.ranking import CurriculumInfo, select_curriculum
+from api.modules.recommendations.repository import RecommendationRepository
 from api.schemas import CourseRef, UnitRef, course_ref, unit_ref
 
 
@@ -32,6 +33,7 @@ class UserProfile(BaseModel):
     unit: UnitRef | None
     course: CourseRef | None
     entry_semester: str | None
+    curriculum_subject_codes: list[str] | None = None
     integralization: int | None
     workload: CurriculumWorkload | None
     # Carga horária máxima por período da matriz do aluno, em horas.
@@ -92,6 +94,11 @@ async def _to_profile(
     session: AsyncSession, profile: sigaa_client.UserProfile
 ) -> UserProfile:
     found = await enrollment(session, profile)
+    codes = (
+        sorted(await RecommendationRepository(session).components(found.curriculum.id))
+        if found.curriculum
+        else None
+    )
     return UserProfile(
         name=profile.name,
         registration=profile.registration,
@@ -101,6 +108,7 @@ async def _to_profile(
         unit=unit_ref(found.course.unit) if found.course else None,
         course=course_ref(found.course),
         entry_semester=profile.entry_semester,
+        curriculum_subject_codes=codes,
         integralization=profile.integralization,
         workload=profile.workload,
         period_max_workload=found.curriculum.period_max_workload

@@ -36,6 +36,7 @@ import { Route as AppGuiasIdRouteImport } from './routes/_app/guias_.$id'
 import { Route as AppGuiasNovoRouteImport } from './routes/_app/guias_.novo'
 import { Route as AppMateriaisCodeRouteImport } from './routes/_app/materiais_.$code'
 import { Route as AppPerfilDadosRouteImport } from './routes/_app/perfil_.dados'
+import { Route as AppPerfilSimuladorRouteImport } from './routes/_app/perfil_.simulador'
 import { Route as AppProfessoresSiapeRouteImport } from './routes/_app/professores_.$siape'
 import { Route as AppSuporteIdRouteImport } from './routes/_app/suporte_.$id'
 import { Route as AppTurmasIdRouteImport } from './routes/_app/turmas_.$id'
@@ -175,6 +176,11 @@ const AppPerfilDadosRoute = AppPerfilDadosRouteImport.update({
   path: '/perfil/dados',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPerfilSimuladorRoute = AppPerfilSimuladorRouteImport.update({
+  id: '/perfil_/simulador',
+  path: '/perfil/simulador',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppProfessoresSiapeRoute = AppProfessoresSiapeRouteImport.update({
   id: '/professores_/$siape',
   path: '/professores/$siape',
@@ -223,6 +229,7 @@ export interface FileRoutesByFullPath {
   '/guias/novo': typeof AppGuiasNovoRoute
   '/materiais/$code': typeof AppMateriaisCodeRoute
   '/perfil/dados': typeof AppPerfilDadosRoute
+  '/perfil/simulador': typeof AppPerfilSimuladorRoute
   '/professores/$siape': typeof AppProfessoresSiapeRoute
   '/suporte/$id': typeof AppSuporteIdRoute
   '/turmas/$id': typeof AppTurmasIdRoute
@@ -255,6 +262,7 @@ export interface FileRoutesByTo {
   '/guias/novo': typeof AppGuiasNovoRoute
   '/materiais/$code': typeof AppMateriaisCodeRoute
   '/perfil/dados': typeof AppPerfilDadosRoute
+  '/perfil/simulador': typeof AppPerfilSimuladorRoute
   '/professores/$siape': typeof AppProfessoresSiapeRoute
   '/suporte/$id': typeof AppSuporteIdRoute
   '/turmas/$id': typeof AppTurmasIdRoute
@@ -289,6 +297,7 @@ export interface FileRoutesById {
   '/_app/guias_/novo': typeof AppGuiasNovoRoute
   '/_app/materiais_/$code': typeof AppMateriaisCodeRoute
   '/_app/perfil_/dados': typeof AppPerfilDadosRoute
+  '/_app/perfil_/simulador': typeof AppPerfilSimuladorRoute
   '/_app/professores_/$siape': typeof AppProfessoresSiapeRoute
   '/_app/suporte_/$id': typeof AppSuporteIdRoute
   '/_app/turmas_/$id': typeof AppTurmasIdRoute
@@ -323,6 +332,7 @@ export interface FileRouteTypes {
     | '/guias/novo'
     | '/materiais/$code'
     | '/perfil/dados'
+    | '/perfil/simulador'
     | '/professores/$siape'
     | '/suporte/$id'
     | '/turmas/$id'
@@ -355,6 +365,7 @@ export interface FileRouteTypes {
     | '/guias/novo'
     | '/materiais/$code'
     | '/perfil/dados'
+    | '/perfil/simulador'
     | '/professores/$siape'
     | '/suporte/$id'
     | '/turmas/$id'
@@ -388,6 +399,7 @@ export interface FileRouteTypes {
     | '/_app/guias_/novo'
     | '/_app/materiais_/$code'
     | '/_app/perfil_/dados'
+    | '/_app/perfil_/simulador'
     | '/_app/professores_/$siape'
     | '/_app/suporte_/$id'
     | '/_app/turmas_/$id'
@@ -593,6 +605,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPerfilDadosRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/perfil_/simulador': {
+      id: '/_app/perfil_/simulador'
+      path: '/perfil/simulador'
+      fullPath: '/perfil/simulador'
+      preLoaderRoute: typeof AppPerfilSimuladorRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/professores_/$siape': {
       id: '/_app/professores_/$siape'
       path: '/professores/$siape'
@@ -647,6 +666,7 @@ interface AppRouteChildren {
   AppGuiasNovoRoute: typeof AppGuiasNovoRoute
   AppMateriaisCodeRoute: typeof AppMateriaisCodeRoute
   AppPerfilDadosRoute: typeof AppPerfilDadosRoute
+  AppPerfilSimuladorRoute: typeof AppPerfilSimuladorRoute
   AppProfessoresSiapeRoute: typeof AppProfessoresSiapeRoute
   AppSuporteIdRoute: typeof AppSuporteIdRoute
   AppTurmasIdRoute: typeof AppTurmasIdRoute
@@ -676,6 +696,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppGuiasNovoRoute: AppGuiasNovoRoute,
   AppMateriaisCodeRoute: AppMateriaisCodeRoute,
   AppPerfilDadosRoute: AppPerfilDadosRoute,
+  AppPerfilSimuladorRoute: AppPerfilSimuladorRoute,
   AppProfessoresSiapeRoute: AppProfessoresSiapeRoute,
   AppSuporteIdRoute: AppSuporteIdRoute,
   AppTurmasIdRoute: AppTurmasIdRoute,

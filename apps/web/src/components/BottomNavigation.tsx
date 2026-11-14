@@ -54,6 +54,7 @@ export const BottomNavigation: React.FC = () => {
         (item) =>
             item.to === pathname ||
             (item.to === '/turmas' && pathname.startsWith('/turmas/')) ||
+            (item.to === '/perfil' && pathname.startsWith('/perfil/')) ||
             (item.to === '/mais' &&
                 MORE_PAGES.some((page) => pathname === page || pathname.startsWith(`${page}/`)))
     );

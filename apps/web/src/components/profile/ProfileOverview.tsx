@@ -40,12 +40,19 @@ export function ProfileIdentity({
     );
 }
 
-export function AcademicPerformance({ user }: { user: UserProfile }) {
-    if (academicIndexes(user).length === 0) return null;
+export function AcademicPerformance({
+    user,
+    action
+}: {
+    user: UserProfile;
+    action?: React.ReactNode;
+}) {
+    if (academicIndexes(user).length === 0 && !action) return null;
 
     return (
         <ProfileSection title="Desempenho">
             <AcademicIndexesCard user={user} />
+            {action}
         </ProfileSection>
     );
 }
