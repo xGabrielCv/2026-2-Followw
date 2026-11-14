@@ -317,7 +317,7 @@ class TextInput(BaseModel):
 @api.put("/menu/{key}", dependencies=[auth.require_permission("configure")])
 async def set_menu(
     service: AdminServiceDep,
-    key: Annotated[str, Field(pattern=r"^[a-z]{3,20}$")],
+    key: Annotated[str, Field(pattern=r"^[a-z_]{3,32}$")],
     body: MenuInput,
 ) -> dict[str, bool]:
     return await service.set_menu(key, body.visible)

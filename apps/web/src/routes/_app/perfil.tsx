@@ -1,4 +1,4 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, Navigate, createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { Calculator, GitFork, LogOut, ShieldCheck } from 'lucide-react';
 
@@ -34,6 +34,7 @@ import { Button, buttonVariants } from '#/components/ui/button';
 import { localProfile } from '#/lib/local-profile';
 import { useOnline } from '#/lib/online';
 import { cn } from '#/lib/shadcn';
+import { appConfigQueryOptions, menuVisible } from '#/queries/app-config';
 import { useLogout } from '#/queries/auth';
 import { loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
@@ -66,6 +67,7 @@ export const Route = createFileRoute('/_app/perfil')({
 
 function PerfilPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
+    const { data: config } = useQuery(appConfigQueryOptions);
     const settings = useUserSettings();
 
     // sessão encerrada por um 401 em qualquer query ou mutation
@@ -82,7 +84,7 @@ function PerfilPage() {
                 <AcademicPerformance
                     user={user}
                     action={
-                        user.level === 'Graduação' ? (
+                        user.level === 'Graduação' && menuVisible(config, 'simulador_ira') ? (
                             <Link
                                 to="/perfil/simulador"
                                 className={cn(

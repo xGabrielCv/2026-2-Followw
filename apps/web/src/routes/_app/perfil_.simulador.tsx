@@ -8,6 +8,7 @@ import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState'
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { AcademicSimulator } from '#/components/profile/AcademicSimulator';
+import { appConfigQueryOptions, menuVisible } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
@@ -29,8 +30,11 @@ export const Route = createFileRoute('/_app/perfil_/simulador')({
 
 function SimulatorPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
+    const { data: config } = useQuery(appConfigQueryOptions);
     if (!user) return <Navigate to="/login" replace />;
-    if (user.level !== 'Graduação') return <Navigate to="/perfil" replace />;
+    if (user.level !== 'Graduação' || !menuVisible(config, 'simulador_ira')) {
+        return <Navigate to="/perfil" replace />;
+    }
     return <SimulatorData user={user} />;
 }
 

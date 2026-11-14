@@ -21,12 +21,15 @@ import {
 } from '#/lib/academic-simulation';
 import { groupBySemester } from '#/lib/classroom-details';
 import { formatAcademicIndex, titleCase } from '#/lib/profile';
+import { cn } from '#/lib/shadcn';
 
-const chartConfig = {
-    ira: { label: 'IRA', color: 'var(--primary)' },
-    projectedIra: { label: 'Projeção', color: 'var(--destructive)' }
-};
 const displayIndex = (value: number | null) => (value === null ? '—' : formatAcademicIndex(value));
+
+function futureTone(baseline: number | null, simulated: number | null) {
+    if (simulated === null) return 'text-muted-foreground';
+    if (baseline !== null && simulated < baseline - 1e-9) return 'text-destructive';
+    return 'text-success';
+}
 
 function changeGrade(classroom: Classroom, grade: Grade | null) {
     const next = { ...simulatedGrades.getSnapshot() };
@@ -110,6 +113,20 @@ export function AcademicSimulator({
     );
     const chartData = evolutionChartPoints(evolution);
     const projected = evolution.at(-1)?.projected === true;
+    const projectedIndex = evolution.findIndex((point) => point.projected);
+    const projectedPoint = projectedIndex >= 0 ? evolution[projectedIndex] : undefined;
+    const comparisonIra = projectedIndex > 0 ? evolution[projectedIndex - 1].ira : baseline.ira;
+    const projectedDropped =
+        projectedPoint !== undefined &&
+        comparisonIra !== null &&
+        projectedPoint.ira < comparisonIra - 1e-9;
+    const chartConfig = {
+        ira: { label: 'IRA', color: 'var(--info)' },
+        projectedIra: {
+            label: 'Projeção',
+            color: projectedDropped ? 'var(--destructive)' : 'var(--success)'
+        }
+    };
 
     function rows(items: Classroom[]) {
         return (
@@ -163,13 +180,13 @@ export function AcademicSimulator({
                     <dl className="grid grid-cols-2 gap-4">
                         <div>
                             <dt className="text-muted-foreground">IRA atual</dt>
-                            <dd className="text-2xl font-semibold text-primary tabular-nums">
+                            <dd className="text-2xl font-semibold text-info tabular-nums">
                                 {displayIndex(baseline.ira)}
                             </dd>
                         </div>
                         <div>
                             <dt className="text-muted-foreground">MP atual</dt>
-                            <dd className="text-2xl font-semibold text-primary tabular-nums">
+                            <dd className="text-2xl font-semibold text-info tabular-nums">
                                 {displayIndex(baseline.mp)}
                             </dd>
                         </div>
@@ -178,13 +195,23 @@ export function AcademicSimulator({
                         <dl className="grid grid-cols-2 gap-4 border-t border-border pt-3">
                             <div>
                                 <dt className="text-muted-foreground">IRA futuro</dt>
-                                <dd className="text-2xl font-semibold text-destructive tabular-nums">
+                                <dd
+                                    className={cn(
+                                        'text-2xl font-semibold tabular-nums',
+                                        futureTone(baseline.ira, ira)
+                                    )}
+                                >
                                     {displayIndex(ira)}
                                 </dd>
                             </div>
                             <div>
                                 <dt className="text-muted-foreground">MP futuro</dt>
-                                <dd className="text-2xl font-semibold text-destructive tabular-nums">
+                                <dd
+                                    className={cn(
+                                        'text-2xl font-semibold tabular-nums',
+                                        futureTone(baseline.mp, mp)
+                                    )}
+                                >
                                     {displayIndex(mp)}
                                 </dd>
                             </div>
@@ -282,7 +309,7 @@ export function AcademicSimulator({
                                         dataKey="ira"
                                         stroke="var(--color-ira)"
                                         strokeWidth={2}
-                                        dot={{ r: 3 }}
+                                        dot={{ r: 3, fill: 'var(--color-ira)' }}
                                         connectNulls={false}
                                         isAnimationActive={false}
                                     />
@@ -299,9 +326,17 @@ export function AcademicSimulator({
                         </div>
                     )}
                     {projected && (
-                        <p className="flex items-center gap-1.5 text-xs text-destructive">
+                        <p
+                            className={cn(
+                                'flex items-center gap-1.5 text-xs',
+                                projectedDropped ? 'text-destructive' : 'text-success'
+                            )}
+                        >
                             <span
-                                className="inline-block size-2 rounded-full bg-destructive"
+                                className={cn(
+                                    'inline-block size-2 rounded-full',
+                                    projectedDropped ? 'bg-destructive' : 'bg-success'
+                                )}
                                 aria-hidden="true"
                             />
                             * Projeção para {current}.

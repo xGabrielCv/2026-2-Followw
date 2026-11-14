@@ -73,13 +73,16 @@ test('permite acesso ao simulador mesmo sem índices disponíveis', () => {
     expect(markup).not.toContain('<dl');
 });
 
-async function renderMais(user: components['schemas']['UserProfile'] | null) {
+async function renderMais(
+    user: components['schemas']['UserProfile'] | null,
+    menu: Record<string, boolean> = {}
+) {
     const client = new QueryClient({
         defaultOptions: { queries: { staleTime: Infinity, enabled: false } }
     });
     client.setQueryData(meQueryOptions.queryKey, user);
     client.setQueryData(appConfigQueryOptions.queryKey, {
-        menu: {},
+        menu,
         links: { automatricula: null, monitor: null }
     });
     const root = createRootRoute({ component: MaisRoute.options.component });
@@ -123,4 +126,8 @@ test('exibe atalho de Simular IRA e MP na aba Mais após Estatísticas comparada
 
     const pos = await renderMais({ ...baseUser, level: 'Pós-graduação' });
     expect(pos).not.toContain('Simular IRA e MP');
+
+    const hidden = await renderMais(baseUser, { simulador_ira: false });
+    expect(hidden).not.toContain('Simular IRA e MP');
+    expect(hidden).not.toContain('href="/perfil/simulador"');
 });

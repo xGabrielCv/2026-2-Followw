@@ -174,6 +174,8 @@ class Classroom(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UniqueConstraint(
             "subject_code", "number", "semester", name="uq_classroom_subject_number"
         ),
+        Index("ix_classroom_semester", "semester"),
+        Index("ix_classroom_offer_active_semester", "offer_active", "semester"),
     )
 
     sigaa_id: Mapped[int | None] = mapped_column()

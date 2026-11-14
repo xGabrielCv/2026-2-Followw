@@ -9,7 +9,9 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from api import session_lock
 from api.core.config import settings
+from api.db.main import engine
 from api.errors import EXCEPTION_HANDLERS
 from api.logger import RequestLoggingMiddleware
 from api.maintenance import MaintenanceMiddleware
@@ -159,6 +161,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     finally:
         await scheduler.stop()
         await sink.stop()
+        await session_lock.close()
+        await engine.dispose()
 
 
 app = FastAPI(

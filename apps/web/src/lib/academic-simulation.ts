@@ -96,7 +96,7 @@ export interface EvolutionChartPoint {
     projected: boolean;
 }
 
-// divide a série para destacar em vermelho apenas o segmento até o semestre projetado
+// divide a série para destacar o segmento até o semestre projetado
 export function evolutionChartPoints(
     evolution: { semester: string; ira: number; projected: boolean }[]
 ): EvolutionChartPoint[] {

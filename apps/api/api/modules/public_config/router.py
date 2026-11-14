@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.cache import NoStore
@@ -97,6 +97,20 @@ _PARTS = {
 }
 
 
+_VERSION_QUERY = union_all(
+    *[
+        select(
+            literal(name).label("part"),
+            literal(index).label("slot"),
+            func.count().label("total"),
+            func.max(model.updated_at).label("changed"),
+        ).select_from(model)
+        for name, models in _PARTS.items()
+        for index, model in enumerate(models)
+    ]
+)
+
+
 class ContentVersion(BaseModel):
     """Uma impressão curta por parte do conteúdo (quantidade e última mudança)."""
 
@@ -110,19 +124,15 @@ class ContentVersion(BaseModel):
 )
 async def get_version(db: DatabaseDep, response: Response) -> ContentVersion:
     async def read(session: AsyncSession) -> ContentVersion:
-        parts = {}
-        for name, models in _PARTS.items():
-            stamp = []
-            for model in models:
-                count, changed = (
-                    await session.execute(
-                        select(func.count(), func.max(model.updated_at)).select_from(
-                            model
-                        )
-                    )
-                ).one()
-                stamp.append(f"{count}:{changed}")
-            parts[name] = hashlib.sha256("|".join(stamp).encode()).hexdigest()[:12]
+        buckets: dict[str, dict[int, str]] = {name: {} for name in _PARTS}
+        for name, slot, count, changed in (await session.execute(_VERSION_QUERY)).all():
+            buckets[name][slot] = f"{count}:{changed}"
+        parts = {
+            name: hashlib.sha256(
+                "|".join(buckets[name][i] for i in range(len(models))).encode()
+            ).hexdigest()[:12]
+            for name, models in _PARTS.items()
+        }
         return ContentVersion(parts=parts)
 
     response.headers["Cache-Control"] = "no-cache"

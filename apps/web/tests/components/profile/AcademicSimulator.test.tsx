@@ -14,9 +14,10 @@ afterEach(() => {
     selectLocalAccount();
 });
 
-const index = (container: HTMLElement, label: string) =>
+const indexNode = (container: HTMLElement, label: string) =>
     [...container.querySelectorAll('dt')].find((node) => node.textContent === label)
-        ?.nextElementSibling?.textContent;
+        ?.nextElementSibling;
+const index = (container: HTMLElement, label: string) => indexNode(container, label)?.textContent;
 const currentLabel = 'Menção de Cálculo, 2026.2';
 const currentGrade = (container: HTMLElement) =>
     container.querySelector<HTMLSelectElement>(`[aria-label="${currentLabel}"]`)?.value;
@@ -122,4 +123,66 @@ test('separa menções simuladas entre contas no armazenamento existente', () =>
     expect(simulatedGrades.getSnapshot()).toEqual({});
     selectLocalAccount('conta-simulador-a');
     expect(simulatedGrades.getSnapshot()).toEqual({ '2026.2:A': 'SS' });
+});
+
+test('aplica azul ao atual e verde ou vermelho dinâmico ao futuro e à projeção', () => {
+    const withBaselineMp: Classroom[] = [
+        {
+            id: 'atual',
+            number: '01',
+            semester: '2026.2',
+            current: true,
+            subject: { code: 'A', name: 'CÁLCULO', hours: 60 },
+            professors: []
+        },
+        {
+            id: 'anterior',
+            number: '01',
+            semester: '2026.1',
+            current: false,
+            subject: { code: 'B', name: 'FÍSICA', hours: 60 },
+            grade: 'MS',
+            professors: []
+        }
+    ];
+    const { container, getByRole, getByText } = dom.testing.render(
+        <AcademicSimulator
+            classrooms={withBaselineMp}
+            entry="2026.1"
+            current="2026.2"
+            curriculum={new Set(['A', 'B'])}
+        />
+    );
+    expect(indexNode(container, 'IRA atual')?.className).toContain('text-info');
+    expect(indexNode(container, 'MP atual')?.className).toContain('text-info');
+
+    const chartCss = () => container.querySelector('style')?.textContent ?? '';
+    expect(chartCss()).toContain('--color-ira: var(--info)');
+
+    const select = getByRole('combobox', { name: currentLabel });
+
+    // subiu acima do atual -> futuro e linha projetada ficam verdes
+    dom.testing.fireEvent.change(select, { target: { value: 'SS' } });
+    expect(indexNode(container, 'IRA futuro')?.className).toContain('text-success');
+    expect(indexNode(container, 'MP futuro')?.className).toContain('text-success');
+    expect(getByText('* Projeção para 2026.2.').className).toContain('text-success');
+    expect(chartCss()).toContain('--color-projectedIra: var(--success)');
+
+    // permaneceu igual ao atual (ambos 4) -> os dois continuam verdes
+    dom.testing.fireEvent.change(select, { target: { value: 'MS' } });
+    expect(index(container, 'IRA atual')).toBe('4');
+    expect(index(container, 'IRA futuro')).toBe('4');
+    expect(index(container, 'MP atual')).toBe('4');
+    expect(index(container, 'MP futuro')).toBe('4');
+    expect(indexNode(container, 'IRA futuro')?.className).toContain('text-success');
+    expect(indexNode(container, 'MP futuro')?.className).toContain('text-success');
+    expect(getByText('* Projeção para 2026.2.').className).toContain('text-success');
+    expect(chartCss()).toContain('--color-projectedIra: var(--success)');
+
+    // caiu abaixo do atual -> futuro e linha projetada ficam vermelhos
+    dom.testing.fireEvent.change(select, { target: { value: 'MM' } });
+    expect(indexNode(container, 'IRA futuro')?.className).toContain('text-destructive');
+    expect(indexNode(container, 'MP futuro')?.className).toContain('text-destructive');
+    expect(getByText('* Projeção para 2026.2.').className).toContain('text-destructive');
+    expect(chartCss()).toContain('--color-projectedIra: var(--destructive)');
 });

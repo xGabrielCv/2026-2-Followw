@@ -552,6 +552,7 @@ def test_admin_esconde_cartoes_do_mais_e_define_links(client, base, painel):
     config = client.get("/public/config").json()
     assert config["menu"]["automatricula"] is True
     assert config["menu"]["monitor"] is True
+    assert config["menu"]["simulador_ira"] is True
     assert config["links"]["automatricula"].startswith("https://github.com/")
     assert config["links"]["monitor"] is None
 
@@ -563,6 +564,7 @@ def test_admin_esconde_cartoes_do_mais_e_define_links(client, base, painel):
         == 200
     )
     client.put("/admin/api/menu/monitor", json={"visible": False}, headers=ADMIN)
+    client.put("/admin/api/menu/simulador_ira", json={"visible": False}, headers=ADMIN)
     salvo = client.put(
         "/admin/api/texts/monitor_url",
         json={"value": "https://t.me/monitor_vagas_bot"},
@@ -586,7 +588,12 @@ def test_admin_esconde_cartoes_do_mais_e_define_links(client, base, painel):
 
     client.cookies.clear()
     config = client.get("/public/config").json()
-    assert (config["menu"]["automatricula"], config["menu"]["monitor"]) == (
+    assert (
+        config["menu"]["automatricula"],
+        config["menu"]["monitor"],
+        config["menu"]["simulador_ira"],
+    ) == (
+        False,
         False,
         False,
     )
@@ -634,6 +641,16 @@ def test_cadastro_do_admin_recusado_fora_do_pc(client, base, monkeypatch):
 
 def test_versao_do_conteudo_muda_so_na_parte_alterada(ana, base):
     antes = ana.get("/public/config/version").json()["parts"]
+    assert set(antes) == {
+        "reviews",
+        "groups",
+        "materials",
+        "forum",
+        "tutorials",
+        "statistics",
+        "config",
+    }
+    assert all(len(stamp) == 12 for stamp in antes.values())
     _postar(ana)
     depois = ana.get("/public/config/version").json()["parts"]
     assert antes["forum"] != depois["forum"]

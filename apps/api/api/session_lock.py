@@ -31,10 +31,19 @@ def lock_engine() -> AsyncEngine:
             settings.database_url,
             pool_size=settings.session_lock_pool,
             max_overflow=0,
+            pool_timeout=settings.db_pool_timeout_seconds,
+            pool_recycle=settings.db_pool_recycle_seconds,
             pool_pre_ping=True,
             hide_parameters=True,
         )
     return _engine
+
+
+async def close() -> None:
+    global _engine
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None
 
 
 def lock_key(name: str) -> int:
