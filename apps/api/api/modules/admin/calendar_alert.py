@@ -6,7 +6,8 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from unb_browser import SemesterCalendar, load_academic_calendar
 
@@ -116,7 +117,19 @@ async def update_alert_admin(
     body: SemesterAlertConfig, request: Request, db: DatabaseDep
 ) -> SemesterAlertConfig:
     async def write(session: AsyncSession) -> SemesterAlertConfig:
-        saved = await save_alert(session, body)
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('config:semester-alert'))")
+        )
+        current = await read_alert(session)
+        saved = await save_alert(
+            session,
+            body.model_copy(
+                update={
+                    "trigger_id": current.trigger_id,
+                    "triggered_at": current.triggered_at,
+                }
+            ),
+        )
         await log(
             session,
             "community.alert",
@@ -130,8 +143,8 @@ async def update_alert_admin(
 
 class TriggerInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    title: str | None = None
-    message: str | None = None
+    title: str | None = Field(default=None, min_length=3, max_length=120)
+    message: str | None = Field(default=None, min_length=3, max_length=600)
 
 
 @router.post("/alert/trigger")
@@ -139,6 +152,9 @@ async def trigger_alert_now(
     request: Request, db: DatabaseDep, body: TriggerInput | None = None
 ) -> SemesterAlertConfig:
     async def write(session: AsyncSession) -> SemesterAlertConfig:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('config:semester-alert'))")
+        )
         current = await read_alert(session)
         updates: dict = {
             "enabled": True,

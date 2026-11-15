@@ -100,6 +100,52 @@ const own = (id: string, subject?: string): OwnReview => ({
 });
 
 describe('SemesterAlertPrompt', () => {
+    test('chave geral desliga todas as combinações de teste, campanhas e gatilhos', () => {
+        const classrooms = [classroom('CIC0001', [{ siape: 101, name: 'Docente' }])];
+        for (const always of [false, true])
+            for (const trigger of ['default', 'campanha'])
+                for (const percent of [0, 49, 50, 100]) {
+                    expect(
+                        evaluateSemesterAlert({
+                            alert: {
+                                ...baseAlert,
+                                enabled: false,
+                                always_on: always,
+                                trigger_id: trigger
+                            },
+                            progress: { semester: '2026.2', percent },
+                            classrooms,
+                            reviews: {},
+                            dismissed: {},
+                            closedInSession: false
+                        }).show
+                    ).toBe(false);
+                }
+    });
+
+    test('cadência mantém intervalo correto para todos os limites configuráveis', () => {
+        const classrooms = [classroom('CIC0001', [{ siape: 101, name: 'Docente' }])];
+        for (let every = 1; every <= 20; every++)
+            for (let count = 1; count <= 61; count++) {
+                const input = {
+                    alert: { ...baseAlert, mid_semester_every_n: every },
+                    progress: { semester: '2033.2', percent: 60 },
+                    classrooms,
+                    reviews: {},
+                    dismissed: {},
+                    closedInSession: false,
+                    midOpenCount: count
+                };
+                expect(evaluateSemesterAlert(input).show).toBe((count - 1) % every === 0);
+                expect(evaluateSemesterAlert({ ...input, closedInSession: true }).show).toBe(false);
+                expect(
+                    evaluateSemesterAlert({
+                        ...input,
+                        dismissed: { midDismissedSemester: '2033.2' }
+                    }).show
+                ).toBe(false);
+            }
+    });
     test('datas ausentes não disparam aviso automático e dispensas antigas não bloqueiam semestre futuro', () => {
         const classrooms = [classroom('HIS0001', [{ siape: 101, name: 'Docente' }], '2033.2')];
         const common = {
@@ -220,7 +266,7 @@ describe('SemesterAlertPrompt', () => {
                 closedInSession: false,
                 midOpenCount: 2
             }).show
-        ).toBe(true);
+        ).toBe(false);
 
         // Antes dos 50% não abre
         expect(

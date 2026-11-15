@@ -15,7 +15,7 @@ export const appConfigQueryOptions = api.queryOptions(
     'get',
     '/public/config',
     {},
-    { staleTime: 60_000 }
+    { staleTime: 60_000, refetchInterval: 60_000, refetchOnWindowFocus: 'always' }
 );
 
 export function useAppConfig() {

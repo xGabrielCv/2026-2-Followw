@@ -28,7 +28,7 @@ ALERT_PRESETS: dict[str, tuple[str, str]] = {
 
 
 class SemesterAlertConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     enabled: bool = True
     always_on: bool = False

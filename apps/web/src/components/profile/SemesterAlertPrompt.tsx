@@ -191,7 +191,7 @@ export function evaluateSemesterAlert({
     const currentProfessors = collectCurrentProfessors(classrooms, reviews);
     const currentStats = summarize(currentProfessors);
 
-    if (closedInSession) {
+    if (!alert.enabled || closedInSession) {
         return emptyResult(currentProfessors);
     }
 
@@ -205,10 +205,6 @@ export function evaluateSemesterAlert({
             professors: currentProfessors,
             ...currentStats
         };
-    }
-
-    if (!alert.enabled) {
-        return emptyResult(currentProfessors);
     }
 
     const isFirstDay = Boolean(currentCalendar && today && today === currentCalendar.classes.start);
@@ -321,7 +317,16 @@ function AccountSemesterAlert() {
     const hydrated = useSyncExternalStore(subscribeNothing, isClient, isServer);
     const { data: user } = useQuery(meQueryOptions);
     const { alert, calendar } = useAppConfig();
-    const today = brasiliaToday();
+    const [today, setToday] = useState(brasiliaToday);
+    useEffect(() => {
+        const update = () => setToday(brasiliaToday());
+        const timer = setInterval(update, 60_000);
+        window.addEventListener('focus', update);
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener('focus', update);
+        };
+    }, []);
     const currentCalendar = hydrated ? currentCalendarForDate(today, calendar) : undefined;
     const isFirstDay = Boolean(currentCalendar && today === currentCalendar.classes.start);
 
@@ -370,7 +375,14 @@ function AccountSemesterAlert() {
 
     // Avança a cadência determinística no máximo 1x por sessão do navegador ao atingir 50%+.
     useEffect(() => {
-        if (!ready || !alert?.mid_semester_enabled || !progress || progress.percent < 50) return;
+        if (
+            !ready ||
+            !alert?.enabled ||
+            !alert.mid_semester_enabled ||
+            !progress ||
+            progress.percent < 50
+        )
+            return;
         if (dismissed.midOpenSemester === progress.semester && dismissed.midSessionId === sessionId)
             return;
         const currentCount =
@@ -382,22 +394,25 @@ function AccountSemesterAlert() {
             midOpenCount: nextCount,
             midSessionId: sessionId
         });
-    }, [alert?.mid_semester_enabled, dismissed, progress, ready, sessionId]);
+    }, [alert?.enabled, alert?.mid_semester_enabled, dismissed, progress, ready, sessionId]);
 
     const manualTriggered = Boolean(
         alert && (Boolean(alert.triggered_at) || alert.trigger_id !== 'default')
     );
-    const modeToken = isFirstDay
-        ? `first:${currentSemesterName}`
-        : currentCalendar && today === currentCalendar.classes.end
-          ? `last:${currentSemesterName}`
-          : manualTriggered && alert
-            ? alert.trigger_id
-            : 'mid';
+    const modeToken = alert?.always_on
+        ? `test:${alert.trigger_id}`
+        : isFirstDay
+          ? `first:${currentSemesterName}`
+          : currentCalendar && today === currentCalendar.classes.end
+            ? `last:${currentSemesterName}`
+            : manualTriggered && alert
+              ? alert.trigger_id
+              : 'mid';
     const sessionToken = `${sessionId}:${currentSemesterName}:${modeToken}`;
     const closedInSession = dismissed.closedSession === sessionToken;
     const cadenceReady =
-        !alert?.mid_semester_enabled ||
+        !alert?.enabled ||
+        !alert.mid_semester_enabled ||
         !progress ||
         progress.percent < 50 ||
         (dismissed.midOpenSemester === progress.semester && dismissed.midSessionId === sessionId);
@@ -443,7 +458,7 @@ function AccountSemesterAlert() {
     };
 
     if (!evaluation.show) {
-        return suppressShareFallback || closedInSession ? null : <SharePrompt />;
+        return !alert.enabled || suppressShareFallback || closedInSession ? null : <SharePrompt />;
     }
 
     const openProfessor = (prof: AlertProfessorItem) => {

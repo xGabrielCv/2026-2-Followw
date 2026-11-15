@@ -509,3 +509,52 @@ def test_calendario_alerta_e_bandeira_respeitam_rbac_e_refletem_no_public_config
     limpeza = client.delete("/admin/api/materials/rejections", headers=HEADERS)
     assert limpeza.status_code == 200
     assert limpeza.json()["deleted"] == 0
+
+
+def test_salvar_formulario_antigo_nao_desfaz_campanha_nova_e_publico_reflete_desativacao(
+    owner,
+):
+    client = owner["client"]
+    stale = client.get("/admin/api/alert").json()["config"]
+    first = client.post(
+        "/admin/api/alert/trigger", json={"title": "Campanha nova"}, headers=HEADERS
+    ).json()
+    version = client.get("/public/config/version").json()["parts"]["config"]
+    stale.update(enabled=False, always_on=True)
+    saved = client.put("/admin/api/alert", json=stale, headers=HEADERS)
+    assert saved.status_code == 200
+    assert saved.json()["trigger_id"] == first["trigger_id"]
+    assert saved.json()["triggered_at"] == first["triggered_at"]
+    public = client.get("/public/config").json()["alert"]
+    assert public["enabled"] is False
+    assert public["trigger_id"] == first["trigger_id"]
+    assert client.get("/public/config/version").json()["parts"]["config"] != version
+    second = client.post("/admin/api/alert/trigger", json={}, headers=HEADERS).json()
+    assert second["enabled"] is True
+    assert second["trigger_id"] != first["trigger_id"]
+
+
+def test_alerta_recusa_textos_vazios_longos_e_cadencia_invalida(owner):
+    client = owner["client"]
+    for body in ({"title": " "}, {"title": "a" * 121}, {"message": "a" * 601}):
+        assert (
+            client.post(
+                "/admin/api/alert/trigger", json=body, headers=HEADERS
+            ).status_code
+            == 422
+        )
+    for count in (0, 21):
+        assert (
+            client.put(
+                "/admin/api/alert",
+                json={"mid_semester_every_n": count},
+                headers=HEADERS,
+            ).status_code
+            == 422
+        )
+    assert (
+        client.put(
+            "/admin/api/alert", json={"title": "   "}, headers=HEADERS
+        ).status_code
+        == 422
+    )

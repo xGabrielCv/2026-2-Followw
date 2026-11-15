@@ -60,7 +60,7 @@ export function alertPanel(info, refresh) {
     el("div", { class:"grid g2" },
       el("label", { class:"switch" }, el("span", {}, "Ativar lembretes"), enabledInput),
       el("label", { class:"switch" }, el("span", {}, "Forçar exibição para teste"), alwaysOnInput)),
-    el("p", { class:"muted" }, "O modo de teste força a abertura mesmo com o sistema desativado ou sem avaliações pendentes. Desative-o após testar. Fechar o aviso vale para esta sessão; ‘Não mostrar novamente’ vale para a versão ou campanha no aparelho."),
+    el("p", { class:"muted" }, "Desativar lembretes interrompe os convites, inclusive o modo de teste. Ativo, o teste permite abrir sem avaliações pendentes. Alterações chegam ao app em até um minuto ou ao voltar à aba. Fechar vale para esta sessão; ‘Não mostrar novamente’ vale para a versão ou campanha neste aparelho."),
     el("h4", {}, "Lembretes automáticos"),
     el("p", { class:"muted" }, "Usam as datas publicadas do semestre, sem precisar trocar o ano. Só aparecem para estudantes autenticados com avaliações pendentes. O primeiro dia tem prioridade, seguido do último dia, campanha manual e metade do semestre."),
     version("Metade do semestre", "A partir de 50% do período de aulas, na primeira abertura e depois a cada N novas sessões do navegador.",
