@@ -99,6 +99,26 @@ function Wait-Port($port, $seconds, $what) {
     Fail "$what não respondeu na porta $port em ${seconds}s."
 }
 
+function Start-DatabaseManager {
+    $service = Join-Path $Root 'scripts\cloudbeaver-service.ps1'
+    $existing = Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -and $_.CommandLine.Contains($service) -and $_.CommandLine -match '-File\s+"?[^"]*cloudbeaver-service\.ps1"?\s*$' } |
+        Select-Object -First 1
+    if ($existing) { return Get-Process -Id $existing.ProcessId }
+    Start-Process powershell -WindowStyle Hidden -PassThru -WorkingDirectory $Root -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $service))
+}
+
+function Wait-DatabaseManager {
+    $deadline = (Get-Date).AddSeconds(120)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $null = Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:8978/api/admin/database/' -TimeoutSec 2
+            return
+        } catch { Start-Sleep -Milliseconds 500 }
+    }
+    Fail 'CloudBeaver instalado, mas indisponivel. Verifique os logs do supervisor; nenhuma reinstalacao foi feita.'
+}
+
 function Invoke-Checked {
     param([string]$FilePath, [string[]]$Arguments, [string]$WorkingDirectory = $Root)
     Push-Location $WorkingDirectory
@@ -121,6 +141,11 @@ Update-Path
 
 # Uma segunda execução não reinstala dependências nem abre outra aba da instância ativa.
 if (-not ($Check -or $Test -or $Reseed -or $Update -or $CollectOffer) -and (Test-Port $WebPort) -and (Test-Port $ApiPort)) {
+    if (-not $SkipCloudBeaver -and (Test-Path (Join-Path $Local 'cloudbeaver\runtime.json'))) {
+        if (-not (Test-Port 8978)) { $null = Start-DatabaseManager }
+        Wait-DatabaseManager
+        Ok 'CloudBeaver instalado e respondendo (configuracao preservada)'
+    }
     # Código atualizado pode precisar de tabelas/colunas novas mesmo com a instância ativa.
     if (Test-Command uv) {
         $previousMaintenanceUrl = $env:DATABASE_MAINTENANCE_URL
@@ -390,13 +415,11 @@ $web = $null
 $databaseManager = $null
 $managerInstalled = -not $SkipCloudBeaver -and (Test-Path (Join-Path $Local 'cloudbeaver\runtime.json'))
 if ($SkipCloudBeaver) { $env:CLOUDBEAVER_ENABLED = 'false' }
-function Start-DatabaseManager {
-    Start-Process powershell -WindowStyle Hidden -PassThru -WorkingDirectory $Root -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f (Join-Path $Root 'scripts\cloudbeaver-service.ps1')))
-}
 try {
     if ($managerInstalled) {
         $env:CLOUDBEAVER_ENABLED = 'true'
         $databaseManager = Start-DatabaseManager
+        Wait-DatabaseManager
     }
     $api = Start-Process -FilePath 'uv' -WorkingDirectory $ApiDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Local 'api.out.log') -RedirectStandardError (Join-Path $Local 'api.err.log') -ArgumentList @(
         'run', '--no-sync', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', $ApiPort, '--no-access-log',

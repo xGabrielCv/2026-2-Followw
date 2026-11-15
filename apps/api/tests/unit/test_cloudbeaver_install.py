@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -150,3 +152,28 @@ def test_run_instala_antes_de_iniciar_e_permite_optar_por_nao_instalar():
     assert "Yarn @('install')" in setup
     assert "Get-FileHash $archive -Algorithm SHA512" in setup
     assert "Remove-Item -LiteralPath $resolvedBuild -Recurse -Force" in setup
+
+
+@pytest.mark.skipif(not shutil.which("powershell"), reason="inicializador Windows")
+@pytest.mark.parametrize("existing", [True, False])
+def test_inicializador_reaproveita_supervisor_ou_inicia_sem_reinstalar(existing):
+    script = str(ROOT / "scripts/run.ps1").replace("'", "''")
+    command = rf"""
+    $ErrorActionPreference='Stop'
+    $tokens=$null; $errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile('{script}',[ref]$tokens,[ref]$errors)
+    $ast.FindAll({{param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Start-DatabaseManager'}},$true) | ForEach-Object {{Invoke-Expression $_.Extent.Text}}
+    $Root='C:\projeto'; $created=0
+    function Get-CimInstance {{ if (${str(existing).lower()}) {{[pscustomobject]@{{ProcessId=42;CommandLine='powershell -File "C:\projeto\scripts\cloudbeaver-service.ps1"'}}}} }}
+    function Get-Process {{[pscustomobject]@{{Id=42}}}}
+    function Start-Process {{$script:created++;[pscustomobject]@{{Id=43}}}}
+    $manager=Start-DatabaseManager
+    Write-Output "$($manager.Id):$created"
+    """
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", command],
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    assert result.stdout.strip() == (b"42:0" if existing else b"43:1")
