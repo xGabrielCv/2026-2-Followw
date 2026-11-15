@@ -1,11 +1,13 @@
 import type { UserProfile } from '#/queries/me';
 
 import { getCurrentSemester } from '#/calendar';
+import { currentRegularSemester } from '#/lib/offer';
+import { nowInBrasilia } from '#/lib/schedule';
 import { currentCurriculumPeriod } from '#/queries/subjects';
 
 /** O curso do aluno usa o ingresso dele; outro curso, a matriz vigente no semestre atual. */
 export function flowTarget(user: UserProfile | null | undefined, courseId: number) {
-    const semester = getCurrentSemester()?.semester;
+    const semester = getCurrentSemester()?.semester ?? currentRegularSemester(nowInBrasilia().date);
     const ownCourse = courseId === user?.course?.id;
     return {
         ownCourse,

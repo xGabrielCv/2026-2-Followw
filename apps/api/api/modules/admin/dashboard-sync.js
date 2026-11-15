@@ -103,8 +103,9 @@ function calendarPanel(calendar, render) {
     if (!calendar) return null;
     const editor = el('textarea', { rows: 8, spellcheck: 'false' }, JSON.stringify(calendar.custom || {}, null, 2));
     return el('div', { class: 'panel' },
-        el('h3', {}, 'Calendário acadêmico estendido (10+ anos)'),
-        el('p', { class: 'muted' }, `Semestre regular atual: ${calendar.current_semester} · Próximo: ${calendar.next_semester} · Matrícula ativa agora: ${calendar.enrollment_active ? 'sim' : 'não'} · Base embutida até ${calendar.static_latest || '—'}. Após a base embutida, o cálculo automático mantém os semestres funcionando, e você pode cadastrar datas exatas de futuros semestres da UnB abaixo.`),
+        el('h3', {}, 'Calendário acadêmico e ajustes excepcionais'),
+        el('p', { class: 'muted' }, `Semestre regular atual: ${calendar.current_semester} · Próximo: ${calendar.next_semester} · Matrícula ativa agora: ${calendar.enrollment_active ? 'sim' : 'não'}. A rotina do catálogo atualiza os períodos de aulas publicados pela SAA. Sem publicação, só o identificador do semestre é estimado; datas e prazos não são deduzidos da oferta.`),
+        el('p', { class: 'muted' }, `Calendários coletados: ${calendar.collected?.join(', ') || 'nenhum ainda'}. Use o editor abaixo apenas para correções oficiais excepcionais: ajustes manuais têm prioridade sobre a coleta. Não é necessário cadastrar cada semestre para atualizar ofertas.`),
         el('label', {}, 'Semestres customizados no banco (JSON)', editor),
         el('div', { class: 'toolbar' },
             el('button', { type: 'button', onclick: () => {

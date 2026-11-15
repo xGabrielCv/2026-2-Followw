@@ -59,10 +59,10 @@ describe('semesterProgress', () => {
         });
     });
 
-    test('antes das aulas fica zerado e fora do calendário estima o próximo ou retorna undefined antes de existir', () => {
+    test('antes das aulas fica zerado e sem calendário não inventa progresso', () => {
         expect(semesterProgress('2026-07-30')).toMatchObject({ percent: 0, week: 0 });
         expect(semesterProgress('2020-01-01')).toBeUndefined();
-        expect(semesterProgress('2030-01-01')?.semester).toBe('2029.2');
+        expect(semesterProgress('2030-01-01')).toBeUndefined();
     });
 });
 
@@ -77,4 +77,8 @@ test('upcomingEvents ordena pelo início ou, se já começou, pelo prazo', () =>
         'registration_general_suspend',
         'three_quarters_semester'
     ]);
+});
+
+test('calendário ausente não inventa progresso nem datas oficiais', () => {
+    expect(semesterProgress('2033-09-20')).toBeUndefined();
 });

@@ -2,8 +2,8 @@
 novos que elas citam e o catálogo de docentes. Depois carrega só o que mudou no banco.
 
 Os CSVs ficam ordenados e só com o semestre atual e o próximo, então cada atualização muda
-apenas as linhas alteradas e o tamanho não cresce com o tempo. O calendário acadêmico vem
-junto com o código (`unb_browser`), não daqui.
+apenas as linhas alteradas e o tamanho não cresce com o tempo. Períodos de aulas publicados
+pela SAA complementam o calendário embutido; matrizes dos cursos conhecidos são revistas semanalmente.
 
     uv run python scripts/update_data.py                # tudo
     uv run python scripts/update_data.py --offer 2027.1 # só as turmas de um semestre
@@ -11,16 +11,25 @@ junto com o código (`unb_browser`), não daqui.
 """
 
 import argparse
+import asyncio
 import csv
 import json
 import os
 import subprocess
 import sys
 import tempfile
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from unb_browser import estimate_regular_semester, load_academic_calendar
+import httpx
+from unb_browser import (
+    AcademicCalendar,
+    UnbBrowser,
+    UnbParseError,
+    estimate_regular_semester,
+    load_academic_calendar,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "packages" / "sigaa-client" / "scripts"
@@ -29,25 +38,87 @@ CLASSROOMS = DATA / "classrooms.csv"
 LOCAL = ROOT / ".local"
 PROFESSORS = LOCAL / "data" / "professors.csv"
 STATE = LOCAL / "update.json"
+CALENDAR = LOCAL / "data" / "academic_calendar.json"
+STRUCTURE_UPDATED = LOCAL / "catalog-structure.updated"
 API = ROOT / "apps" / "api"
 _institutional_calls = 0
 _calls_measured = False
+
+
+def read_calendar() -> AcademicCalendar:
+    base = load_academic_calendar()
+    try:
+        collected = AcademicCalendar.model_validate_json(
+            CALENDAR.read_text(encoding="utf-8")
+        )
+    except OSError, ValueError:
+        return base
+    return AcademicCalendar(semesters={**base.semesters, **collected.semesters})
+
+
+async def refresh_calendar() -> None:
+    global _institutional_calls, _calls_measured
+    _institutional_calls += 1
+    _calls_measured = True
+    try:
+        async with UnbBrowser() as browser:
+            published = await browser.calendar.fetch_periods()
+    except httpx.HTTPError, UnbParseError:
+        print(
+            "Calendário indisponível: mantida a última publicação válida.", flush=True
+        )
+        return
+    semesters = dict(read_calendar().semesters)
+    for key, entry in published.semesters.items():
+        if previous := semesters.get(key):
+            classes = entry.classes
+            if not classes.instructional_days:
+                classes = classes.model_copy(
+                    update={"instructional_days": previous.classes.instructional_days}
+                )
+            entry = previous.model_copy(
+                update={
+                    "classes": classes,
+                    "period": previous.period.model_copy(
+                        update={
+                            "start": min(previous.period.start, classes.start),
+                            "end": max(previous.period.end, classes.end),
+                        }
+                    ),
+                }
+            )
+        semesters[key] = entry
+    CALENDAR.parent.mkdir(parents=True, exist_ok=True)
+    temporary = CALENDAR.with_suffix(".tmp")
+    temporary.write_text(
+        AcademicCalendar(semesters=semesters).model_dump_json(), encoding="utf-8"
+    )
+    temporary.replace(CALENDAR)
+
+
+def refresh_structure(now: datetime) -> None:
+    try:
+        previous = datetime.fromisoformat(STRUCTURE_UPDATED.read_text(encoding="ascii"))
+        if previous.tzinfo and now - previous < timedelta(days=7):
+            return
+    except OSError, ValueError:
+        pass
+    run(sys.executable, SCRIPTS / "collect_curricula.py")
+    LOCAL.mkdir(exist_ok=True)
+    STRUCTURE_UPDATED.write_text(now.isoformat(), encoding="ascii")
 
 
 def regular_semesters(today: date) -> tuple[str, str]:
     """O semestre regular em curso (ou o último, nas férias) e o seguinte."""
     regular = [
         semester
-        for semester in load_academic_calendar().list_semesters()
+        for semester in read_calendar().list_semesters()
         if semester.semester[-1] in "12"
     ]
-    latest_end = max((s.period.end for s in regular), default=date.min)
-    started = sorted(s.semester for s in regular if s.period.start <= today)
-    current = (
-        started[-1]
-        if started and today <= latest_end
-        else estimate_regular_semester(today)
+    started = sorted(
+        s.semester for s in regular if s.period.start <= today <= s.period.end
     )
+    current = started[-1] if started else estimate_regular_semester(today)
     year, term = map(int, current.split("."))
     return current, f"{year}.2" if term == 1 else f"{year + 1}.1"
 
@@ -185,24 +256,30 @@ def main() -> None:
             args.units_only,
         )
     )
-    current, upcoming = regular_semesters(date.today())
+    if everything or args.offers_only:
+        asyncio.run(refresh_calendar())
+    current, upcoming = regular_semesters(
+        datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    )
     offers = args.offer or (
         [current, upcoming] if everything or args.offers_only else []
     )
     if everything or args.units_only:
         run(sys.executable, SCRIPTS / "collect_units.py")
+    if everything:
+        refresh_structure(datetime.now(UTC))
     collected = [semester for semester in offers if collect_offer(semester)]
     if everything:
         prune_offer({current, upcoming})
-    if collected or args.subjects_only:
+    if args.curricula_only:
+        run(sys.executable, SCRIPTS / "collect_curricula.py")
+    if collected or args.subjects_only or everything or args.curricula_only:
         # Componentes novos citados pelas turmas; os que já estão no CSV não são refeitos.
         run(
             sys.executable,
             SCRIPTS / "collect_subjects.py",
             *(["--refresh"] if args.subjects_only else []),
         )
-    if args.curricula_only:
-        run(sys.executable, SCRIPTS / "collect_curricula.py")
     if everything or args.professors:
         collect_professors()
     metrics = (

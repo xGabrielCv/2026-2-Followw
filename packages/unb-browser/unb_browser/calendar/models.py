@@ -1,7 +1,7 @@
 from datetime import date
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class CalendarEventCategory(StrEnum):
@@ -20,9 +20,17 @@ class CalendarPeriod(BaseModel):
     start: date
     end: date
 
+    @model_validator(mode="after")
+    def ordered(self):
+        if self.end < self.start:
+            raise ValueError(
+                "O fim do período precisa ser igual ou posterior ao início."
+            )
+        return self
+
 
 class ClassesPeriod(CalendarPeriod):
-    instructional_days: int
+    instructional_days: int = Field(ge=0, le=366)
 
 
 class CalendarEvent(BaseModel):
@@ -43,6 +51,17 @@ class SemesterCalendar(BaseModel):
     period: CalendarPeriod
     classes: ClassesPeriod
     events: tuple[CalendarEvent, ...] = ()
+
+    @model_validator(mode="after")
+    def classes_within_period(self):
+        if (
+            not self.period.start
+            <= self.classes.start
+            <= self.classes.end
+            <= self.period.end
+        ):
+            raise ValueError("As aulas precisam estar dentro do período letivo.")
+        return self
 
 
 class AcademicCalendar(BaseModel):

@@ -22,7 +22,7 @@ class UnbBrowser:
             transport=transport,
         )
         self.restaurant = Restaurant(self._http)
-        self.calendar = Calendar()
+        self.calendar = Calendar(self._http)
 
     async def __aenter__(self) -> Self:
         return self

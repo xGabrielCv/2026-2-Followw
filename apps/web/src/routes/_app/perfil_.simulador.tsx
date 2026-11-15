@@ -3,11 +3,13 @@ import { Navigate, createFileRoute, redirect } from '@tanstack/react-router';
 
 import type { UserProfile } from '#/queries/me';
 
-import { getCurrentSemester } from '#/calendar';
 import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { AcademicSimulator } from '#/components/profile/AcademicSimulator';
+import { currentRegularSemester } from '#/lib/offer';
+import { nowInBrasilia } from '#/lib/schedule';
+import { useAppConfig } from '#/queries/app-config';
 import { appConfigQueryOptions, menuVisible } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { loadPersonal, loadQuery } from '#/queries/load';
@@ -39,6 +41,7 @@ function SimulatorPage() {
 }
 
 function SimulatorData({ user }: { user: UserProfile }) {
+    const { calendar } = useAppConfig();
     const classrooms = useQuery(allClassroomsQueryOptions);
     if (classrooms.isLoadingError) {
         return (
@@ -51,8 +54,8 @@ function SimulatorData({ user }: { user: UserProfile }) {
     if (classrooms.isPending) return <LoadingText>Carregando disciplinas...</LoadingText>;
 
     const current =
-        getCurrentSemester()?.semester ??
-        classrooms.data.find((classroom) => classroom.current)?.semester;
+        classrooms.data.find((classroom) => classroom.current)?.semester ??
+        currentRegularSemester(nowInBrasilia().date, calendar);
     return (
         <>
             {classrooms.isError && <StaleDataNotice subject="as disciplinas" />}

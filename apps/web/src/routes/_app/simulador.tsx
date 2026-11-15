@@ -36,6 +36,7 @@ import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { meQueryOptions } from '#/queries/me';
 import { useUserSettings } from '#/queries/settings';
 import { approvedCodes } from '#/queries/subjects';
+import { offerSemestersQueryOptions } from '#/queries/subjects';
 
 const simuladorParsers = {
     semester: createParser({
@@ -76,9 +77,12 @@ function SimuladorPage() {
     const { calendar, allowCurrentSchedule } = useAppConfig();
     const today = nowInBrasilia().date;
     const current = currentRegularSemester(today, calendar);
-    const options = current ? [nextRegularSemester(current), current] : [];
-    const semester = picked && options.includes(picked) ? picked : options[0];
-    const canPlan = semester
+    const { data: available = [] } = useQuery(offerSemestersQueryOptions);
+    const options = [nextRegularSemester(current), current].filter((term) =>
+        available.includes(term)
+    );
+    const semester = picked && options.includes(picked) ? picked : (options[0] ?? current);
+    const canPlan = available.includes(semester)
         ? canAddToSchedule(semester, {
               today,
               allowCurrentOutsideEnrollment: allowCurrentSchedule,
@@ -96,6 +100,12 @@ function SimuladorPage() {
                 Monte até {MAX_PLANS} grades diferentes e compare. A grade escolhida aqui é a que a
                 Busca completa e que aparece em Minhas Turmas.
             </p>
+            {!available.includes(nextRegularSemester(current)) && (
+                <p className="text-sm text-muted-foreground">
+                    A oferta do próximo semestre ({nextRegularSemester(current)}) ainda não foi
+                    coletada. O planejamento ficará disponível após a atualização.
+                </p>
+            )}
             {options.length > 1 && (
                 <TabFilter
                     label="Semestre"

@@ -67,25 +67,6 @@ export function estimateRegularSemester(date: Date = new Date()): string {
     );
 }
 
-function syntheticSemester(semester: string): SemesterCalendar {
-    const [year, term] = semester.split('.').map(Number);
-    const period =
-        term === 1
-            ? { start: `${year}-03-01`, end: `${year}-07-31` }
-            : { start: `${year}-08-01`, end: `${year + 1}-02-28` };
-    const classes =
-        term === 1
-            ? { start: `${year}-03-01`, end: `${year}-07-15`, instructional_days: 100 }
-            : { start: `${year}-08-01`, end: `${year}-12-15`, instructional_days: 100 };
-    return {
-        semester,
-        name: `${term}º Semestre de ${year}`,
-        period,
-        classes,
-        events: []
-    };
-}
-
 const NO_CLASS_EVENT_CATEGORIES: ReadonlySet<string> = new Set<CalendarEventCategory>([
     'holiday',
     'optional_holiday',
@@ -158,7 +139,7 @@ export function getCurrentSemester(
                 (next, s) => (!next || s.period.start < next.period.start ? s : next),
                 undefined
             );
-    return found ?? syntheticSemester(estimateRegularSemesterFromDate(today));
+    return found;
 }
 
 const DAY_MS = 86_400_000;
@@ -181,10 +162,7 @@ export function semesterProgress(
     custom?: Record<string, SemesterCalendar>
 ): SemesterProgress | undefined {
     const semesters = listSemesters(custom);
-    const knownEnd = semesters.reduce((max, s) => (s.period.end > max ? s.period.end : max), '');
-    const current =
-        semesters.find(({ period }) => period.start <= date && date <= period.end) ??
-        (date > knownEnd ? syntheticSemester(estimateRegularSemesterFromDate(date)) : undefined);
+    const current = semesters.find(({ period }) => period.start <= date && date <= period.end);
     if (!current) return undefined;
     const { start, end } = current.classes;
     const total = daysBetween(start, end) + 1;

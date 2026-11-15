@@ -7,7 +7,7 @@ from sqlalchemy import func, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from unb_browser import SemesterCalendar
 
-from api.academic_calendar import read_custom_calendar
+from api.academic_calendar import collected_calendar, read_custom_calendar
 from api.cache import NoStore
 from api.cookies import ACCESS_COOKIE_NAME, PROFILE_COOKIE_NAME, REFRESH_COOKIE_NAME
 from api.db.main import DatabaseDep
@@ -145,6 +145,13 @@ async def get_version(db: DatabaseDep, response: Response) -> ContentVersion:
             ).hexdigest()[:12]
             for name, models in _PARTS.items()
         }
+        calendar = collected_calendar()
+        if calendar:
+            import json
+
+            parts["config"] = hashlib.sha256(
+                (parts["config"] + json.dumps(calendar, sort_keys=True)).encode()
+            ).hexdigest()[:12]
         return ContentVersion(parts=parts)
 
     response.headers["Cache-Control"] = "no-cache"

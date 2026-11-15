@@ -649,3 +649,64 @@ def test_post_nao_e_permitido(client):
     response = client.post(URL, params={"entry_semester": "2026.1"})
     assert response.status_code == 405
     assert response.headers["allow"] == "GET"
+
+
+@pytest.mark.parametrize(
+    "name,unit,code",
+    [
+        ("HISTORIA", 518, "HIS0001"),
+        ("LETRAS", 673, "LET0001"),
+        ("ENFERMAGEM", 518, "ENF0001"),
+    ],
+)
+def test_fluxo_usa_matriz_do_curso_independente_de_nome_e_campus(
+    client, database, name, unit, code
+):
+    with database.begin() as session:
+        if session.get(Unit, unit) is None:
+            session.add(Unit(id=unit, name="CAMPUS SINTÉTICO"))
+            session.flush()
+        session.add(Course(id=901, sigaa_id=9001, name=name, unit_id=unit))
+        session.add(
+            Subject(
+                code=code, name="Introducao", hours=60, prerequisites=[["BASE0001"]]
+            )
+        )
+        session.add(Subject(code="BASE0001", name="Fundamentos", hours=60))
+        session.flush()
+        curriculum = Curriculum(
+            course_id=901,
+            sigaa_id=9101,
+            code="MATRIZ",
+            valid_from="2033.1",
+            created_year=2033,
+            active=True,
+            shift="D",
+            matrix=name,
+        )
+        session.add(curriculum)
+        session.flush()
+        session.add(
+            CurriculumComponent(
+                curriculum_id=curriculum.id,
+                subject_code="BASE0001",
+                kind="required",
+                period=1,
+            )
+        )
+        session.add(
+            CurriculumComponent(
+                curriculum_id=curriculum.id,
+                subject_code=code,
+                kind="required",
+                period=2,
+            )
+        )
+    response = client.get(
+        "/public/courses/901/curriculum", params={"entry_semester": "2034.2"}
+    )
+    assert response.status_code == 200
+    periods = {item["period"]: item["subjects"] for item in response.json()["periods"]}
+    assert periods[1][0]["code"] == "BASE0001"
+    assert periods[2][0]["code"] == code
+    assert periods[2][0]["prerequisites"][0][0]["code"] == "BASE0001"

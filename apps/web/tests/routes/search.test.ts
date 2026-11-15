@@ -2,11 +2,14 @@ import type { QueryKey } from '@tanstack/react-query';
 
 import { describe, expect, test } from 'bun:test';
 
+import { currentRegularSemester } from '#/lib/offer';
+import { nowInBrasilia } from '#/lib/schedule';
 import { Route } from '#/routes/_app/buscar';
 
 import { callRoute, fakeQueryClient, runLoader, useBrowserEnvironment } from '../helpers/route';
 
 useBrowserEnvironment();
+const semester = currentRegularSemester(nowInBrasilia().date);
 
 interface User {
     registration: string;
@@ -69,7 +72,7 @@ describe('loader da busca de turmas', () => {
             unit: { id: 673, code: 'FCTE', name: 'CAMPUS UNB GAMA' }
         });
         expect(keys.map((key) => key[1])).toEqual(['/me', '/classrooms', '/public/subjects']);
-        expect(keys[2][2]).toEqual({ params: { query: { unit: 'FCTE' } } });
+        expect(keys[2][2]).toEqual({ params: { query: { unit: 'FCTE', semester } } });
     });
 
     test.each([
@@ -79,7 +82,11 @@ describe('loader da busca de turmas', () => {
         const keys = await loadWith(user, '?q=calculo');
         const search = keys.filter((key) => String(key[1]).startsWith('/public/'));
         expect(search).toEqual([
-            ['get', '/public/search', { params: { query: { q: 'calculo' } } }]
+            [
+                'get',
+                '/public/search',
+                { params: { query: { q: 'calculo', type: undefined, semester } } }
+            ]
         ]);
     });
 
@@ -89,7 +96,9 @@ describe('loader da busca de turmas', () => {
             `?q=${q}`
         );
         const subjects = keys.filter((key) => key[1] === '/public/subjects');
-        expect(subjects.map((key) => key[2])).toEqual([{ params: { query: { unit: 'FCTE' } } }]);
+        expect(subjects.map((key) => key[2])).toEqual([
+            { params: { query: { unit: 'FCTE', semester } } }
+        ]);
         expect((await loadWith(null, `?q=${q}`)).map((key) => key[1])).toEqual(['/me']);
     });
 
@@ -110,7 +119,7 @@ describe('recomendações somente na busca', () => {
         expect(keys.map((key) => key[1])).toEqual(['/me', '/classrooms', '/public/subjects']);
         // o histórico vai junto: o servidor não guarda as menções
         expect(keys[2][2]).toEqual({
-            params: { query: { history: ['FGA0001:2025.2:SS:concluido'] } }
+            params: { query: { history: ['FGA0001:2025.2:SS:concluido'], semester } }
         });
     });
     test('pesquisa usa a busca única em vez das recomendações', async () => {
@@ -141,7 +150,7 @@ describe('loader das categorias da busca', () => {
             );
             expect(keys.map((key) => key[1])).toEqual([...expected]);
             expect(keys.at(-1)?.[2]).toStrictEqual({
-                params: { query: { q: 'Carlos Silva', type } }
+                params: { query: { q: 'Carlos Silva', type, semester } }
             });
         }
     );

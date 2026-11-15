@@ -7,7 +7,6 @@ import type { SemesterCalendar } from '#/calendar';
 import type { SearchCategory } from '#/lib/search-categories';
 import type { UserProfile } from '#/queries/me';
 
-import { getCurrentSemester } from '#/calendar';
 import { ErrorState } from '#/components/ErrorState';
 import { HeaderBar, HeaderTitle } from '#/components/HeaderBar';
 import { SchedulePreview } from '#/components/schedule/SchedulePreview';
@@ -16,13 +15,14 @@ import {
     type CatalogCategory,
     catalogQueryOptions
 } from '#/components/search/CatalogResults';
+import { InternshipSection } from '#/components/search/InternshipSection';
 import { PlanningGuide } from '#/components/search/PlanningGuide';
 import { RecommendationsSection } from '#/components/search/RecommendationsSection';
 import { SearchResults } from '#/components/search/SearchResults';
 import { SubjectResults } from '#/components/search/SubjectResults';
 import { TabFilter } from '#/components/TabFilter';
 import { Input } from '#/components/ui/input';
-import { canAddToSchedule, offerChoices, semesterParam } from '#/lib/offer';
+import { canAddToSchedule, currentRegularSemester, offerChoices, semesterParam } from '#/lib/offer';
 import { nowInBrasilia } from '#/lib/schedule';
 import {
     SEARCH_CATEGORIES,
@@ -55,6 +55,7 @@ import {
 } from '#/queries/subjects';
 
 type SearchView =
+    | { kind: 'internships'; text: string }
     | { kind: 'recommendations' }
     | { kind: 'catalog'; category: CatalogCategory }
     | { kind: 'search'; text: string }
@@ -68,6 +69,7 @@ function searchView(
     user: UserProfile | null
 ): SearchView | null {
     const subjects = showsSubjects(category);
+    if (category === 'internships') return { kind: 'internships', text: text ?? '' };
     if (subjects && showRecommendations(user, { q })) return { kind: 'recommendations' };
     if (text) return { kind: 'search', text };
     if (category === 'courses' || category === 'professors') return { kind: 'catalog', category };
@@ -155,9 +157,9 @@ function BuscarSemesterSelect() {
     const { data: offer } = useQuery(offerSemestersQueryOptions);
     const { choices, selected } = offerSemester(offer ?? [], semester, calendar);
     const defaultSemester = choices.find((choice) => choice.available)?.semester ?? offer?.[0];
-    const availableOptions = choices.filter((choice) => choice.available);
+    const availableOptions = choices;
 
-    if (availableOptions.length === 0 || !selected) return null;
+    if (!availableOptions.some((choice) => choice.available) || !selected) return null;
 
     return (
         <select
@@ -172,8 +174,8 @@ function BuscarSemesterSelect() {
             className="h-9 shrink-0 rounded-xl border border-border bg-card px-2.5 text-xs font-semibold text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
             {availableOptions.map((choice) => (
-                <option key={choice.semester} value={choice.semester}>
-                    {`${choice.semester} · ${choice.kind === 'next' ? 'Planejado' : 'Atual'}`}
+                <option key={choice.semester} value={choice.semester} disabled={!choice.available}>
+                    {`${choice.semester} · ${choice.kind === 'next' ? 'Próximo' : 'Atual'}${choice.available ? '' : ' · oferta não coletada'}`}
                 </option>
             ))}
         </select>
@@ -197,7 +199,7 @@ function BuscarPage() {
         : false;
     const currentPeriod = currentCurriculumPeriod(
         user?.entry_semester,
-        getCurrentSemester(undefined, calendar)?.semester
+        currentRegularSemester(today, calendar)
     );
     // Texto aplicado após o debounce de 300 ms; inválido mantém o anterior.
     const [text, setText] = useState(() => searchText(q));
@@ -231,7 +233,7 @@ function BuscarPage() {
                         void setSearch({ q: value.trim() ? value : null });
                     }}
                     maxLength={SEARCH_MAX_LENGTH}
-                    placeholder="Busque por matéria, curso ou professor..."
+                    placeholder="Busque por matéria, curso, professor ou estágio..."
                     aria-label="Busque por matéria, curso ou professor"
                     className="h-11 bg-card pl-10 text-sm"
                 />
@@ -247,6 +249,16 @@ function BuscarPage() {
             </div>
             <SchedulePreview />
             <div aria-live="polite" className="flex flex-col gap-5 pb-8">
+                {subjects && !choices.some((choice) => choice.available) && (
+                    <p className="text-sm text-muted-foreground">
+                        A oferta do semestre atual e do próximo ainda não foi coletada. Os
+                        resultados de turmas serão exibidos após a atualização do catálogo.
+                    </p>
+                )}
+                {view?.kind === 'internships' && <InternshipSection text={view.text} />}
+                {view?.kind === 'search' && category === 'all' && (
+                    <InternshipSection text={view.text} />
+                )}
                 {!view && (
                     <p className="py-8 text-center text-sm text-muted-foreground">{`Digite de ${SEARCH_MIN_LENGTH} a ${SEARCH_MAX_LENGTH} caracteres do nome, código da matéria, curso ou professor para ver os resultados.`}</p>
                 )}

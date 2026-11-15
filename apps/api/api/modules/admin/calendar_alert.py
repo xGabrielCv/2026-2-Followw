@@ -36,7 +36,9 @@ async def get_calendar_admin(db: DatabaseDep) -> dict:
     async def read(session: AsyncSession) -> dict:
         cal = await academic_calendar.read_calendar(session)
         current = academic_calendar.current_regular_semester(calendar=cal)
-        custom = await academic_calendar.read_custom_calendar(session)
+        custom = await academic_calendar.read_custom_calendar(
+            session, include_collected=False
+        )
         static = load_academic_calendar().list_semesters()
         static_latest = max((s.semester for s in static), default=None)
         return {
@@ -47,6 +49,7 @@ async def get_calendar_admin(db: DatabaseDep) -> dict:
             ),
             "static_latest": static_latest,
             "custom": custom,
+            "collected": sorted(academic_calendar.collected_calendar()),
         }
 
     return await db.read(read)

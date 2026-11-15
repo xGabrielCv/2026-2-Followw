@@ -1,4 +1,5 @@
 RU_MENU_URL = "https://ru.unb.br/cardapio-refeitorio/"
+ACADEMIC_CALENDAR_URL = "https://saa.unb.br/calendario-academico-graduacao/"
 
 DEFAULT_TIMEOUT = 30
 

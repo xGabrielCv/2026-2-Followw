@@ -116,3 +116,38 @@ async def test_unb_browser_expoe_o_calendario() -> None:
         sem = browser.calendar.get_semester("2026.1")
         assert sem is not None
         assert sem.semester == "2026.1"
+
+
+async def test_coleta_periodos_publicados_para_anos_futuros_sem_inventar_matricula():
+    import httpx
+
+    html = "<ul><li>2033.1: 14/03 a 15/07/2033 (100 dias letivos)</li><li>2033.2: 08/08 a 15/12/2033</li></ul>"
+    async with UnbBrowser(
+        transport=httpx.MockTransport(lambda _: httpx.Response(200, text=html))
+    ) as browser:
+        result = await browser.calendar.fetch_periods()
+    entry = result.semesters["2033.1"]
+    assert entry.classes.start == date(2033, 3, 14)
+    assert entry.classes.end == date(2033, 7, 15)
+    assert entry.classes.instructional_days == 100
+    assert entry.events == ()
+    assert result.semesters["2033.2"].classes.instructional_days == 0
+
+
+async def test_calendario_remoto_vazio_ou_conflitante_falha_sem_estimar_datas():
+    import httpx
+    import pytest
+
+    from unb_browser import UnbParseError
+
+    for html in (
+        "<p>Em breve</p>",
+        "<ul><li>2033.1: 14/03 a 15/07/2033</li><li>2033.1: 15/03 a 15/07/2033</li></ul>",
+    ):
+        async with UnbBrowser(
+            transport=httpx.MockTransport(
+                lambda _, html=html: httpx.Response(200, text=html)
+            )
+        ) as browser:
+            with pytest.raises(UnbParseError):
+                await browser.calendar.fetch_periods()

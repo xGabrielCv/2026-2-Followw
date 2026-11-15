@@ -29,6 +29,7 @@ import {
 import { appConfigQueryOptions } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { apiClient } from '#/queries/client';
+import { internshipsQueryOptions } from '#/queries/internships';
 import { meQueryOptions } from '#/queries/me';
 import { type SearchResult, searchQueryOptions } from '#/queries/search';
 
@@ -168,6 +169,48 @@ afterAll(async () => {
 });
 
 describe('página de busca com estado na URL', () => {
+    test('visitante vê convite em Estágios sem consultar o mural privado', async () => {
+        const page = renderPage('?category=internships&q=historia');
+        await page.findByText('Entre com o SIGAA');
+        expect(requests).toHaveLength(0);
+        expect(page.getByRole('button', { name: 'Estágios' }).getAttribute('aria-pressed')).toBe(
+            'true'
+        );
+    });
+
+    test('Estágios reutiliza cache autenticado e abre mural com filtro sem busca pública duplicada', async () => {
+        const user: components['schemas']['UserProfile'] = {
+            name: 'Discente',
+            registration: '1',
+            photo: null,
+            bio: null,
+            unit: null,
+            course: null,
+            entry_semester: null,
+            integralization: null,
+            workload: null,
+            period_max_workload: null,
+            ira: null,
+            mp: null,
+            level: 'Graduação'
+        };
+        client.setQueryData(meQueryOptions.queryKey, user);
+        client.setQueryData(internshipsQueryOptions.queryKey, [
+            {
+                reference: 'sintetica',
+                title: 'Estágio em História',
+                vacancies: 1,
+                stipend: '900',
+                published_until: '2099-12-31T23:59:59Z',
+                mine: true
+            }
+        ]);
+        const page = renderPage('?category=internships&q=historia');
+        const link = await page.findByRole('link', { name: /Estágio em História/ });
+        expect(link.getAttribute('href')).toContain('/estagios');
+        expect(link.getAttribute('href')).toContain('historia');
+        expect(requests).toHaveLength(0);
+    });
     let client: QueryClient;
     let middleware: Middleware;
     let requests: URL[];
@@ -269,7 +312,7 @@ describe('página de busca com estado na URL', () => {
                         )
                     );
                 }
-                if (url.pathname.endsWith('/public/subjects') && !url.search)
+                if (url.pathname.endsWith('/public/subjects') && !url.searchParams.has('unit'))
                     return Response.json(recommended);
                 return Response.json(subjects);
             }
@@ -333,7 +376,9 @@ describe('página de busca com estado na URL', () => {
         ).toBeTruthy();
         expect(page.getByText('Graduação · Diurno')).toBeDefined();
         expect(page.getByText('Departamento de Matemática')).toBeDefined();
-        expect(searchbox(page).placeholder).toBe('Busque por matéria, curso ou professor...');
+        expect(searchbox(page).placeholder).toBe(
+            'Busque por matéria, curso, professor ou estágio...'
+        );
     });
 
     test.each([1, 25])('aba Cursos lista %i cursos sem oferecer mais páginas', async (total) => {
@@ -454,7 +499,7 @@ describe('página de busca com estado na URL', () => {
         expect(section.getAllByRole('link')).toHaveLength(3);
         expect(section.queryByRole('button')).toBeNull();
         expect(requests.map((url) => `${url.pathname}${url.search}`)).toEqual([
-            '/api/public/professors?page=1'
+            '/api/public/professors?semester=2026.2&page=1'
         ]);
     });
 
@@ -561,7 +606,7 @@ describe('página de busca com estado na URL', () => {
     });
 
     test('adiciona pelo resultado e mantém a grade ao mudar a busca', async () => {
-        client.setQueryData(searchQueryOptions('calculo').queryKey, {
+        client.setQueryData(searchQueryOptions('calculo', undefined, '2026.2').queryKey, {
             subjects: [
                 {
                     code: 'MAT0023',
@@ -653,7 +698,7 @@ describe('página de busca com estado na URL', () => {
     });
 
     test('aba Todos sem resultados mostra uma única mensagem', async () => {
-        client.setQueryData(searchQueryOptions('nada').queryKey, {
+        client.setQueryData(searchQueryOptions('nada', undefined, '2026.2').queryKey, {
             subjects: [],
             courses: paged([]),
             professors: noProfessors
@@ -696,7 +741,7 @@ describe('página de busca com estado na URL', () => {
     );
 
     test('aba Matérias sem resultados informa ausência de matérias', async () => {
-        client.setQueryData(searchQueryOptions('nada', ['subjects']).queryKey, {
+        client.setQueryData(searchQueryOptions('nada', ['subjects'], '2026.2').queryKey, {
             subjects: [],
             courses: null,
             professors: null
@@ -770,7 +815,7 @@ describe('página de busca com estado na URL', () => {
             name: `Matéria ${i}`,
             classrooms: [{ number: '01', semester: '2026.2', professors: [] }]
         }));
-        client.setQueryData(searchQueryOptions('materia').queryKey, {
+        client.setQueryData(searchQueryOptions('materia', undefined, '2026.2').queryKey, {
             subjects,
             courses: paged([]),
             professors: noProfessors
@@ -798,7 +843,7 @@ describe('página de busca com estado na URL', () => {
             ],
             classrooms: [{ number: '01', semester: '2026.2', professors: [] }]
         };
-        const options = searchQueryOptions('FGA0173');
+        const options = searchQueryOptions('FGA0173', undefined, '2026.2');
         client.setQueryData(options.queryKey, {
             subjects: [saved],
             courses: paged([]),
@@ -872,7 +917,7 @@ describe('página de busca com estado na URL', () => {
     });
 
     test('adaptador real hidrata a URL e acompanha digitação e navegação do Router', async () => {
-        client.setQueryData(searchQueryOptions('calculo').queryKey, {
+        client.setQueryData(searchQueryOptions('calculo', undefined, '2026.2').queryKey, {
             subjects: [
                 {
                     code: 'MAT0023',

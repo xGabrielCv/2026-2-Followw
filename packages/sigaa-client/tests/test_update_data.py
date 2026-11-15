@@ -27,6 +27,62 @@ def test_semestre_atual_e_o_proximo_pelo_calendario():
     assert update_data.regular_semesters(date(2027, 3, 1)) == ("2027.1", "2027.2")
 
 
+def test_atualizacao_das_matrizes_e_semanal_sem_cadastrar_semestre(
+    tmp_path, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+
+    calls = []
+    monkeypatch.setattr(update_data, "STRUCTURE_UPDATED", tmp_path / "updated")
+    monkeypatch.setattr(update_data, "LOCAL", tmp_path)
+    monkeypatch.setattr(update_data, "run", lambda *args: calls.append(args))
+    now = datetime(2033, 11, 10, tzinfo=UTC)
+    update_data.refresh_structure(now)
+    update_data.refresh_structure(now + timedelta(days=6))
+    assert len(calls) == 1
+    assert calls[0][-1].name == "collect_curricula.py"
+    update_data.refresh_structure(now + timedelta(days=7))
+    assert len(calls) == 2
+
+
+async def test_calendario_coletado_futuro_e_usado_e_falha_preserva_arquivo(
+    tmp_path, monkeypatch
+):
+    from unb_browser import AcademicCalendar, SemesterCalendar, UnbParseError
+
+    path = tmp_path / "calendar.json"
+    monkeypatch.setattr(update_data, "CALENDAR", path)
+    entry = SemesterCalendar.model_validate(
+        {
+            "semester": "2033.2",
+            "name": "Segundo semestre",
+            "period": {"start": "2033-08-08", "end": "2033-12-15"},
+            "classes": {
+                "start": "2033-08-08",
+                "end": "2033-12-15",
+                "instructional_days": 100,
+            },
+        }
+    )
+
+    async def fetch(_self):
+        return AcademicCalendar(semesters={entry.semester: entry})
+
+    from unb_browser.calendar import Calendar
+
+    monkeypatch.setattr(Calendar, "fetch_periods", fetch)
+    await update_data.refresh_calendar()
+    assert update_data.regular_semesters(date(2033, 9, 10)) == ("2033.2", "2034.1")
+    before = path.read_bytes()
+
+    async def unavailable(_self):
+        raise UnbParseError("Fonte mudou")
+
+    monkeypatch.setattr(Calendar, "fetch_periods", unavailable)
+    await update_data.refresh_calendar()
+    assert path.read_bytes() == before
+
+
 def test_juncao_troca_so_as_linhas_do_semestre_e_mantem_a_ordem(tmp_path):
     base = _csv(
         tmp_path / "base.csv",
@@ -79,3 +135,20 @@ def test_resposta_vazia_nao_substitui_ultimo_csv_valido(tmp_path):
     with pytest.raises(ValueError):
         update_data.merge_offer(base, new, "2026.2")
     assert base.read_bytes() == before
+
+
+def test_atualizacao_manual_de_matrizes_busca_componentes_depois_da_coleta(
+    tmp_path, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(
+        update_data.sys, "argv", ["update_data.py", "--curricula-only", "--no-load"]
+    )
+    monkeypatch.setattr(update_data, "LOCAL", tmp_path)
+    monkeypatch.setattr(update_data, "STATE", tmp_path / "update.json")
+    monkeypatch.setattr(update_data, "run", lambda *args: calls.append(args))
+    update_data.main()
+    assert [args[1].name for args in calls] == [
+        "collect_curricula.py",
+        "collect_subjects.py",
+    ]

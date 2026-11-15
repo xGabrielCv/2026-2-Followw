@@ -73,3 +73,23 @@ test('canAddToSchedule libera futuro, bloqueia passado e exige matrícula ou fla
     // além de 2027 continua estimando sem travar
     expect(currentRegularSemester('2032-09-10')).toBe('2032.2');
 });
+
+test('oferta antiga ou distante não vira semestre atual nem permite seleção por URL', () => {
+    const { resolve } = offerChoices(['2026.2', '2026.1'], '2032-09-10');
+    expect(resolve(null)).toBe('2032.2');
+    expect(resolve('2026.2')).toBe('2032.2');
+    const future = offerChoices(['2033.1', '2032.2', '2031.2'], '2032-09-10');
+    expect(future.resolve(null)).toBe('2033.1');
+    expect(future.resolve('2031.2')).toBe('2033.1');
+});
+
+test('um calendário distante não prende o semestre atual em uma lacuna de anos', () => {
+    const future = {
+        semester: '2033.2',
+        name: 'Segundo semestre',
+        period: { start: '2033-08-08', end: '2033-12-15' },
+        classes: { start: '2033-08-08', end: '2033-12-15', instructional_days: 100 },
+        events: []
+    };
+    expect(currentRegularSemester('2030-09-10', { '2033.2': future })).toBe('2030.2');
+});
