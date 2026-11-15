@@ -87,6 +87,9 @@ def test_login_seguido_de_me_responde_do_cookie_do_navegador(client, sigaa):
             "pending_mandatory": 2175,
             "pending_optional": 420,
             "pending_complementary": 0,
+            "mandatory": None,
+            "optional": None,
+            "complementary": None,
         },
         "period_max_workload": None,
         "ira": 3.9524,
@@ -164,11 +167,20 @@ def test_me_traz_carga_maxima_por_periodo_da_matriz(client, sigaa, database):
                 active=True,
                 matrix="ENGENHARIA DE SOFTWARE",
                 period_max_workload=420,
+                required_workload=2400,
+                optional_min_workload=900,
+                complementary_min_workload=225,
             )
         )
 
     # A matriz é inferida do perfil a cada pedido, pelo catálogo público.
     assert client.get("/me").json()["period_max_workload"] == 420
+    workload = client.get("/me").json()["workload"]
+    assert (workload["mandatory"], workload["optional"], workload["complementary"]) == (
+        2400,
+        900,
+        225,
+    )
 
 
 def test_perfil_vencido_ou_de_outro_login_volta_ao_sigaa(client, sigaa, cookies):

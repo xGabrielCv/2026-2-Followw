@@ -1,15 +1,24 @@
 import { Check, IdCard } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import type { Classroom } from '#/queries/classrooms';
 import type { components } from '#/queries/schema.gen';
 
 import { ListCard, Meter } from '#/components/ListCard';
 import { Card } from '#/components/ui/card';
 import { PersonPhoto } from '#/components/ui/person-photo';
-import { academicIndexes, creditsLabel, titleCase, truncateProfileBio } from '#/lib/profile';
+import {
+    academicIndexes,
+    creditsLabel,
+    titleCase,
+    truncateProfileBio,
+    projectedCategoryHours,
+    projectedIntegralization
+} from '#/lib/profile';
 import { cn } from '#/lib/shadcn';
 
 type UserProfile = components['schemas']['UserProfile'];
+const NO_CLASSROOMS: Classroom[] = [];
 
 export function ProfileIdentity({
     user,
@@ -81,15 +90,38 @@ export function AcademicIndexesCard({ user }: { user: Pick<UserProfile, 'ira' | 
     );
 }
 
-export function ProgressSection({ user }: { user: UserProfile }) {
+export function ProgressSection({
+    user,
+    classrooms = NO_CLASSROOMS
+}: {
+    user: UserProfile;
+    classrooms?: Classroom[];
+}) {
     const { integralization, workload } = user;
     if (integralization == null && !workload) return null;
+    const forecast = projectedCategoryHours(classrooms);
+    const projected = projectedIntegralization(user, forecast);
 
     const items = workload && [
-        { label: 'Obrigatória pendente', hours: workload.pending_mandatory, credits: true },
-        { label: 'Optativa pendente', hours: workload.pending_optional, credits: true },
-        { label: 'Complementar pendente', hours: workload.pending_complementary, credits: true },
-        { label: 'Total do currículo', hours: workload.total, credits: true }
+        {
+            label: 'Obrigatória pendente',
+            hours: workload.pending_mandatory,
+            credits: true,
+            required: workload.mandatory
+        },
+        {
+            label: 'Optativa pendente',
+            hours: workload.pending_optional,
+            credits: true,
+            required: workload.optional
+        },
+        {
+            label: 'Complementar pendente',
+            hours: workload.pending_complementary,
+            credits: true,
+            required: workload.complementary
+        },
+        { label: 'Total do currículo', hours: workload.total, credits: true, required: null }
     ];
 
     return (
@@ -98,11 +130,19 @@ export function ProgressSection({ user }: { user: UserProfile }) {
                 {integralization != null && (
                     <Meter label="Integralização" value={integralization} />
                 )}
+                {projected !== null && (
+                    <Meter label="Estimativa ao concluir as turmas atuais" value={projected} />
+                )}
                 {items && (
                     <dl className="flex flex-col gap-3 py-3">
-                        {items.map(({ label, hours, credits }) => (
+                        {items.map(({ label, hours, credits, required }) => (
                             <div key={label} className="flex items-baseline justify-between gap-2">
-                                <dt className="text-sm text-muted-foreground">{label}</dt>
+                                <dt className="text-sm text-muted-foreground">
+                                    {label}
+                                    {required != null && (
+                                        <small className="block">Exigidas: {required}h</small>
+                                    )}
+                                </dt>
                                 <dd className="text-sm font-medium tabular-nums">
                                     {hours}h
                                     {credits && hours > 0 && (
@@ -117,6 +157,12 @@ export function ProgressSection({ user }: { user: UserProfile }) {
                     </dl>
                 )}
             </ListCard>
+            {projected !== null && (
+                <p className="mt-2 px-1 text-xs text-muted-foreground">
+                    Estimativa com aprovação nas disciplinas em andamento; não inclui novas
+                    atividades complementares.
+                </p>
+            )}
         </ProfileSection>
     );
 }

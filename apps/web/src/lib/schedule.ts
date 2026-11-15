@@ -48,7 +48,7 @@ export function visibleSlots(times: TimeRange[]) {
 // Intervalo máximo entre blocos para juntá-los, como o T6 (até 18:55) e o N1 (a partir de 19:00).
 const MERGE_GAP_MINUTES = 5;
 
-const getMinutes = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
+export const minutesOf = (time: string) => Number(time.slice(0, 2)) * 60 + Number(time.slice(3));
 
 export const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -82,7 +82,7 @@ export function parseSchedule(code: string | null | undefined): ClassTime[] {
         if (
             last &&
             last.weekday === time.weekday &&
-            getMinutes(time.start) - getMinutes(last.end) <= MERGE_GAP_MINUTES
+            minutesOf(time.start) - minutesOf(last.end) <= MERGE_GAP_MINUTES
         )
             last.end = last.end > time.end ? last.end : time.end;
         else merged.push(time);
@@ -223,14 +223,14 @@ export interface DayOverview {
 export function dayOverview<T>(classes: ScheduledClass<T>[], time?: string): DayOverview {
     const gaps = classes.map((item, index) => {
         const previous = classes[index - 1];
-        const gap = previous && getMinutes(item.start) - getMinutes(previous.end);
+        const gap = previous && minutesOf(item.start) - minutesOf(previous.end);
         return gap && gap >= MIN_GAP_MINUTES ? gap : undefined;
     });
     const next = time ? classes.find((item) => item.start > time) : undefined;
     return {
         count: classes.length,
         minutes: classes.reduce(
-            (total, item) => total + getMinutes(item.end) - getMinutes(item.start),
+            (total, item) => total + minutesOf(item.end) - minutesOf(item.start),
             0
         ),
         start: classes[0]?.start,
@@ -239,7 +239,7 @@ export function dayOverview<T>(classes: ScheduledClass<T>[], time?: string): Day
             undefined
         ),
         gaps,
-        nextIn: next && time ? getMinutes(next.start) - getMinutes(time) : undefined,
+        nextIn: next && time ? minutesOf(next.start) - minutesOf(time) : undefined,
         finished: Boolean(time && classes.length && classes.every((item) => item.end <= time))
     };
 }
@@ -248,5 +248,5 @@ export function dayOverview<T>(classes: ScheduledClass<T>[], time?: string): Day
 export function weeklyMinutes(items: { schedule?: string | null }[]) {
     return items
         .flatMap((item) => parseSchedule(item.schedule))
-        .reduce((total, { start, end }) => total + getMinutes(end) - getMinutes(start), 0);
+        .reduce((total, { start, end }) => total + minutesOf(end) - minutesOf(start), 0);
 }

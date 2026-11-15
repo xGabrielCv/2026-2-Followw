@@ -10,6 +10,7 @@ import { ClassCard } from '#/components/home/ClassCard';
 import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
 import { PlannedSemester } from '#/components/schedule/PlannedSemester';
+import { WeeklySchedule } from '#/components/schedule/WeeklySchedule';
 import { TabFilter } from '#/components/TabFilter';
 import { Card, CardContent } from '#/components/ui/card';
 import { groupBySemester } from '#/lib/classroom-details';
@@ -35,6 +36,7 @@ export const Route = createFileRoute('/_app/turmas')({
         if (user) await loadPersonal(queryClient, allClassroomsQueryOptions);
     },
     staticData: {
+        wide: true,
         header: () => (
             <HeaderBar>
                 <HeaderTitle>Minhas Turmas</HeaderTitle>
@@ -94,6 +96,21 @@ function Classrooms() {
                 />
             )}
             {planning && <PlannedSemester semester={future} />}
+            {items && items.length > 0 && (
+                <div className="mb-4 hidden desk:block">
+                    <WeeklySchedule
+                        label={`Grade semanal · ${semester}`}
+                        entries={items.map((item) => ({
+                            key: item.id,
+                            code: item.subject.code,
+                            name: item.subject.name,
+                            number: item.number,
+                            schedule: item.schedule
+                        }))}
+                        onSelect={(id) => void navigate({ to: '/turmas/$id', params: { id } })}
+                    />
+                </div>
+            )}
             <div className="flex flex-col gap-2">
                 {items?.map((classroom) => (
                     <ClassCard

@@ -289,3 +289,7 @@ body {
         3% 22%
     );
 }
+
+.weekly-columns {
+    grid-template-columns: 4rem repeat(6, minmax(0, 1fr));
+}

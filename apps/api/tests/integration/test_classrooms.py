@@ -32,7 +32,7 @@ from sqlalchemy.schema import CreateTable
 from api.academic_calendar import class_days
 from api.db.enums import LessonStatus
 from api.db.models import Classroom as ClassroomRow
-from api.db.models import Lesson, Professor
+from api.db.models import Course, Curriculum, CurriculumComponent, Lesson, Professor
 from api.db.professors import SeenProfessor, _complete, save_professors
 from api.modules.classrooms.lessons import (
     Attendance,
@@ -409,6 +409,55 @@ def test_lista_vem_do_sigaa_e_o_banco_so_guarda_a_turma_publica(
         "lesson_attendances",
         "classroom_posts",
     }
+
+
+@pytest.mark.parametrize(
+    "kind,expected",
+    [
+        ("required", "mandatory"),
+        ("optional", "optional"),
+        ("complementary", "complementary"),
+        (None, "free"),
+    ],
+)
+def test_tipo_da_turma_usa_matriz_publica_sem_gravar_perfil(
+    aluno, stub_sigaa, database, kind, expected
+):
+    stub_sigaa.profile.get_profile.return_value = (
+        stub_sigaa.profile.get_profile.return_value.model_copy(
+            update={"entry_semester": "2025.1"}
+        )
+    )
+    assert aluno.get("/me").status_code == 200
+    with database.begin() as session:
+        course = session.scalars(select(Course)).one()
+        curriculum = Curriculum(
+            course_id=course.id,
+            sigaa_id=1234,
+            code="MATRIZ",
+            valid_from="2025.1",
+            created_year=2025,
+            active=True,
+            matrix="MATRIZ",
+        )
+        session.add(curriculum)
+        session.flush()
+        session.add(
+            CurriculumComponent(
+                curriculum_id=curriculum.id,
+                subject_code="MAT0027" if kind else "OUTRA001",
+                kind=kind or "required",
+                period=1,
+            )
+        )
+    response = aluno.get("/classrooms")
+    assert response.status_code == 200
+    assert response.json()[0]["subject"]["kind"] == expected
+    assert not _tabelas(database) & {"users", "students", "classroom_participants"}
+
+
+def test_turma_sem_matriz_nao_inventa_categoria(aluno):
+    assert aluno.get("/classrooms").json()[0]["subject"]["kind"] is None
 
 
 def test_turma_desconhecida_consulta_a_lista_e_a_de_outro_aluno_e_404(

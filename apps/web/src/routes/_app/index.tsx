@@ -1,6 +1,6 @@
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense } from 'react';
 
 import { getNoClassReason } from '#/calendar';
 import { ErrorState } from '#/components/ErrorState';
@@ -13,13 +13,14 @@ import { RemindersSection } from '#/components/home/RemindersSection';
 import { usePageState } from '#/components/PageState';
 import { useAgenda } from '#/components/schedule/useAgenda';
 import { academicEventsOn, entriesOn } from '#/lib/agenda';
+import { useBrasiliaClock } from '#/lib/clock';
 import { dayOverview, nowInBrasilia } from '#/lib/schedule';
 import { publicPageHead } from '#/lib/seo';
 import { classroomsQueryOptions } from '#/queries/classrooms';
 import { useCalendarEntries } from '#/queries/events';
 import { loadPersonal, loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
-import { campusOf, menuQueryOptions } from '#/queries/restaurant';
+import { campusOf, menuQueryOptions, useMenuPreview } from '#/queries/restaurant';
 
 const LatestNewsSection = lazy(() =>
     import('#/components/home/LatestNewsSection').then((module) => ({
@@ -75,12 +76,7 @@ export const Route = createFileRoute('/_app/')({
 function useNow() {
     // sem loaderData quando a rota falha, e o header ainda renderiza
     const loaded = Route.useLoaderData({ select: (data) => data?.now });
-    const [now, setNow] = useState(() => loaded ?? nowInBrasilia());
-    useEffect(() => {
-        const id = setInterval(() => setNow(nowInBrasilia()), 30_000);
-        return () => clearInterval(id);
-    }, []);
-    return now;
+    return useBrasiliaClock(loaded);
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -114,7 +110,7 @@ function HomePage() {
         enabled: Boolean(user)
     });
     const classrooms = classroomsQuery.data ?? [];
-    const menu = useQuery(menuQueryOptions({ date, user }));
+    const menu = useMenuPreview({ campus: campusOf(user?.unit?.code), date, now });
     const entries = useCalendarEntries().data ?? [];
 
     const agendaOf = useAgenda(classrooms);
@@ -127,8 +123,11 @@ function HomePage() {
         <>
             <PublicInfoSection
                 campus={campusOf(user?.unit?.code)}
-                menu={menu.data?.[0]}
-                isLoading={menu.isPending}
+                menu={menu.menus.find((item) => item.date === date)}
+                menus={menu.menus}
+                date={date}
+                now={now}
+                isLoading={menu.isLoading}
                 day={label}
             />
             <HomeInsights date={date} user={user} classrooms={classroomsQuery.data} />

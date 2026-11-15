@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import type { ClassroomFrequency, Lesson, LessonMarkStatus } from '#/queries/classrooms';
 
 import { AbsenceAlert } from '#/components/classroom/AbsenceAlert';
+import { LessonCalendar } from '#/components/classroom/LessonCalendar';
 import { ListCard, Meter } from '#/components/ListCard';
 import { SelectionBar } from '#/components/SelectionBar';
 import { Button } from '#/components/ui/button';
@@ -61,7 +62,15 @@ export function FrequencyContent({
     onMark: MarkLessons;
     pending: boolean;
 }) {
-    const { totals, lessons } = data;
+    const { totals } = data;
+    const [calendar, setCalendar] = useState(false);
+    const [day, setDay] = useState<string | null>(null);
+    const lessons = day
+        ? data.lessons.filter((lesson) => lesson.occurred_on.slice(0, 10) === day)
+        : data.lessons;
+    const upcoming = day
+        ? data.upcoming.filter((lesson) => lesson.occurred_on.slice(0, 10) === day)
+        : data.upcoming;
     const notice = FREQUENCY_NOTICE[data.frequency_status];
     const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
     // a aula some da seleção quando deixa de ser selecionável (marcada ou registrada)
@@ -85,6 +94,24 @@ export function FrequencyContent({
         <div className="flex flex-col gap-2">
             <AbsenceAlert totals={totals} />
             <FrequencySummary data={data} />
+            <Button
+                variant="outline"
+                size="sm"
+                aria-expanded={calendar}
+                onClick={() => {
+                    setCalendar(!calendar);
+                    setDay(null);
+                }}
+            >
+                Calendário de frequência
+            </Button>
+            {calendar && (
+                <LessonCalendar
+                    lessons={[...data.lessons, ...data.upcoming]}
+                    selected={day}
+                    onSelect={setDay}
+                />
+            )}
             {totals?.estimated && (
                 <p className="px-1 text-xs text-muted-foreground">
                     Frequência estimada com as aulas marcadas por você (as marcações ficam só neste
@@ -133,8 +160,8 @@ export function FrequencyContent({
                     </ListCard>
                 </section>
             )}
-            {data.upcoming.length > 0 && (
-                <UpcomingLessons lessons={data.upcoming} onMark={onMark} pending={pending} />
+            {upcoming.length > 0 && (
+                <UpcomingLessons lessons={upcoming} onMark={onMark} pending={pending} />
             )}
             {selected.length > 0 && (
                 <SelectionBar

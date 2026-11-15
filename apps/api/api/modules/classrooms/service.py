@@ -6,7 +6,7 @@ Do que vem, o banco guarda só a turma pública (horário, sala, docentes, aulas
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 import sigaa_client
 from fastapi import Depends
@@ -21,6 +21,8 @@ from api.db.enums import ClassroomStatus
 from api.db.main import DatabaseDep
 from api.db.models import Classroom, Course
 from api.modules.classrooms.repository import ClassroomRepository
+from api.modules.me.profile import enrollment
+from api.modules.recommendations.repository import RecommendationRepository
 from api.schemas import (
     ClassroomOffer,
     CourseRef,
@@ -52,10 +54,14 @@ class ClassroomMembers(BaseModel):
     professors: list[ProfessorRef]
 
 
+class ParticipantSubject(UserSubject):
+    kind: Literal["mandatory", "optional", "complementary", "free"] | None = None
+
+
 class ParticipantClassroom(sigaa_client.Classroom, ClassroomOffer):
     """A turma com a menção do usuário, `None` enquanto não lançada."""
 
-    subject: UserSubject
+    subject: ParticipantSubject
     grade: Grade | None = None
     status: ClassroomStatus | None = None
 
@@ -91,7 +97,24 @@ class ClassroomService:
             if any(not turma.current for turma in turmas)
             else {}
         )
-        return [to_classroom(turma, grades) for turma in turmas]
+        profile = await self._account.profile()
+
+        async def kinds(session: AsyncSession):
+            found = await enrollment(session, profile)
+            if not found.curriculum_id:
+                return None
+            components = await RecommendationRepository(session).components(
+                found.curriculum_id
+            )
+            if not components:
+                return None
+            return {
+                code: "mandatory" if item.kind == "required" else item.kind
+                for code, item in components.items()
+            }
+
+        curriculum = await self._db.read(kinds)
+        return [to_classroom(turma, grades, curriculum) for turma in turmas]
 
     async def list_turmas(self, semester: str | None = None) -> list[Turma]:
         """As turmas da lista do aluno, na ordem em que ela é exibida."""
@@ -147,7 +170,9 @@ def _in_semester(item: sigaa_client.Classroom, semester: str | None) -> bool:
 
 
 def to_classroom(
-    turma: Turma, grades: dict[tuple[str, str], Grade | None] | None = None
+    turma: Turma,
+    grades: dict[tuple[str, str], Grade | None] | None = None,
+    curriculum: dict[str, str] | None = None,
 ) -> ParticipantClassroom:
     classroom = turma.row
     subject = classroom.subject
@@ -160,11 +185,14 @@ def to_classroom(
         schedule=classroom.schedule,
         room=classroom.room,
         current=turma.current,
-        subject=UserSubject(
+        subject=ParticipantSubject(
             code=subject.code,
             name=subject.name,
             hours=subject.hours,
             unit=unit_ref(subject.unit),
+            kind=curriculum.get(subject.code.strip().upper(), "free")
+            if curriculum is not None
+            else None,
         ),
         grade=None if turma.current else grade,
         status=academic_calendar.member_status(classroom.semester),

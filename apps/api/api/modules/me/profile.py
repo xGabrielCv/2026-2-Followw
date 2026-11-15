@@ -20,6 +20,12 @@ from api.modules.recommendations.repository import RecommendationRepository
 from api.schemas import CourseRef, UnitRef, course_ref, unit_ref
 
 
+class Workload(CurriculumWorkload):
+    mandatory: int | None = None
+    optional: int | None = None
+    complementary: int | None = None
+
+
 class UserProfile(BaseModel):
     """O perfil como a API devolve: sem curso conhecido, curso e unidade são nulos."""
 
@@ -35,7 +41,7 @@ class UserProfile(BaseModel):
     entry_semester: str | None
     curriculum_subject_codes: list[str] | None = None
     integralization: int | None
-    workload: CurriculumWorkload | None
+    workload: Workload | None
     # Carga horária máxima por período da matriz do aluno, em horas.
     period_max_workload: int | None
     ira: float | None
@@ -110,7 +116,18 @@ async def _to_profile(
         entry_semester=profile.entry_semester,
         curriculum_subject_codes=codes,
         integralization=profile.integralization,
-        workload=profile.workload,
+        workload=Workload(
+            **profile.workload.model_dump(),
+            mandatory=found.curriculum.required_workload if found.curriculum else None,
+            optional=found.curriculum.optional_min_workload
+            if found.curriculum
+            else None,
+            complementary=found.curriculum.complementary_min_workload
+            if found.curriculum
+            else None,
+        )
+        if profile.workload
+        else None,
         period_max_workload=found.curriculum.period_max_workload
         if found.curriculum
         else None,

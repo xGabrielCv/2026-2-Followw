@@ -36,6 +36,7 @@ import { useOnline } from '#/lib/online';
 import { cn } from '#/lib/shadcn';
 import { appConfigQueryOptions, menuVisible } from '#/queries/app-config';
 import { useLogout } from '#/queries/auth';
+import { classroomsQueryOptions } from '#/queries/classrooms';
 import { loadQuery } from '#/queries/load';
 import { meQueryOptions } from '#/queries/me';
 import { useUserSettings } from '#/queries/settings';
@@ -68,6 +69,7 @@ export const Route = createFileRoute('/_app/perfil')({
 function PerfilPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const { data: config } = useQuery(appConfigQueryOptions);
+    const classrooms = useQuery({ ...classroomsQueryOptions, enabled: Boolean(user) });
     const settings = useUserSettings();
 
     // sessão encerrada por um 401 em qualquer query ou mutation
@@ -98,7 +100,7 @@ function PerfilPage() {
                         ) : undefined
                     }
                 />
-                <ProgressSection user={user} />
+                <ProgressSection user={user} classrooms={classrooms.data} />
                 <AccountSection
                     user={localProfile(user, settings.profile)}
                     displayName={settings.displayName}

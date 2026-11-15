@@ -25,7 +25,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '#/components/ui/tabs';
 import { WeekDayPicker } from '#/components/WeekDayPicker';
 import { useFailureMessage } from '#/lib/online';
-import { currentOrNextMeal, formatMenuDay, highlightMenu, MEAL_TIMES } from '#/lib/restaurant';
+import {
+    currentOrNextMeal,
+    formatMenuDay,
+    highlightMenu,
+    groupSalads,
+    MEAL_TIMES
+} from '#/lib/restaurant';
 import {
     loadRestaurantSearch,
     restaurantPageHead,
@@ -356,7 +362,7 @@ function RUPage() {
 }
 
 function MealDetails({ sections }: { sections: MenuSection[] }) {
-    const { main, alternatives, others } = highlightMenu(sections);
+    const { main, alternatives, others } = highlightMenu(groupSalads(sections));
 
     return (
         <div className="flex flex-col gap-2">

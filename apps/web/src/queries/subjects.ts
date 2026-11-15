@@ -1,6 +1,7 @@
 import type { Classroom } from '#/queries/classrooms';
 import type { components, operations } from '#/queries/schema.gen';
 
+import { coursePeriod } from '#/lib/profile';
 import { api } from '#/queries/api';
 import { finalGrade } from '#/queries/classrooms';
 
@@ -108,10 +109,5 @@ export function currentCurriculumPeriod(
     entry: string | null | undefined,
     semester: string | undefined
 ): number | null {
-    if (!entry || !semester || !/^\d{4}\.[12]$/.test(entry) || !/^\d{4}\.[12]$/.test(semester))
-        return null;
-    const [entryYear, entryTerm] = entry.split('.').map(Number);
-    const [year, term] = semester.split('.').map(Number);
-    const period = (year - entryYear) * 2 + term - entryTerm + 1;
-    return period > 0 ? period : null;
+    return coursePeriod(entry ?? null, semester);
 }

@@ -2,6 +2,7 @@ import type { GridSemester } from '#/lib/planned-schedule';
 
 import { classKey, GRID_DAYS } from '#/lib/planned-schedule';
 import { cn } from '#/lib/shadcn';
+import { compactGridRows } from '#/lib/weekly-timeline';
 
 export function WeeklyTable({
     grid: { semester, hours, rows, unscheduled },
@@ -43,36 +44,53 @@ export function WeeklyTable({
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map(({ start, end, cells }) => (
-                                <tr key={start} className="border-t">
-                                    <th
-                                        scope="row"
-                                        className="bg-muted p-2 font-medium tabular-nums"
-                                    >
-                                        {start}–{end}
-                                    </th>
-                                    {cells.map((entry, index) => (
+                            {compactGridRows(rows).map(({ start, end, cells, omitted }) =>
+                                omitted ? (
+                                    <tr key={start} className="border-t bg-muted/50">
+                                        <th scope="row" className="p-2 tabular-nums">
+                                            {start}–{end}
+                                        </th>
                                         <td
-                                            key={GRID_DAYS[index].label}
-                                            className={cn(
-                                                'border-l p-2 align-middle',
-                                                entry && 'bg-primary/5 text-primary'
-                                            )}
+                                            colSpan={GRID_DAYS.length}
+                                            className="p-2 text-muted-foreground"
                                         >
-                                            {entry ? (
-                                                <span title={entry.name} className="font-semibold">
-                                                    {entry.code}
-                                                    <span className="block font-normal">
-                                                        T{entry.number}
-                                                    </span>
-                                                </span>
-                                            ) : (
-                                                <span className="text-muted-foreground">—</span>
-                                            )}
+                                            Intervalo sem aulas
                                         </td>
-                                    ))}
-                                </tr>
-                            ))}
+                                    </tr>
+                                ) : (
+                                    <tr key={start} className="border-t">
+                                        <th
+                                            scope="row"
+                                            className="bg-muted p-2 font-medium tabular-nums"
+                                        >
+                                            {start}–{end}
+                                        </th>
+                                        {cells.map((entry, index) => (
+                                            <td
+                                                key={GRID_DAYS[index].label}
+                                                className={cn(
+                                                    'border-l p-2 align-middle',
+                                                    entry && 'bg-primary/5 text-primary'
+                                                )}
+                                            >
+                                                {entry ? (
+                                                    <span
+                                                        title={entry.name}
+                                                        className="font-semibold"
+                                                    >
+                                                        {entry.code}
+                                                        <span className="block font-normal">
+                                                            T{entry.number}
+                                                        </span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">—</span>
+                                                )}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                )
+                            )}
                         </tbody>
                     </table>
                 </section>

@@ -30,6 +30,36 @@ const user: components['schemas']['UserProfile'] = {
     level: 'Graduação'
 };
 
+test('progresso distingue exigências da matriz e aprovação estimada nas turmas atuais', () => {
+    const profile = {
+        ...user,
+        integralization: 30,
+        workload: {
+            total: 1000,
+            pending_mandatory: 500,
+            pending_optional: 200,
+            pending_complementary: 0,
+            mandatory: 700,
+            optional: 300,
+            complementary: 0
+        }
+    };
+    const classroom: components['schemas']['ParticipantClassroom'] = {
+        id: 'atual',
+        semester: '2030.1',
+        number: '01',
+        current: true,
+        status: 'cursando',
+        subject: { code: 'MAT0001', name: 'Matéria', hours: 60, kind: 'mandatory' },
+        professors: []
+    };
+    const html = renderToStaticMarkup(<ProgressSection user={profile} classrooms={[classroom]} />);
+    expect(html).toContain('Estimativa ao concluir as turmas atuais');
+    expect(html).toContain('36%');
+    expect(html).toContain('Exigidas: 700h');
+    expect(html).toContain('não inclui novas atividades complementares');
+});
+
 describe('ProfileIdentity', () => {
     test('mostra nome e curso legíveis e ícone sem foto', () => {
         const markup = renderToStaticMarkup(<ProfileIdentity user={user} />);
