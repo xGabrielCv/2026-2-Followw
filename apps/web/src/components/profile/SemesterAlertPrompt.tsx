@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Bell, Check, ChevronRight, X } from 'lucide-react';
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import type { SemesterCalendar } from '#/calendar';
 import type { SemesterAlertConfig } from '#/queries/app-config';
@@ -36,6 +36,8 @@ export interface AlertDismissedRecord {
     firstDayDismissedSemester?: string;
     midOpenCount?: number;
     midOpenSemester?: string;
+    midSessionId?: string;
+    closedSession?: string;
 }
 
 const NO_DISMISSED: AlertDismissedRecord = {};
@@ -78,21 +80,18 @@ const subscribeNothing = () => () => {};
 const isClient = () => true;
 const isServer = () => false;
 
-const SESSION_MID_KEY = 'followw:semester-alert-mid-session';
-const SESSION_TRIGGER_KEY = 'followw:semester-alert-trigger-session';
-
-function readSessionValue(key: string): string | null {
+let memorySessionId: string | undefined;
+function browserSessionId(): string {
+    if (typeof window === 'undefined') return '';
+    const key = 'followw:semester-alert-session';
     try {
-        return sessionStorage.getItem(key);
-    } catch {
-        return null;
-    }
-}
-
-function writeSessionValue(key: string, value: string) {
-    try {
-        sessionStorage.setItem(key, value);
+        const existing = sessionStorage.getItem(key);
+        if (existing) return existing;
+        const id = crypto.randomUUID();
+        sessionStorage.setItem(key, id);
+        return id;
     } catch {}
+    return (memorySessionId ??= crypto.randomUUID());
 }
 
 const brasiliaToday = () =>
@@ -314,6 +313,11 @@ const MODE_BADGES: Record<AlertMode, string> = {
 
 /** Modal de avaliação de professores e estatísticas controlado pelo admin/semestre. */
 export function SemesterAlertPrompt() {
+    const { data: user } = useQuery(meQueryOptions);
+    return user ? <AccountSemesterAlert key={user.registration} /> : null;
+}
+
+function AccountSemesterAlert() {
     const hydrated = useSyncExternalStore(subscribeNothing, isClient, isServer);
     const { data: user } = useQuery(meQueryOptions);
     const { alert, calendar } = useAppConfig();
@@ -340,16 +344,7 @@ export function SemesterAlertPrompt() {
         dismissedStore.getServerSnapshot
     );
 
-    const [closedLocally, setClosedLocally] = useState(false);
-    const bumpedRef = useRef(false);
-    const [midOpenCountForSession, setMidOpenCountForSession] = useState<number>(() => {
-        const stored = readSessionValue(SESSION_MID_KEY);
-        const parsed = stored ? Number(stored) : NaN;
-        return Number.isFinite(parsed) && parsed >= 1 ? parsed : 0;
-    });
-    const [closedTriggerInSession, setClosedTriggerInSession] = useState(() =>
-        readSessionValue(SESSION_TRIGGER_KEY)
-    );
+    const [sessionId] = useState(browserSessionId);
     const [subjectPickerProf, setSubjectPickerProf] = useState<AlertProfessorItem | null>(null);
     const [reviewTarget, setReviewTarget] = useState<{
         professor: AlertProfessorItem;
@@ -376,33 +371,39 @@ export function SemesterAlertPrompt() {
     // Avança a cadência determinística no máximo 1x por sessão do navegador ao atingir 50%+.
     useEffect(() => {
         if (!ready || !alert?.mid_semester_enabled || !progress || progress.percent < 50) return;
-        if (bumpedRef.current || midOpenCountForSession >= 1) return;
-        bumpedRef.current = true;
+        if (dismissed.midOpenSemester === progress.semester && dismissed.midSessionId === sessionId)
+            return;
         const currentCount =
             dismissed.midOpenSemester === progress.semester ? (dismissed.midOpenCount ?? 0) : 0;
         const nextCount = currentCount + 1;
         dismissedStore.set({
             ...dismissed,
             midOpenSemester: progress.semester,
-            midOpenCount: nextCount
+            midOpenCount: nextCount,
+            midSessionId: sessionId
         });
-        writeSessionValue(SESSION_MID_KEY, String(nextCount));
-        setMidOpenCountForSession(nextCount);
-    }, [alert?.mid_semester_enabled, dismissed, midOpenCountForSession, progress, ready]);
+    }, [alert?.mid_semester_enabled, dismissed, progress, ready, sessionId]);
 
     const manualTriggered = Boolean(
         alert && (Boolean(alert.triggered_at) || alert.trigger_id !== 'default')
     );
-    const sessionToken = isFirstDay
+    const modeToken = isFirstDay
         ? `first:${currentSemesterName}`
         : currentCalendar && today === currentCalendar.classes.end
           ? `last:${currentSemesterName}`
           : manualTriggered && alert
             ? alert.trigger_id
             : 'mid';
+    const sessionToken = `${sessionId}:${currentSemesterName}:${modeToken}`;
+    const closedInSession = dismissed.closedSession === sessionToken;
+    const cadenceReady =
+        !alert?.mid_semester_enabled ||
+        !progress ||
+        progress.percent < 50 ||
+        (dismissed.midOpenSemester === progress.semester && dismissed.midSessionId === sessionId);
 
     const evaluation =
-        ready && alert
+        ready && cadenceReady && alert
             ? evaluateSemesterAlert({
                   alert,
                   progress,
@@ -412,8 +413,9 @@ export function SemesterAlertPrompt() {
                   previousClassrooms,
                   reviews,
                   dismissed,
-                  closedInSession: closedLocally || closedTriggerInSession === sessionToken,
-                  midOpenCount: midOpenCountForSession || 1
+                  closedInSession,
+                  midOpenCount:
+                      dismissed.midOpenSemester === progress?.semester ? dismissed.midOpenCount : 1
               })
             : null;
 
@@ -421,10 +423,8 @@ export function SemesterAlertPrompt() {
         return null;
     }
 
-    const closeSession = () => {
-        writeSessionValue(SESSION_TRIGGER_KEY, sessionToken);
-        setClosedTriggerInSession(sessionToken);
-        setClosedLocally(true);
+    const closeSession = (next = dismissed) => {
+        dismissedStore.set({ ...next, closedSession: sessionToken });
         setSuppressShareFallback(true);
     };
 
@@ -439,12 +439,11 @@ export function SemesterAlertPrompt() {
         } else {
             next.triggerId = alert.trigger_id;
         }
-        dismissedStore.set(next);
-        closeSession();
+        closeSession(next);
     };
 
     if (!evaluation.show) {
-        return suppressShareFallback || Boolean(closedTriggerInSession) ? null : <SharePrompt />;
+        return suppressShareFallback || closedInSession ? null : <SharePrompt />;
     }
 
     const openProfessor = (prof: AlertProfessorItem) => {
@@ -577,7 +576,7 @@ export function SemesterAlertPrompt() {
                                 Não mostrar novamente
                             </Button>
                         )}
-                        <Button type="button" onClick={closeSession}>
+                        <Button type="button" onClick={() => closeSession()}>
                             Fechar
                         </Button>
                     </DialogFooter>

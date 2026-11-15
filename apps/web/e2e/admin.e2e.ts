@@ -55,7 +55,31 @@ test('Owner cadastra MFA, administra equipe e moderador só acessa o permitido',
     await page.getByRole('button', { name: 'Sistema e armazenamento', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Saúde e latência' })).toBeVisible();
     await expect(page.locator('#main')).toContainText('PostgreSQL respondeu');
-    await expect(page.locator('#main')).toContainText('Sistema de aviso ativo');
+    await expect(page.locator('#main')).toContainText('Ativar lembretes');
+    await page.getByText('Metade do semestre', { exact: true }).click();
+    await expect(
+        page.getByLabel('Intervalo entre exibições (sessões)', { exact: true })
+    ).toBeVisible();
+    await page.getByLabel('Intervalo entre exibições (sessões)', { exact: true }).fill('4');
+    const savedAlert = page.waitForResponse(
+        (response) =>
+            response.url().endsWith('/api/admin/api/alert') && response.request().method() === 'PUT'
+    );
+    await page.getByRole('button', { name: 'Salvar configuração', exact: true }).click();
+    expect((await savedAlert).status()).toBe(200);
+    await expect(page.locator('#notice')).toContainText('Configuração do aviso salva');
+    expect(
+        (await (await page.request.get('/api/admin/api/alert')).json()).config.mid_semester_every_n
+    ).toBe(4);
+    await page.getByText('Metade do semestre', { exact: true }).click();
+    await page.screenshot({ path: `${artifacts}/admin-alert-desktop.png`, fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const alertPanel = page.locator('.alert-settings');
+    expect(
+        await alertPanel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)
+    ).toBe(true);
+    await alertPanel.screenshot({ path: `${artifacts}/admin-alert-mobile.png` });
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('button', { name: 'Redefinir estatísticas…' }).click();
     const reset = page.getByRole('dialog', { name: 'Detalhes' });
     await expect(reset).toContainText('Não será apagado');

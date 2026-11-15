@@ -20,7 +20,9 @@ describe('LoginPrivacyInfo', () => {
 
         expect(markup).toContain('Seus dados pessoais não ficam no servidor do Followw');
         expect(markup).toContain('cookies cifrados no navegador');
-        expect(markup).toContain('não são gravadas no banco ou nos logs');
+        expect(markup).toContain('Sem credenciais gravadas no banco ou nos logs');
+        expect(markup).toContain('<ul');
+        expect(markup.match(/<li /g)).toHaveLength(4);
         expect(markup).toContain('href="/perfil/dados"');
     });
 });

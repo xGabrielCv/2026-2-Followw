@@ -100,6 +100,31 @@ const own = (id: string, subject?: string): OwnReview => ({
 });
 
 describe('SemesterAlertPrompt', () => {
+    test('datas ausentes não disparam aviso automático e dispensas antigas não bloqueiam semestre futuro', () => {
+        const classrooms = [classroom('HIS0001', [{ siape: 101, name: 'Docente' }], '2033.2')];
+        const common = {
+            alert: baseAlert,
+            classrooms,
+            reviews: {},
+            dismissed: { midDismissedSemester: '2026.2' },
+            closedInSession: false
+        };
+        expect(evaluateSemesterAlert({ ...common, progress: undefined }).show).toBe(false);
+        expect(
+            evaluateSemesterAlert({
+                ...common,
+                progress: { semester: '2033.2', percent: 60 },
+                midOpenCount: 1
+            }).mode
+        ).toBe('mid');
+        expect(
+            evaluateSemesterAlert({
+                ...common,
+                alert: { ...baseAlert, trigger_id: 'nova-campanha' },
+                progress: undefined
+            }).mode
+        ).toBe('manual');
+    });
     test('collectCurrentProfessors agrupa todas as matérias do mesmo docente e conta avaliações por matéria', () => {
         const list = collectCurrentProfessors(
             [

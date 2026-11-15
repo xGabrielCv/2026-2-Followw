@@ -102,6 +102,7 @@ async def dashboard_asset(
         "dashboard-sync.js",
         "dashboard-logs.js",
         "dashboard-demo.js",
+        "dashboard-alert.js",
     ],
 ) -> Response:
     return Response(

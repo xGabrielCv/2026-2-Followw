@@ -22,11 +22,11 @@ export async function login(page: Page, registration = '251000000') {
         .catch(() => {});
     await expect(async () => {
         const consent = page.getByRole('button', { name: 'Agora não', exact: true });
-        if (await consent.isVisible()) await consent.click();
+        if (await consent.isVisible()) await consent.click({ timeout: 1000 });
         const alertClose = page
             .getByRole('dialog')
             .getByRole('button', { name: 'Fechar', exact: true });
-        if (await alertClose.isVisible()) await alertClose.click();
+        if (await alertClose.isVisible()) await alertClose.click({ timeout: 1000 });
         await expect(page.getByRole('button', { name: 'Editar perfil' })).toBeVisible();
     }).toPass({ timeout: 15000 });
 }
