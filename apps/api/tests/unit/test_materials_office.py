@@ -283,3 +283,15 @@ def test_scanner_rejeita_eicar_executaveis_scripts_e_primitivas_perigosas():
     limpo = pacote(office.DOCX)
     scanner.scan_raw(limpo, office.DOCX)
     scanner.verify_clean(limpo, office.DOCX)
+
+
+def test_scanner_recusa_office_criptografado_sem_erro_interno():
+    from api.modules.materials import scanner
+
+    dados = bytearray(pacote())
+    for assinatura, deslocamento in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        posicao = dados.find(assinatura)
+        dados[posicao + deslocamento] |= 1
+    with pytest.raises(scanner.ScanRejected) as erro:
+        scanner.scan_raw(bytes(dados), office.DOCX)
+    assert erro.value.status_code == 422

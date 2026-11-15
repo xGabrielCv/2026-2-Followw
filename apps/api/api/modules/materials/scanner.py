@@ -204,6 +204,11 @@ def _inspect_pdf_deep(data: bytes) -> None:
             "PDF protegido por senha não é aceito.",
         )
 
+    if len(reader.pages) > 300:
+        raise ScanRejected(
+            "pdf-inspector", "pdf_page_limit", "PDF com mais de 300 páginas."
+        )
+
     root = reader.trailer.get("/Root")
     root_obj = root.get_object() if hasattr(root, "get_object") else root
     if isinstance(root_obj, dict):
@@ -295,7 +300,13 @@ def _inspect_office_deep(data: bytes) -> None:
                     )
     except ScanRejected:
         raise
-    except (zipfile.BadZipFile, OSError, ValueError, NotImplementedError) as error:
+    except (
+        zipfile.BadZipFile,
+        OSError,
+        ValueError,
+        NotImplementedError,
+        RuntimeError,
+    ) as error:
         raise ScanRejected(
             "office-ole",
             "office_corrupted",

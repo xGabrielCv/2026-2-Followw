@@ -420,3 +420,81 @@ def test_limites_editados_refletem_imediato_e_mudam_versao_config(
     assert v_depois != v_antes
     listing = logado.get(URL).json()
     assert listing["limits"]["max_per_subject"] == 3
+
+
+def test_limite_global_recusa_novo_envio_preserva_material_e_exibe_mensagem(
+    logado, materia, monkeypatch
+):
+    primeiro = _enviar(logado, _png()).json()
+    monkeypatch.setattr(materials, "MAX_TOTAL_BYTES", primeiro["size"])
+    resposta = _enviar(logado, _png(color=(5, 6, 7)))
+    assert resposta.status_code == 409
+    assert "global" in resposta.json()["detail"]
+    assert logado.get(URL).json()["usage"]["files"] == 1
+    assert logado.get(f"{URL}/{primeiro['id']}").status_code == 200
+
+
+def test_envios_simultaneos_em_materias_distintas_respeitam_cota_global(
+    logado, materia, database, monkeypatch
+):
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from api.modules.materials.sanitize import sanitize
+
+    with database.begin() as session:
+        session.add(Subject(code="HIS0001", name="HISTÓRIA"))
+    images = [_png((8, 8, 8)), _png((9, 9, 9))]
+    cap = max(len(sanitize(image, "image/png")) for image in images) * 3 // 2
+    monkeypatch.setattr(materials, "MAX_TOTAL_BYTES", cap)
+    original = AsyncSession.execute
+
+    async def delayed(session, statement, *args, **kwargs):
+        result = await original(session, statement, *args, **kwargs)
+        if "sum(materials.size)" in str(statement):
+            await asyncio.sleep(0.15)
+        return result
+
+    monkeypatch.setattr(AsyncSession, "execute", delayed)
+
+    def upload(code, image):
+        return logado.post(
+            f"/materials/{code}",
+            files={"file": ("teste.png", image)},
+            data={
+                "title": "Material sintético",
+                "kind": "resumo",
+                "semester": "2026.2",
+            },
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(
+            pool.map(
+                lambda pair: upload(*pair),
+                zip(["FGA0030", "HIS0001"], images, strict=True),
+            )
+        )
+    assert sorted(result.status_code for result in results) == [201, 409]
+    rejected = next(result for result in results if result.status_code == 409)
+    assert "global" in rejected.json()["detail"]
+    with database() as session:
+        assert sum(item.size for item in session.scalars(select(Material))) <= cap
+
+
+def test_clamav_indisponivel_nao_libera_upload_sem_verificacao(
+    logado, materia, monkeypatch
+):
+    from api.modules.materials import av
+
+    monkeypatch.setattr(settings, "clamav_host", "127.0.0.1")
+
+    async def unavailable(*_args):
+        raise OSError("Daemon de teste indisponível")
+
+    monkeypatch.setattr(av.asyncio, "open_connection", unavailable)
+    response = _enviar(logado, _png())
+    assert response.status_code == 503
+    assert logado.get(URL).json()["usage"]["files"] == 0

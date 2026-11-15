@@ -351,7 +351,10 @@ class MaterialService:
                     413,
                     f"O limite atual por arquivo é {configured.max_file_bytes // 1024**2} MB.",
                 )
-            # Um envio por vez na matéria: os limites não estouram com dois ao mesmo tempo.
+            # A cota global precisa serializar envios até de matérias diferentes.
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext('materials:global'))")
+            )
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtext(:scope))"),
                 {"scope": _scope(code)},
