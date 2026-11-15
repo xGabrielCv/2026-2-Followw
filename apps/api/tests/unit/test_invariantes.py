@@ -42,9 +42,19 @@ def test_r_adm_01_toda_rota_do_painel_exige_administrador_autenticado():
     assert sem_guarda == []
 
 
-def test_r_adm_02_painel_nao_tem_terminal_sql_nem_reinicio():
+def test_r_adm_02_painel_nao_tem_executor_sql_terminal_nem_reinicio():
     rotas = [r.path for r in admin_api.routes if isinstance(r, APIRoute)]
     assert [p for p in rotas if PROIBIDAS_NO_PAINEL.search(p)] == []
+
+
+def test_r_adm_02_cloudbeaver_e_excecao_isolada_com_guarda_owner():
+    from api.modules.admin.database_gateway import INTERNAL, database_owner, router
+
+    rotas = [r for r in router.routes if isinstance(r, APIRoute)]
+    assert rotas
+    assert all(database_owner in _chamadas(r.dependant) for r in rotas)
+    assert all(not r.include_in_schema for r in rotas)
+    assert INTERNAL == "http://127.0.0.1:8978"
 
 
 def test_r_ano_05_limite_de_materiais_e_por_turma_e_nao_por_estudante():

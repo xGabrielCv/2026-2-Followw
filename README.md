@@ -136,6 +136,28 @@ e você o perdeu, execute `.\scripts\admin-password.cmd --reset`, reinicie e cad
 .\scripts\restart.ps1             # reinicia sem abrir outra aba
 ```
 
+Na primeira execução, `run.cmd`/`run.ps1` também instala o **CloudBeaver Community**, compilado de
+revisões fixadas, com tradução para português, driver PostgreSQL e H2 interno. Isso exige internet,
+espaço temporário e pode demorar; Java e Maven são preparados automaticamente quando necessários.
+As fontes temporárias são removidas após o sucesso. Use `-SkipCloudBeaver` para não instalar/iniciar
+essa ferramenta, ou `-Offline` depois que todas as dependências estiverem disponíveis.
+
+Crie seu administrador do Followw em `/api/admin`, configure MFA e abra **Banco de dados** como
+Owner com MFA recente. No assistente do CloudBeaver, escolha seu próprio usuário e senha adicional:
+nenhuma conta administrativa ou senha pronta é distribuída. A instalação gera somente uma senha
+técnica aleatória, privada, para a conexão PostgreSQL de leitura, sem acesso às tabelas administrativas.
+Contas, senhas, conexões e banco de uma instância existente são preservados. O serviço inicia/reinicia
+junto do app e fica em loopback. O instalador é para Windows; uma VPS exige serviço próprio e HTTPS,
+sem portas públicas do PostgreSQL ou CloudBeaver.
+
+Para medir o espaço ocupado: `.\scripts\project-size.ps1`. Com o app parado, `-Clean` remove apenas
+caches reproduzíveis conhecidos. A meta é menos de 1 GB quando possível; dependências, dados e
+ferramentas instaladas podem ultrapassá-la. Não apague `.local/pgdata`, materiais, workspace do
+CloudBeaver, arquivos privados nem chaves para economizar espaço.
+No Windows/NTFS, `-Compress` aplica compressão transparente somente às dependências e aos binários,
+sem comprimir bancos ou materiais. O relatório separa tamanho lógico e armazenamento no disco;
+metadados do sistema de arquivos não entram nessa medição. Essa opção é local e não afeta o GitHub.
+
 O repositório contém código, testes sintéticos e os scripts de instalação, **sem banco, catálogo
 coletado, materiais, credenciais ou configuração privada da sua instância**. Na primeira execução,
 `bootstrap_data.py` importa o catálogo público de referência do projeto original, numa revisão

@@ -17,6 +17,14 @@ const QUERY_CACHE_BUSTER = createHash('sha256')
     .slice(0, 12);
 
 const config = defineConfig({
+    server: {
+        proxy: {
+            '/api/admin/database/api/ws': {
+                target: `http://127.0.0.1:${process.env.API_PORT ?? 8000}`,
+                ws: true
+            }
+        }
+    },
     resolve: { tsconfigPaths: true },
     optimizeDeps: { exclude: ['@resvg/resvg-js'] },
     ssr: { external: ['@resvg/resvg-js'] },

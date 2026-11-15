@@ -17,6 +17,15 @@ $PgData = Join-Path $Root '.local\pgdata'
 
 function Step($text) { Write-Host "`n==> $text" -ForegroundColor Cyan }
 function Ok($text) { Write-Host "    ok  $text" -ForegroundColor Green }
+function Test-ProjectProcess([int]$ProcessId) {
+    for ($depth=0; $depth -lt 8 -and $ProcessId -gt 0; $depth++) {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId=$ProcessId" -ErrorAction SilentlyContinue
+        if (-not $process) { return $false }
+        if (($process.ExecutablePath -and $process.ExecutablePath.StartsWith($Root+'\', [StringComparison]::OrdinalIgnoreCase)) -or ($process.CommandLine -and $process.CommandLine.Contains($Root))) { return $true }
+        $ProcessId = $process.ParentProcessId
+    }
+    return $false
+}
 
 Step 'Parando o Followw'
 $stopped = 0
@@ -25,6 +34,7 @@ foreach ($port in $WebPort, $ApiPort) {
     $owners = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty OwningProcess -Unique
     foreach ($id in $owners) {
+        if (-not (Test-ProjectProcess $id)) { Write-Warning "Porta $port pertence a outro projeto; processo preservado."; continue }
         if ($id -gt 0) { taskkill /PID $id /T /F 2>$null | Out-Null; $stopped++ }
         # Filho órfão do uvicorn (o pai já morreu e o soquete continua preso à porta): acha pelo parent_pid.
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -37,7 +47,7 @@ $escaped = [Regex]::Escape($Root)
 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
     Where-Object {
         $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine -match $escaped -and
-        $_.CommandLine -match 'uvicorn|update_data\.py|vite|bun(\.exe)?"? (run )?dev|run\.ps1' -and
+        $_.CommandLine -match 'uvicorn|update_data\.py|vite|bun(\.exe)?"? (run )?dev|run\.ps1|cloudbeaver-service\.ps1' -and
         $_.CommandLine -notmatch 'stop\.ps1|restart\.ps1'
     } |
     ForEach-Object { taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null; $stopped++ }

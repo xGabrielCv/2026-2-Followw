@@ -29,6 +29,7 @@ param(
     [switch]$Stop,
     [switch]$NoBrowser,
     [switch]$SkipDataUpdate,
+    [switch]$SkipCloudBeaver,
     [switch]$Demo,
     [int]$WebPort = 3000,
     [int]$ApiPort = 8000,
@@ -37,6 +38,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$env:PYTHONDONTWRITEBYTECODE = '1'
 
 $Root = Split-Path -Parent $PSScriptRoot
 $Local = Join-Path $Root '.local'
@@ -358,6 +360,11 @@ if (Test-Path $professorsCsv) {
 }
 
 # ---------------------------------------------------------------- servidores
+if (-not $SkipCloudBeaver -and -not (Test-Path (Join-Path $Local 'cloudbeaver\runtime.json'))) {
+    if ($Offline) { Fail 'CloudBeaver ausente. Execute uma vez com internet ou use -SkipCloudBeaver.' }
+    Step 'Instalando CloudBeaver (somente na primeira execução; pode demorar)'
+    Invoke-Checked powershell @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $Root 'scripts\install-cloudbeaver.ps1'))
+}
 foreach ($port in $ApiPort, $WebPort) {
     if (Test-Port $port) { Fail "A porta $port já está em uso. Feche o programa que a usa ou rode com outra porta." }
 }
@@ -380,7 +387,17 @@ if ($appPasswordLine) {
 Step 'Subindo a API e o front'
 $api = $null
 $web = $null
+$databaseManager = $null
+$managerInstalled = -not $SkipCloudBeaver -and (Test-Path (Join-Path $Local 'cloudbeaver\runtime.json'))
+if ($SkipCloudBeaver) { $env:CLOUDBEAVER_ENABLED = 'false' }
+function Start-DatabaseManager {
+    Start-Process powershell -WindowStyle Hidden -PassThru -WorkingDirectory $Root -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f (Join-Path $Root 'scripts\cloudbeaver-service.ps1')))
+}
 try {
+    if ($managerInstalled) {
+        $env:CLOUDBEAVER_ENABLED = 'true'
+        $databaseManager = Start-DatabaseManager
+    }
     $api = Start-Process -FilePath 'uv' -WorkingDirectory $ApiDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Local 'api.out.log') -RedirectStandardError (Join-Path $Local 'api.err.log') -ArgumentList @(
         'run', '--no-sync', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', $ApiPort, '--no-access-log',
         # O front recarrega sozinho; a API também, para nunca rodar código antigo.
@@ -400,9 +417,17 @@ try {
     } else {
         Write-Host "    Cadastre o administrador em http://localhost:$WebPort/api/admin`n" -ForegroundColor DarkGray
     }
-    while (-not $web.HasExited -and -not $api.HasExited) { Start-Sleep -Seconds 1 }
+    while (-not $web.HasExited -and -not $api.HasExited) {
+        if ($managerInstalled -and $databaseManager.HasExited) {
+            Warn 'supervisor do CloudBeaver encerrou; reiniciando em 5 segundos'
+            Start-Sleep -Seconds 5
+            $databaseManager = Start-DatabaseManager
+        }
+        Start-Sleep -Seconds 1
+    }
 } finally {
     Step 'Encerrando'
+    if ($databaseManager -and -not $databaseManager.HasExited) { taskkill /PID $databaseManager.Id /T /F | Out-Null }
     if ($web -and -not $web.HasExited) { taskkill /PID $web.Id /T /F | Out-Null }
     if ($api -and -not $api.HasExited) {
         # Derruba a árvore inteira: o uv deixa o Python como processo filho.

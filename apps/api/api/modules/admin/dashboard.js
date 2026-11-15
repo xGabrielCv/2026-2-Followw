@@ -57,7 +57,7 @@ async function render() {
   const main = $("#main");
   main.replaceChildren(el("p", { class:"muted" }, "Carregando…"));
   try {
-    const views = { overview, usage, moderation: () => moderationView(render, editTutorial), data, breakdown, system, audit: () => auditView(render), limits: () => limitsView(render), accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render), sync: () => syncView(render), logs: () => logsView(render), demo: () => demoView(render) };
+    const views = { database, overview, usage, moderation: () => moderationView(render, editTutorial), data, breakdown, system, audit: () => auditView(render), limits: () => limitsView(render), accounts: () => accountsView(render), security: securityView, support: () => supportView(render), operations: () => operationsView(render), sync: () => syncView(render), logs: () => logsView(render), demo: () => demoView(render) };
     const children = await views[state.view]();
     if (version !== rendering) return;
     // `null` vira o texto "null" no DOM: só entram nós de verdade
@@ -270,6 +270,15 @@ async function breakdown() {
 }
 
 
+async function database() {
+  const info = await call('/database');
+  return [el('div', {class:'panel'},
+    el('h2', {}, 'Banco de dados · CloudBeaver Community'),
+    el('p', {}, 'Acesso exclusivo do Owner, com MFA recente e uma senha adicional do CloudBeaver. No primeiro acesso, cadastre essa senha no assistente do gerenciador.'),
+    el('p', {class:'muted'}, 'O gerenciador usa uma conexão separada e não recebe cookies acadêmicos. Alterações SQL afetam dados reais; use transações e confira o comando antes de confirmar. Dados cifrados aparecem cifrados, sem expor as chaves do Followw.'),
+    info.enabled ? el('a', {href:info.url,target:'_blank',rel:'noopener noreferrer'}, 'Abrir CloudBeaver com autenticação adicional') : el('p', {class:'muted'}, 'Gerenciador não habilitado nesta instância. Execute a instalação local antes de ativá-lo.'))];
+}
+
 async function system() {
   const [o, health, alertInfo] = await Promise.all([
     call("/overview"),
@@ -356,7 +365,7 @@ async function system() {
 
 initializeAuth(() => {
     const requested = location.hash.slice(1);
-    const permissions = { overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', audit: 'audit', limits: 'configure', accounts: 'accounts', support: 'support', operations: 'operations' };
+    const permissions = { database:'owner', overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', audit: 'audit', limits: 'configure', accounts: 'accounts', support: 'support', operations: 'operations' };
     state.view = requested === 'security' || (requested in permissions && hasPermission(permissions[requested])) ? requested : hasPermission('operations') ? 'overview' : 'moderation';
     void render();
 });

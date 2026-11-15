@@ -101,20 +101,21 @@ def require_permission(permission: Permission):
     async def check(
         principal: Annotated[Principal, Depends(require_admin)],
     ) -> Principal:
-        if not allowed(principal.role, permission):
-            raise HTTPException(403, "Seu cargo não permite esta operação.")
-        if permission in {
-            "accounts",
-            "owner",
-            "maintenance",
-            "configure",
-        } and datetime.now(UTC) - principal.authenticated_at > timedelta(minutes=15):
-            raise HTTPException(
-                403, "Entre novamente com MFA para executar esta operação sensível."
-            )
-        return principal
+        return authorize(principal, permission)
 
     return Depends(check)
+
+
+def authorize(principal: Principal, permission: Permission) -> Principal:
+    if not allowed(principal.role, permission):
+        raise HTTPException(403, "Seu cargo não permite esta operação.")
+    if permission in {"accounts", "owner", "maintenance", "configure"} and datetime.now(
+        UTC
+    ) - principal.authenticated_at > timedelta(minutes=15):
+        raise HTTPException(
+            403, "Entre novamente com MFA para executar esta operação sensível."
+        )
+    return principal
 
 
 def logout(response: Response) -> None:

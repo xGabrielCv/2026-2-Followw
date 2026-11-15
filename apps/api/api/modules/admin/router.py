@@ -474,7 +474,16 @@ async def reset_metrics(service: AdminServiceDep) -> None:
     metrics.reset()
 
 
+@api.get("/database", dependencies=[auth.require_permission("owner")])
+async def database_status() -> dict:
+    from api.core.config import settings
+
+    return {"enabled": settings.cloudbeaver_enabled, "url": "/api/admin/database/"}
+
+
 from api.modules.admin.calendar_alert import router as calendar_alert_router
+from api.modules.admin.database_gateway import router as database_router
+from api.modules.admin.database_socket import router as database_socket_router
 from api.modules.admin.demo import router as demo_router
 from api.modules.admin.limits import router as limits_router
 from api.modules.admin.logs import router as logs_router
@@ -495,3 +504,5 @@ api.include_router(logs_router, prefix="/logs")
 api.include_router(demo_router, prefix="/demo")
 router.include_router(public, prefix="/api")
 router.include_router(api, prefix="/api")
+router.include_router(database_router, prefix="/database")
+router.include_router(database_socket_router, prefix="/database")
