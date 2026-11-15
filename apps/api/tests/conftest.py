@@ -37,6 +37,7 @@ def isola_cotas_locais():
 # O `Settings` é instanciado no import de `api.core.config`, então as variáveis
 # precisam existir antes de qualquer teste importar a app.
 os.environ["ENVIRONMENT"] = "testing"
+os.environ["CLOUDBEAVER_ENABLED"] = "false"
 os.environ["CORS_ORIGINS"] = '["https://followw.app"]'
 os.environ["DATABASE_URL"] = (
     "postgresql+asyncpg://postgres:postgres@localhost:5432/followw_test"
@@ -224,7 +225,7 @@ def hoje(monkeypatch):
 
 
 @pytest.fixture(scope="session")
-def postgres(worker_id, testrun_uid):
+def postgres(worker_id, testrun_uid, request):
     """Banco Postgres em container para a sessão de testes."""
     from sqlalchemy import create_engine
     from testcontainers.community.postgres import PostgresContainer
@@ -250,6 +251,20 @@ def postgres(worker_id, testrun_uid):
                     connection.execute(text(f'CREATE DATABASE "{name}"'))
             finally:
                 control.dispose()
+
+            def remove_worker():
+                cleanup = create_engine(
+                    parsed.set(database="postgres"), isolation_level="AUTOCOMMIT"
+                )
+                try:
+                    with cleanup.connect() as connection:
+                        connection.execute(
+                            text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+                        )
+                finally:
+                    cleanup.dispose()
+
+            request.addfinalizer(remove_worker)
             url = parsed.set(database=name)
         engine = create_engine(url)
         with engine.begin() as conn:

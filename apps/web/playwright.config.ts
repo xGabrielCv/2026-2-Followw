@@ -21,11 +21,13 @@ function executable(name: string) {
     return `"${found}"`;
 }
 
+if (!process.env.FOLLOWW_E2E_DATABASE) process.env.FOLLOWW_E2E_OWNS_DATABASE = '1';
 const database =
     (process.env.FOLLOWW_E2E_DATABASE ??= `followw_e2e_${randomUUID().replaceAll('-', '').slice(0, 12)}`);
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
 export default defineConfig({
+    globalTeardown: './e2e/global-teardown.ts',
     testDir: './e2e',
     testMatch: '**/*.e2e.ts',
     fullyParallel: false,
@@ -50,6 +52,8 @@ export default defineConfig({
                 PATH: runtimePath,
                 Path: runtimePath,
                 ENVIRONMENT: 'testing',
+                CLOUDBEAVER_ENABLED: process.env.FOLLOWW_E2E_CLOUDBEAVER === '1' ? 'true' : 'false',
+                FOLLOWW_E2E_CLOUDBEAVER: process.env.FOLLOWW_E2E_CLOUDBEAVER ?? '0',
                 FOLLOWW_E2E_DATABASE: database,
                 JWT_SECRET_KEY: 'chave-sintetica-exclusiva-de-e2e-cookies',
                 DATA_ENCRYPTION_KEY: 'chave-sintetica-exclusiva-de-e2e-conteudo',

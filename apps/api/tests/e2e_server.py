@@ -40,6 +40,11 @@ def main():
         connection.execute(
             sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database))
         )
+        connection.execute(
+            sql.SQL("COMMENT ON DATABASE {} IS 'followw:e2e:discardable'").format(
+                sql.Identifier(database)
+            )
+        )
     root = Path(__file__).resolve().parents[3]
     # A API do E2E roda com o papel restrito (RLS valendo); só o preparo usa a conta de manutenção.
     app_password = "e2e-" + os.urandom(12).hex()
@@ -88,6 +93,8 @@ def main():
     if not canary() or not asyncio.run(async_canary()):
         raise SystemExit("Guarda de saída não comprovada; E2E interrompido.")
     with respx.mock(assert_all_called=False) as router:
+        if os.environ.get("FOLLOWW_E2E_CLOUDBEAVER") == "1":
+            router.route(host="127.0.0.1", port=8978).pass_through()
         simulated = SimulatedSigaa(latency=0.005)
         router.route(host__in=("sigaa.unb.br", "autenticacao.unb.br")).mock(
             side_effect=simulated
