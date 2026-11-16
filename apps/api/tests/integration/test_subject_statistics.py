@@ -428,3 +428,44 @@ def test_comparacao_traz_medias_da_unb_e_do_curso_sem_dado_do_aluno(client, data
     ).json()
     assert curso["course"]["approved"] == 60.0
     assert [s["code"] for s in curso["subjects"]] == ["FGA0003"]
+
+
+def test_duas_pessoas_liberam_mesma_turma_sem_duplicar_indices_e_revogam_separadamente(
+    client, database, cookies, stub_sigaa
+):
+    with database.begin() as session:
+        session.add(Subject(code="FGA0003", name="A"))
+        ana = Professor(name="ANA SOUZA", siape=123)
+        session.add(ana)
+        _classroom(session, "FGA0003", "01", "2025.1", _shares(70), ana, shared=False)
+    stub_sigaa.classrooms.list_classrooms.return_value = [
+        SigaaClassroom(
+            id="TURMA01",
+            number="01",
+            semester="2025.1",
+            subject=SigaaSubject(code="FGA0003", name="A"),
+        )
+    ]
+    client.cookies.update(cookies(refresh=CREDENCIAIS))
+    first = client.put("/me/statistics-sharing", json={"shared": True}).json()["keys"]
+    other = Credentials(registration="251000001", password=SecretStr("senha123"))
+    client.cookies.update(cookies(refresh=other))
+    second = client.put("/me/statistics-sharing", json={"shared": True}).json()["keys"]
+    assert first and second and first != second
+    with database() as session:
+        rows = session.scalars(select(Classroom)).all()
+        assert len(rows) == 1
+        assert rows[0].statistics == _shares(70)
+        assert len(session.scalars(select(SharedStatistics)).all()) == 2
+    outcomes = client.get("/public/subjects/FGA0003/outcomes").json()["subject"]
+    assert outcomes["classrooms"] == 1
+    assert outcomes["failed"] == 30
+    client.put("/me/statistics-sharing", json={"shared": False, "keys": first})
+    assert (
+        client.get("/public/subjects/FGA0003/outcomes").json()["subject"]["classrooms"]
+        == 1
+    )
+    client.put("/me/statistics-sharing", json={"shared": False, "keys": second})
+    with database() as session:
+        assert session.scalars(select(SharedStatistics)).all() == []
+        assert session.scalar(select(Classroom)).statistics == _shares(70)

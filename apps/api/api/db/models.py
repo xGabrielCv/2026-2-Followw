@@ -272,8 +272,7 @@ class RestaurantMenu(Base, UUIDPrimaryKeyMixin, TimestampMixin):
 class SharedStatistics(Base, TimestampMixin):
     """Turma cujas estatísticas um aluno liberou nos índices públicos.
 
-    `sharer_key` é um HMAC da matrícula com a turma: deixa o mesmo aluno desfazer, mas não liga
-    duas turmas ao mesmo aluno nem volta à matrícula.
+    Cada autorização tem um verificador de segredo aleatório; os índices ficam uma vez na turma.
     """
 
     __tablename__ = "shared_statistics"
