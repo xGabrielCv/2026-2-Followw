@@ -91,12 +91,14 @@ export function AcademicSimulator({
     classrooms,
     entry,
     current,
-    curriculum
+    curriculum,
+    onIntegralization
 }: {
     classrooms: Classroom[];
     entry: string | null;
     current: string | undefined;
     curriculum: Set<string> | null;
+    onIntegralization?: () => void;
 }) {
     const overrides = useSyncExternalStore(
         simulatedGrades.subscribe,
@@ -344,6 +346,11 @@ export function AcademicSimulator({
                     )}
                 </Card>
             </section>
+            {onIntegralization && (
+                <Button variant="outline" className="w-full" onClick={onIntegralization}>
+                    Calcular integralização futura
+                </Button>
+            )}
         </div>
     );
 }

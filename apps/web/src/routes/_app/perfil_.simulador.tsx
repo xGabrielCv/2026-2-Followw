@@ -1,5 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Navigate, createFileRoute, redirect } from '@tanstack/react-router';
+import { useQueryState } from 'nuqs';
+import { parseAsStringLiteral } from 'nuqs/server';
 
 import type { UserProfile } from '#/queries/me';
 
@@ -7,6 +9,7 @@ import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState'
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { AcademicSimulator } from '#/components/profile/AcademicSimulator';
+import { IntegralizationSimulator } from '#/components/profile/IntegralizationSimulator';
 import { currentRegularSemester } from '#/lib/offer';
 import { nowInBrasilia } from '#/lib/schedule';
 import { useAppConfig } from '#/queries/app-config';
@@ -42,6 +45,10 @@ function SimulatorPage() {
 
 function SimulatorData({ user }: { user: UserProfile }) {
     const { calendar } = useAppConfig();
+    const [view, setView] = useQueryState(
+        'view',
+        parseAsStringLiteral(['indexes', 'integralization']).withDefault('indexes')
+    );
     const classrooms = useQuery(allClassroomsQueryOptions);
     if (classrooms.isLoadingError) {
         return (
@@ -59,16 +66,27 @@ function SimulatorData({ user }: { user: UserProfile }) {
     return (
         <>
             {classrooms.isError && <StaleDataNotice subject="as disciplinas" />}
-            <AcademicSimulator
-                classrooms={classrooms.data}
-                entry={user.entry_semester}
-                current={current}
-                curriculum={
-                    user.curriculum_subject_codes?.length
-                        ? new Set(user.curriculum_subject_codes)
-                        : null
-                }
-            />
+            {view === 'integralization' ? (
+                <IntegralizationSimulator
+                    key={`${user.registration}:${current}`}
+                    user={user}
+                    classrooms={classrooms.data}
+                    semester={current}
+                    onBack={() => void setView('indexes')}
+                />
+            ) : (
+                <AcademicSimulator
+                    onIntegralization={() => void setView('integralization')}
+                    classrooms={classrooms.data}
+                    entry={user.entry_semester}
+                    current={current}
+                    curriculum={
+                        user.curriculum_subject_codes?.length
+                            ? new Set(user.curriculum_subject_codes)
+                            : null
+                    }
+                />
+            )}
         </>
     );
 }
