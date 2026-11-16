@@ -81,6 +81,6 @@ export function offerChoices(
     };
 }
 
-/** Parâmetro da API: omitido quando é o padrão dela, o mais recente gravado. */
-export const semesterParam = (semester: string | undefined, available: readonly string[]) =>
-    semester && semester !== available[0] ? semester : undefined;
+/** Semestre explícito: uma atualização do catálogo não deve trocar o conteúdo de uma chave de cache. */
+export const semesterParam = (semester: string | undefined, _available: readonly string[]) =>
+    semester;

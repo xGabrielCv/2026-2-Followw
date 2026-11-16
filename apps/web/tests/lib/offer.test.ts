@@ -47,8 +47,8 @@ describe('offerChoices', () => {
     });
 });
 
-test('semesterParam omite o padrão da API', () => {
-    expect(semesterParam('2027.1', ['2027.1', '2026.2'])).toBeUndefined();
+test('semesterParam explicita o semestre mesmo quando é o mais recente', () => {
+    expect(semesterParam('2027.1', ['2027.1', '2026.2'])).toBe('2027.1');
     expect(semesterParam('2026.2', ['2027.1', '2026.2'])).toBe('2026.2');
     expect(semesterParam(undefined, [])).toBeUndefined();
 });

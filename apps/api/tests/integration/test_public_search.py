@@ -86,6 +86,36 @@ def test_semester_escolhe_a_oferta_das_materias(client, catalog, database):
     assert client.get("/public/subjects/semesters").json() == ["2027.1", "2026.2"]
 
 
+@pytest.mark.parametrize(
+    "semester", ["2020.1", "2026.1", "2026.2", "2027.1", "2027.2", "2032.1"]
+)
+def test_oferta_separa_ano_e_periodo_sem_reutilizar_turmas(
+    client, catalog, database, semester
+):
+    semesters = ["2020.1", "2026.1", "2026.2", "2027.1", "2027.2", "2032.1"]
+    with database.begin() as session:
+        session.add_all(
+            [
+                Classroom(subject_code="MAT0025", number=str(index + 1), semester=term)
+                for index, term in enumerate(semesters)
+            ]
+        )
+    expected = str(semesters.index(semester) + 1)
+    search = _search(client, q="MAT0025", type="subjects", semester=semester)[
+        "subjects"
+    ]
+    direct = client.get(
+        "/public/subjects", params={"code": "MAT0025", "semester": semester}
+    )
+    assert direct.status_code == 200
+    for subjects in [search, direct.json()]:
+        assert [
+            (item["number"], item["semester"]) for item in subjects[0]["classrooms"]
+        ] == [(expected, semester)]
+    empty = _search(client, q="MAT0025", type="subjects", semester="2033.1")["subjects"]
+    assert empty[0]["classrooms"] == []
+
+
 def test_cada_termo_precisa_casar(client, catalog):
     assert _summary(_search(client, q="software eng")) == {
         "subjects": [],
