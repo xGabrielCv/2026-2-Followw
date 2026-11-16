@@ -2,6 +2,7 @@
 import { expect, test } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
+import { overflowingText } from './helpers/overflow';
 import { ready } from './helpers/student';
 
 const routes = [
@@ -68,6 +69,7 @@ for (const width of [320, 360, 390, 768, 1440]) {
                     );
                     expect(fits, path).toBe(true);
                 }).toPass({ timeout: 2000 });
+                expect(await overflowingText(page), path).toEqual([]);
                 if ([320, 390, 1440].includes(width))
                     await page.screenshot({
                         path: `${artifacts}/${width}-${theme}-${path.replaceAll('/', '_') || 'home'}.png`,

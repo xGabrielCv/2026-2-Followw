@@ -84,3 +84,32 @@ test('avisa quando as obrigatórias não cabem juntas e some com uma só matéri
     );
     expect(page.container.textContent).toBe('');
 });
+
+test('permite simular futuro com aviso e torna a exigência de requisitos uma escolha explícita', async () => {
+    const future: SchedulePlan[] = [
+        {
+            id: 'g1',
+            name: 'Futuro',
+            items: [
+                turma('A', '01', '24M12'),
+                {
+                    ...turma('EPS', '01', '35T12'),
+                    name: 'ENGENHARIA DE PRODUTO DE SOFTWARE',
+                    prerequisites: [[{ code: 'ANTIGA' }]]
+                }
+            ]
+        }
+    ];
+    const page = dom.testing.render(
+        <SuggestedPlans plans={future} semester="2027.1" maxHours={null} />
+    );
+    dom.testing.fireEvent.click(page.getByRole('button', { name: 'Sugerir grades' }));
+    expect(await page.findByText('Opção 1')).toBeDefined();
+    expect(page.getByText(/Confira os pré-requisitos/)).toBeDefined();
+    dom.testing.fireEvent.click(
+        page.getByRole('checkbox', { name: /Exigir requisitos confirmados/ })
+    );
+    expect(page.queryByText('Opção 1')).toBeNull();
+    dom.testing.fireEvent.click(page.getByRole('button', { name: 'Sugerir grades' }));
+    expect((await page.findByRole('alert')).textContent).toContain('pré-requisitos');
+});

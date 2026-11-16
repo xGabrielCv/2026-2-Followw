@@ -150,10 +150,11 @@
 
 @layer base {
     * {
-        @apply border-border outline-ring/50;
+        @apply min-w-0 border-border outline-ring/50;
     }
     body {
         @apply bg-background font-sans text-foreground;
+        overflow-wrap: anywhere;
     }
 }
 .markdown {

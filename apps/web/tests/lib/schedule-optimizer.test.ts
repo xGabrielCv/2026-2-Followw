@@ -34,15 +34,18 @@ test('pré-requisito conhecido não pode ser cumprido na mesma grade e correquis
     const a = turma('A', '01', '24M12');
     const b = { ...turma('B', '01', '35M12'), prerequisites: [[{ code: 'A' }]] };
     const input = [materia('A', true, a), materia('B', true, b)];
-    const blocked = suggestSchedules(input);
+    const strict = { ...DEFAULT_PREFERENCES, requireConfirmedRequirements: true };
+    const blocked = suggestSchedules(input, strict);
     expect(blocked.suggestions).toEqual([]);
     expect(blocked.impossible.map((item) => item.code)).toContain('B');
     expect(
-        suggestSchedules(input, { ...DEFAULT_PREFERENCES, completedCodes: ['A'] }).suggestions
-            .length
+        suggestSchedules(input, { ...strict, completedCodes: ['A'] }).suggestions.length
     ).toBeGreaterThan(0);
     const corequisite = { ...b, prerequisites: null, corequisites: [[{ code: 'A' }]] };
-    const plans = suggestSchedules([materia('A', false, a), materia('B', true, corequisite)]);
+    const plans = suggestSchedules(
+        [materia('A', false, a), materia('B', true, corequisite)],
+        strict
+    );
     expect(plans.suggestions.length).toBeGreaterThan(0);
     expect(plans.suggestions.every((plan) => plan.items.some((item) => item.code === 'A'))).toBe(
         true
@@ -121,7 +124,7 @@ describe('simulador 2.0', () => {
         expect(suggestions).toHaveLength(1);
         expect(suggestions[0].items.map((item) => `${item.code}-${item.number}`)).toEqual(['A-02']);
         expect(suggestions[0].left[0]).toMatchObject({ code: 'B' });
-        expect(suggestions[0].left[0].reason).toContain('nenhuma turma serve');
+        expect(suggestions[0].left[0].reason).toContain('horário indisponível');
     });
 
     test('evitar turno empurra a grade para outro horário, mas não proíbe', () => {
@@ -251,4 +254,61 @@ describe('simulador 2.0', () => {
             ['B', false, 1]
         ]);
     });
+});
+
+test('planejamento futuro permite requisito não confirmado e avisa sem declarar impossibilidade', () => {
+    const subject = { ...turma('EPS', '01', '24M12'), prerequisites: [[{ code: 'ANTIGA' }]] };
+    const result = suggestSchedules([materia('EPS', true, subject)]);
+    expect(result.impossible).toEqual([]);
+    expect(result.suggestions).toHaveLength(1);
+    expect(result.suggestions[0].reasons.join(' ')).toContain('pré-requisitos');
+});
+
+test('correquisito ausente permite prévia com aviso, sem afirmar matrícula válida', () => {
+    const subject = { ...turma('EPS', '01', '24M12'), corequisites: [[{ code: 'OUTRA' }]] };
+    const result = suggestSchedules([materia('EPS', true, subject)]);
+    expect(result.suggestions).toHaveLength(1);
+    expect(result.suggestions[0].reasons.join(' ')).toContain('correquisitos');
+});
+
+test('modo estrito respeita alternativas e exige todo o grupo de pré-requisitos', () => {
+    const subject = {
+        ...turma('EPS', '01', '24M12'),
+        prerequisites: [[{ code: 'A' }, { code: 'B' }], [{ code: 'C' }]]
+    };
+    const input = [materia('EPS', true, subject)];
+    const strict = { ...DEFAULT_PREFERENCES, requireConfirmedRequirements: true };
+    expect(suggestSchedules(input, { ...strict, completedCodes: ['A'] }).suggestions).toHaveLength(
+        0
+    );
+    expect(
+        suggestSchedules(input, { ...strict, completedCodes: ['A', 'B'] }).suggestions
+    ).toHaveLength(1);
+    expect(suggestSchedules(input, { ...strict, completedCodes: ['C'] }).suggestions).toHaveLength(
+        1
+    );
+});
+
+test('aviso de pré-requisito não desaparece por colocá-lo na mesma grade', () => {
+    const subject = { ...turma('EPS', '01', '24M12'), prerequisites: [[{ code: 'A' }]] };
+    const result = suggestSchedules([
+        materia('EPS', true, subject),
+        materia('A', true, turma('A', '01', '35T12'))
+    ]);
+    expect(result.suggestions[0].reasons.join(' ')).toContain('pré-requisitos');
+    const completed = suggestSchedules([materia('EPS', true, subject)], {
+        ...DEFAULT_PREFERENCES,
+        completedCodes: ['A']
+    });
+    expect(completed.suggestions[0].reasons.join(' ')).not.toContain('pré-requisitos');
+});
+
+test('não oferece grade vazia quando todas as opcionais estão bloqueadas', () => {
+    const input = [
+        materia('A', false, turma('A', '01', '2M12')),
+        materia('B', false, turma('B', '01', '2T12'))
+    ];
+    expect(
+        suggestSchedules(input, { ...DEFAULT_PREFERENCES, blockedWeekdays: [1] }).suggestions
+    ).toEqual([]);
 });

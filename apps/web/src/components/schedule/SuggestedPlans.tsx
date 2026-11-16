@@ -7,6 +7,13 @@ import type { OptimizerJob } from '#/lib/schedule-optimizer.worker';
 
 import { Button } from '#/components/ui/button';
 import { Checkbox } from '#/components/ui/checkbox';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue
+} from '#/components/ui/select';
 import { createPlan, MAX_PLANS, plannedSchedule } from '#/lib/planned-schedule';
 import { describeSchedule, WEEKDAYS_SHORT } from '#/lib/schedule';
 import { DEFAULT_PREFERENCES, SHIFT_LABELS, subjectsFromPlans } from '#/lib/schedule-optimizer';
@@ -54,6 +61,7 @@ export function SuggestedPlans({
     const [optional, setOptional] = useState<Set<string>>(new Set());
     const [blocked, setBlocked] = useState<number[]>([]);
     const [avoid, setAvoid] = useState<Shift[]>([]);
+    const [strict, setStrict] = useState(false);
     const [weights, setWeights] = useState(DEFAULT_PREFERENCES.weights);
     const subjects = useMemo(() => subjectsFromPlans(pool, optional), [pool, optional]);
     const job = useMemo<OptimizerJob>(
@@ -65,10 +73,11 @@ export function SuggestedPlans({
                 avoidShifts: avoid,
                 weights,
                 maxHours,
-                completedCodes
+                completedCodes,
+                requireConfirmedRequirements: strict
             }
         }),
-        [subjects, blocked, avoid, weights, maxHours, completedCodes]
+        [subjects, blocked, avoid, weights, maxHours, completedCodes, strict]
     );
     const [calculated, setCalculated] = useState<{ job: OptimizerJob; output: Result } | null>(
         null
@@ -112,31 +121,39 @@ export function SuggestedPlans({
             <p className="text-sm text-muted-foreground">
                 Usa as turmas que você já colocou nas suas grades de {semester}: cada matéria pode
                 ter várias turmas de opção. O app monta combinações sem choque e explica a escolha.
-                Verifica requisitos conhecidos com as conclusões disponíveis neste aparelho.
-                Requisitos ausentes e vagas precisam de conferência no SIGAA.
+                Requisitos ausentes e vagas precisam de conferência no SIGAA. A prévia permite
+                matérias cujos requisitos você pretende cumprir antes do semestre escolhido.
             </p>
             <fieldset className="flex flex-col gap-2">
                 <legend className="text-sm font-medium">Matérias</legend>
+                <p className="text-xs text-muted-foreground">
+                    Marcadas entram em todas as sugestões. Desmarque para incluir só se couber.
+                </p>
                 {subjects.map((subject) => (
-                    <label key={subject.code} className="flex items-center gap-2 text-sm">
+                    <div
+                        key={subject.code}
+                        className="flex items-start gap-2 rounded-xl bg-muted/40 p-3 text-sm"
+                    >
                         <Checkbox
+                            id={`${id}-subject-${subject.code}`}
                             checked={subject.required}
                             onCheckedChange={() =>
                                 setOptional(new Set(toggle([...optional], subject.code)))
                             }
-                            aria-label={`${subject.name} é obrigatória`}
+                            aria-label={`Incluir ${subject.name} em todas as sugestões`}
                         />
-                        <span className="min-w-0 flex-1 truncate">
-                            {subject.name}{' '}
-                            <span className="text-muted-foreground">
-                                · {subject.options.length}{' '}
-                                {subject.options.length === 1 ? 'turma' : 'turmas'}
+                        <label
+                            htmlFor={`${id}-subject-${subject.code}`}
+                            className="flex min-w-0 flex-1 flex-col gap-1"
+                        >
+                            <span className="font-medium">{subject.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                                {subject.code} · {subject.options.length}{' '}
+                                {subject.options.length === 1 ? 'turma' : 'turmas'} ·{' '}
+                                {subject.required ? 'incluir sempre' : 'incluir se couber'}
                             </span>
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                            {subject.required ? 'obrigatória' : 'opcional'}
-                        </span>
-                    </label>
+                        </label>
+                    </div>
                 ))}
             </fieldset>
             <fieldset className="flex flex-col gap-2">
@@ -169,27 +186,49 @@ export function SuggestedPlans({
                     ))}
                 </div>
             </fieldset>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {CRITERIA.map(([key, label]) => (
-                    <div key={key} className="flex items-center justify-between gap-2 text-sm">
-                        <label htmlFor={`${id}-${key}`}>{label}</label>
-                        <select
-                            id={`${id}-${key}`}
-                            className="h-8 rounded-lg border border-input bg-background px-2 text-sm"
-                            value={weights[key]}
-                            onChange={(event) =>
-                                setWeights({ ...weights, [key]: Number(event.target.value) })
-                            }
-                        >
-                            {([0, 1, 2, 3] as const).map((weight) => (
-                                <option key={weight} value={weight}>
-                                    {WEIGHT_LABELS[weight]}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                ))}
+            <div className="flex items-start gap-2 text-sm">
+                <Checkbox
+                    id={`${id}-strict`}
+                    aria-label="Exigir requisitos confirmados neste aparelho"
+                    checked={strict}
+                    onCheckedChange={(checked) => setStrict(checked)}
+                />
+                <label htmlFor={`${id}-strict`}>
+                    Exigir requisitos confirmados neste aparelho
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                        Use apenas conclusões do histórico e marcações manuais. Não considera
+                        aprovações futuras.
+                    </span>
+                </label>
             </div>
+            <fieldset className="flex flex-col gap-3">
+                <legend className="text-sm font-medium">Prioridades da sugestão</legend>
+                <div className="grid grid-cols-1 gap-3 desk:grid-cols-2">
+                    {CRITERIA.map(([key, label]) => (
+                        <div key={key} className="flex flex-col gap-1.5 text-sm">
+                            <label htmlFor={`${id}-${key}`}>{label}</label>
+                            <Select
+                                value={weights[key]}
+                                onValueChange={(value) => {
+                                    if (value != null) setWeights({ ...weights, [key]: value });
+                                }}
+                                items={WEIGHT_LABELS}
+                            >
+                                <SelectTrigger id={`${id}-${key}`} className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {([0, 1, 2, 3] as const).map((weight) => (
+                                        <SelectItem key={weight} value={weight}>
+                                            {WEIGHT_LABELS[weight]}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ))}
+                </div>
+            </fieldset>
             <Button onClick={() => void run()} disabled={busy} className="self-start">
                 <Sparkles aria-hidden="true" />
                 {busy ? 'Calculando grades...' : 'Sugerir grades'}
@@ -222,7 +261,14 @@ function Suggestions({ result, planCount }: { result: Result; planCount: number 
             </div>
         );
     if (result.suggestions.length === 0)
-        return <p className="text-sm text-muted-foreground">Nenhuma combinação sem choque.</p>;
+        return (
+            <output className="text-sm text-muted-foreground">
+                Nenhuma combinação encontrada com os limites escolhidos. Confira correquisitos,
+                carga máxima e horários, ou adicione outras turmas.
+                {result.truncated &&
+                    ' A busca atingiu o limite de cálculo; pode haver outras combinações.'}
+            </output>
+        );
     return (
         <div className="flex flex-col gap-3">
             {result.truncated && (

@@ -117,7 +117,7 @@ export function GraduationPlanner({
                 correquisitos. Oferta, vagas e validação de atividades complementares dependem da
                 UnB. Não é uma confirmação de integralização.
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 desk:grid-cols-3">
                 {[
                     ['Obrigatórias pendentes no SIGAA', workload?.pending_mandatory],
                     ['Optativas pendentes no SIGAA', workload?.pending_optional],
@@ -172,7 +172,7 @@ export function GraduationPlanner({
                     </div>
                 </details>
             )}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 forced-mobile:grid-cols-1">
                 {comparison.map(({ key, label, plan: option }) => (
                     <div
                         key={key}

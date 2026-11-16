@@ -2,12 +2,7 @@ import type { PlannedClass } from '#/lib/planned-schedule';
 
 import { type ClassTime, overlaps, parseSchedule } from '#/lib/schedule';
 
-/**
- * Simulador 2.0: monta grades válidas a partir das turmas que o aluno já escolheu como opção e as
- * ordena pelas preferências. É determinístico, roda no aparelho e nunca devolve grade com choque de
- * horário, matéria repetida, dia bloqueado ou carga acima do máximo. Não sabe de vagas nem de
- * pré-requisitos: usa só o que o aluno colocou em suas grades.
- */
+// Prévia local de horários; requisitos não confirmados geram avisos ou exclusão no modo estrito.
 
 export type Shift = 'morning' | 'afternoon' | 'night';
 export type Weight = 0 | 1 | 2 | 3;
@@ -20,6 +15,7 @@ export const SHIFT_LABELS: Record<Shift, string> = {
 
 export interface Preferences {
     completedCodes?: readonly string[];
+    requireConfirmedRequirements?: boolean;
     /** dias (1 = segunda ... 6 = sábado) em que o aluno não pode ir ao campus: nenhuma aula neles */
     blockedWeekdays: number[];
     /** horários indisponíveis: nenhuma aula pode tocar neles */
@@ -138,7 +134,10 @@ export function metricsOf(items: PlannedClass[]): Metrics {
 
 /** Por que a turma não pode entrar de jeito nenhum (independente das outras), ou `null`. */
 export function blockedReason(item: PlannedClass, prefs: Preferences): string | null {
-    if (!requirementsMet(item.prerequisites, new Set(prefs.completedCodes)))
+    if (
+        prefs.requireConfirmedRequirements &&
+        !requirementsMet(item.prerequisites, new Set(prefs.completedCodes))
+    )
         return 'pré-requisitos ainda não confirmados';
     const times = classTimes(item);
     const day = times.find((time) => prefs.blockedWeekdays.includes(time.weekday));
@@ -229,11 +228,16 @@ export function suggestSchedules(
     const seen = new Set<string>();
 
     const record = (items: PlannedClass[]) => {
+        if (items.length === 0) return;
         const concurrent = new Set([
             ...(prefs.completedCodes ?? []),
             ...items.map((item) => item.code)
         ]);
-        if (items.some((item) => !requirementsMet(item.corequisites, concurrent))) return;
+        if (
+            prefs.requireConfirmedRequirements &&
+            items.some((item) => !requirementsMet(item.corequisites, concurrent))
+        )
+            return;
         const key = items
             .map((item) => `${item.code}-${item.number}`)
             .toSorted()
@@ -305,6 +309,24 @@ export function suggestSchedules(
         }
         if (prefs.blockedWeekdays.length || prefs.blockedTimes.length)
             reasons.push('respeita seus dias e horários bloqueados');
+        const completed = new Set(prefs.completedCodes);
+        const concurrent = new Set([...completed, ...items.map((item) => item.code)]);
+        const prerequisites = items.filter(
+            (item) => !requirementsMet(item.prerequisites, completed)
+        );
+        const corequisites = items.filter(
+            (item) => !requirementsMet(item.corequisites, concurrent)
+        );
+        if (prerequisites.length)
+            reasons.push(
+                `Confira os pré-requisitos no SIGAA antes da matrícula: ${prerequisites.map((item) => item.name).join('; ')}. Não confirmados neste aparelho.`
+            );
+        if (corequisites.length)
+            reasons.push(
+                `Confira os correquisitos no SIGAA: ${corequisites.map((item) => item.name).join('; ')}. Não confirmados nesta grade.`
+            );
+        if (items.some((item) => classTimes(item).length === 0))
+            reasons.push('Há turmas sem horário informado: confira possíveis choques no SIGAA.');
         const left = subjects
             .filter((subject) => !subject.required && !items.some((i) => i.code === subject.code))
             .map((subject) => ({
@@ -319,7 +341,11 @@ export function suggestSchedules(
 
 function leftReason(subject: Subject, chosen: PlannedClass[], prefs: Preferences): string {
     const usable = subject.options.filter((option) => blockedReason(option, prefs) === null);
-    if (usable.length === 0) return 'nenhuma turma serve nos seus dias e horários';
+    if (usable.length === 0)
+        return (
+            subject.options.map((option) => blockedReason(option, prefs)).find(Boolean) ??
+            'nenhuma turma foi escolhida'
+        );
     for (const option of usable) {
         const clash = chosen.find((item) => conflicts(item, option));
         if (!clash)
