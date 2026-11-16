@@ -7,6 +7,8 @@ export function observeViewport() {
             '--app-viewport-height',
             `${viewport?.height ?? window.innerHeight}px`
         );
+        root.style.setProperty('--app-viewport-width', `${viewport?.width ?? window.innerWidth}px`);
+        root.style.setProperty('--app-viewport-left', `${viewport?.offsetLeft ?? 0}px`);
         root.style.setProperty('--app-viewport-top', `${viewport?.offsetTop ?? 0}px`);
     };
     update();
@@ -19,5 +21,7 @@ export function observeViewport() {
         window.removeEventListener('resize', update);
         root.style.removeProperty('--app-viewport-height');
         root.style.removeProperty('--app-viewport-top');
+        root.style.removeProperty('--app-viewport-width');
+        root.style.removeProperty('--app-viewport-left');
     };
 }
