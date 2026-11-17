@@ -75,3 +75,18 @@ def test_detalhe_pela_referencia_e_mural_mudado_e_404(client, cookies, stub_siga
     assert client.get("/internships/qualquer-coisa").status_code == 422
     stub_sigaa.internships.get_internship.side_effect = InternshipNotFound("mudou")
     assert client.get(f"/internships/{OUTRO}").status_code == 404
+
+
+def test_lista_sem_vagas_do_curso_retorna_outros_cursos(client, cookies, stub_sigaa):
+    stub_sigaa.internships.list_internships.return_value = [
+        _resumo(OUTRO, "Estágio em direito", None)
+    ]
+    client.cookies.update(cookies(refresh=ANA))
+    response = client.get("/internships")
+    assert response.status_code == 200
+    assert [(item["reference"], item["mine"]) for item in response.json()] == [
+        (OUTRO, False)
+    ]
+    stub_sigaa.internships.list_internships.assert_awaited_once_with(
+        only_my_course=False
+    )
