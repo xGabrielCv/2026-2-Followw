@@ -6,6 +6,7 @@ import type { ClassroomKey, GroupLink, SavedGroup } from '#/queries/groups';
 
 import { PlatformIcon } from '#/components/community/PlatformIcon';
 import { ReportButton } from '#/components/community/ReportButton';
+import { StaleDataNotice } from '#/components/ErrorState';
 import { LoadingText } from '#/components/LoadingText';
 import { Button } from '#/components/ui/button';
 import {
@@ -77,7 +78,7 @@ export function GroupsContent({ classroom }: { classroom: ClassroomKey }) {
     const [editing, setEditing] = useState<GroupLink[] | null>(null);
 
     if (groups.isPending) return <LoadingText>Carregando grupos...</LoadingText>;
-    if (groups.isError)
+    if (groups.isLoadingError)
         return (
             <p role="alert" className="text-sm text-destructive">
                 Não foi possível carregar os grupos. Verifique a conexão e tente novamente.
@@ -92,6 +93,7 @@ export function GroupsContent({ classroom }: { classroom: ClassroomKey }) {
 
     return (
         <div className="flex flex-col gap-4">
+            {groups.isError && <StaleDataNotice subject="os grupos" />}
             {saved.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 rounded-xl bg-muted/40 p-4 text-center">
                     <p className="text-sm text-muted-foreground">

@@ -7,7 +7,7 @@ import type { PostDetails, ReplyItem } from '#/queries/community';
 
 import { POST_KIND_LABELS } from '#/components/community/NewPostDialog';
 import { ReportButton } from '#/components/community/ReportButton';
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { Button } from '#/components/ui/button';
@@ -41,14 +41,19 @@ function PostPage() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const post = useQuery(forumPostQueryOptions(id));
     if (post.isPending) return <LoadingText>Carregando conversa...</LoadingText>;
-    if (post.isError)
+    if (post.isLoadingError)
         return (
             <ErrorCard
                 message="Conversa não encontrada ou indisponível."
                 onRetry={() => post.refetch()}
             />
         );
-    return <Conversation post={post.data} canEdit={Boolean(user)} />;
+    return (
+        <>
+            {post.isError && <StaleDataNotice subject="esta conversa" className="mb-3" />}
+            <Conversation post={post.data} canEdit={Boolean(user)} />
+        </>
+    );
 }
 
 export function Conversation({ post, canEdit = false }: { post: PostDetails; canEdit?: boolean }) {
@@ -156,7 +161,7 @@ export function Conversation({ post, canEdit = false }: { post: PostDetails; can
                         <ReplyRow key={reply.id} postId={post.id} reply={reply} canEdit={canEdit} />
                     ))}
                 </ul>
-                {canEdit && <ReplyForm postId={post.id} />}
+                {canEdit && <ReplyForm key={post.id} postId={post.id} />}
             </section>
         </div>
     );

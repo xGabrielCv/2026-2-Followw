@@ -8,6 +8,7 @@ import type { Review, ReviewSearch } from '#/queries/reviews';
 import { AttendanceSummary } from '#/components/community/AttendanceSummary';
 import { ReportButton } from '#/components/community/ReportButton';
 import { ReviewDialog } from '#/components/community/ReviewDialog';
+import { StaleDataNotice } from '#/components/ErrorState';
 import { LoadingText } from '#/components/LoadingText';
 import { Button } from '#/components/ui/button';
 import {
@@ -56,9 +57,10 @@ export function ProfessorReviewsSection({ siape, name }: { siape: number; name: 
                 )}
             </div>
             <div className="flex flex-col gap-3 rounded-2xl bg-card p-4 shadow-card ring-1 ring-foreground/8">
+                {reviews.isRefetchError && <StaleDataNotice subject="as avaliações" />}
                 {reviews.isPending ? (
                     <LoadingText>Carregando avaliações...</LoadingText>
-                ) : reviews.isError ? (
+                ) : reviews.isLoadingError ? (
                     <div className="flex items-center justify-between gap-2">
                         <p className="text-sm text-muted-foreground">
                             Não foi possível carregar as avaliações.
@@ -186,7 +188,7 @@ export function ReviewList({ reviews }: { reviews: Review[] }) {
     );
 }
 
-function ReviewsBrowser({ siape }: { siape: number }) {
+export function ReviewsBrowser({ siape }: { siape: number }) {
     const [filters, setFilters] = useState<ReviewSearch>({ page: 1 });
     const query = useQuery(professorReviewsQueryOptions(siape, filters));
     const page = filters.page ?? 1;
@@ -265,12 +267,13 @@ function ReviewsBrowser({ siape }: { siape: number }) {
             </label>
             {query.isPending ? (
                 <LoadingText>Carregando avaliações...</LoadingText>
-            ) : query.isError ? (
+            ) : query.isLoadingError ? (
                 <Button variant="outline" onClick={() => query.refetch()}>
                     Tentar carregar novamente
                 </Button>
             ) : (
                 <>
+                    {query.isError && <StaleDataNotice subject="as avaliações" />}
                     {query.data.reviews.length ? (
                         <ReviewList reviews={query.data.reviews} />
                     ) : (

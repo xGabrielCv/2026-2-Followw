@@ -13,6 +13,7 @@ import { useState } from 'react';
 import type { MaterialItem, SubjectMaterials } from '#/queries/community';
 
 import { ReportButton } from '#/components/community/ReportButton';
+import { StaleDataNotice } from '#/components/ErrorState';
 import { LoadingText } from '#/components/LoadingText';
 import { FilteredMaterials } from '#/components/materials/FilteredMaterials';
 import { MaterialPreview } from '#/components/materials/MaterialPreview';
@@ -45,7 +46,7 @@ export function SubjectMaterialsPanel({ code, classroom }: SubjectMaterialsPanel
     const [uploading, setUploading] = useState(false);
 
     if (query.isPending) return <LoadingText>Carregando materiais...</LoadingText>;
-    if (query.isError)
+    if (query.isLoadingError)
         return (
             <div className="flex items-center justify-between gap-2 rounded-2xl bg-card p-4 text-sm">
                 <span className="text-muted-foreground">
@@ -58,22 +59,25 @@ export function SubjectMaterialsPanel({ code, classroom }: SubjectMaterialsPanel
         );
 
     return (
-        <MaterialsView
-            data={query.data}
-            code={code}
-            classroom={classroom}
-            onUpload={user ? () => setUploading(true) : undefined}
-        >
-            {user && (
-                <UploadMaterialDialog
-                    open={uploading}
-                    onOpenChange={setUploading}
-                    code={code}
-                    data={query.data}
-                    classroom={classroom}
-                />
-            )}
-        </MaterialsView>
+        <>
+            {query.isError && <StaleDataNotice subject="os materiais" className="mb-3" />}
+            <MaterialsView
+                data={query.data}
+                code={code}
+                classroom={classroom}
+                onUpload={user ? () => setUploading(true) : undefined}
+            >
+                {user && (
+                    <UploadMaterialDialog
+                        open={uploading}
+                        onOpenChange={setUploading}
+                        code={code}
+                        data={query.data}
+                        classroom={classroom}
+                    />
+                )}
+            </MaterialsView>
+        </>
     );
 }
 
