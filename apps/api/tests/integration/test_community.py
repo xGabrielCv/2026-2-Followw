@@ -1,15 +1,20 @@
 """Comunidade: conversas, guias, denúncias e o painel do administrador."""
 
+import asyncio
 from datetime import datetime
 from io import BytesIO
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
+import httpx
 import pyotp
 import pytest
+from fastapi import FastAPI
 from PIL import Image
 from pydantic import SecretStr
 from sigaa_client import Credentials
-from sqlalchemy import inspect, select, text
+from sqlalchemy import func, inspect, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.core.config import settings
 from api.db.models import (
@@ -334,6 +339,82 @@ def test_denuncia_recusada_mantem_o_conteudo(ana, base, painel, database):
         "items"
     ]
     assert [item["id"] for item in rejeitadas] == [report["id"]]
+
+
+async def test_denuncias_concorrentes_respeitam_limite_por_alvo(
+    database, async_database, monkeypatch
+):
+    from api.db.main import get_sessionmaker
+    from api.modules.reports.router import router
+
+    target_id = uuid4()
+    with database.begin() as session:
+        session.add(
+            ForumPost(
+                id=target_id,
+                kind="post",
+                title="Publicação sintética",
+                body="Conteúdo público de teste",
+                author_key="a" * 64,
+            )
+        )
+        session.add_all(
+            Report(target_type="post", target_id=target_id, reason="spam")
+            for _ in range(19)
+        )
+
+    primeira_contagem = asyncio.Event()
+    duas_contagens = asyncio.Event()
+    contagens = []
+    sessoes = set()
+    scalar_original = AsyncSession.scalar
+
+    async def contar_intercalado(session, statement, *args, **kwargs):
+        result = await scalar_original(session, statement, *args, **kwargs)
+        if str(statement).startswith("SELECT count(reports.id)"):
+            contagens.append(result)
+            sessoes.add(session)
+            primeira_contagem.set()
+            if len(contagens) == 2:
+                duas_contagens.set()
+            # Com lock, a segunda contagem só ocorre após a primeira transação confirmar.
+            try:
+                await asyncio.wait_for(duas_contagens.wait(), timeout=2)
+            except TimeoutError:
+                pass
+        return result
+
+    monkeypatch.setattr(AsyncSession, "scalar", contar_intercalado)
+    app = FastAPI()
+    app.include_router(router, prefix="/reports")
+    app.dependency_overrides[get_sessionmaker] = lambda: async_database
+    body = {"target_type": "post", "target_id": str(target_id), "reason": "spam"}
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://teste"
+        ) as client,
+        asyncio.timeout(10),
+        asyncio.TaskGroup() as tasks,
+    ):
+        primeira = tasks.create_task(client.post("/reports", json=body))
+        await primeira_contagem.wait()
+        segunda = tasks.create_task(client.post("/reports", json=body))
+
+    respostas = [primeira.result(), segunda.result()]
+    assert [response.status_code for response in respostas] == [201, 201]
+    assert len(sessoes) == 2
+    with database() as session:
+        total = session.scalar(
+            select(func.count(Report.id)).where(
+                Report.target_id == target_id, Report.status == "pending"
+            )
+        )
+        assert all(
+            session.get(Report, UUID(response.json()["id"])) is not None
+            for response in respostas
+        )
+    assert total == 20, f"Contagens intercaladas: {contagens}; total final: {total}"
+    assert contagens == [19, 20]
 
 
 def test_painel_desligado_sem_usuario_e_senha(client, base, monkeypatch):

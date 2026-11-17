@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, StringConstraints
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.context import set_context
@@ -84,6 +84,10 @@ class ReportService:
         set_context(scope="report_submit", report_target=str(body.target_id))
 
         async def write(session: AsyncSession) -> ReportCreated:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:scope))"),
+                {"scope": f"reports:{body.target_id}"},
+            )
             if await session.get(TARGETS[body.target_type], body.target_id) is None:
                 raise HTTPException(404, "Conteúdo não encontrado.")
             open_reports = await session.scalar(
