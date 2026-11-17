@@ -6,6 +6,44 @@ from api.core.config import settings
 from api.rate_limit import _MEMORY, _limit
 
 
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://[",
+        "ftp://testserver",
+        "https://testserver:invalida",
+        "https://testserver/caminho",
+        "https://testserver?consulta=1",
+        "https://testserver#fragmento",
+        "https://usuario@testserver",
+        "http://testserver",
+    ],
+)
+def test_origem_invalida_ou_insegura_e_recusada_sem_erro_interno(monkeypatch, origin):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from api.security import SecurityMiddleware
+
+    monkeypatch.setattr(settings, "environment", "production")
+    app = FastAPI()
+    app.add_middleware(SecurityMiddleware)
+
+    @app.post("/escrever")
+    def escrever():
+        return {"ok": True}
+
+    with TestClient(app, base_url="https://testserver") as navegador:
+        response = navegador.post("/escrever", headers={"Origin": origin})
+        assert response.status_code == 403
+        assert (
+            navegador.post(
+                "/escrever", headers={"Origin": "https://testserver"}
+            ).status_code
+            == 200
+        )
+
+
 def test_respostas_trazem_cabecalhos_de_seguranca(client):
     response = client.get("/public/restaurant/campuses")
     assert response.headers["x-content-type-options"] == "nosniff"

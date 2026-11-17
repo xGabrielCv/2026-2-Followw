@@ -32,13 +32,21 @@ class RateLimitMiddleware:
         method = scope["method"]
         path = get_route_path(scope).rstrip("/")
         group, limit = _quota(method, path)
-        result = await _limit(
-            group,
-            _bucket(_client_host(Request(scope))),
-            limit,
-            settings.rate_limit_window_seconds,
-            shared=group == "login",
-        )
+        try:
+            result = await _limit(
+                group,
+                _bucket(_client_host(Request(scope))),
+                limit,
+                settings.rate_limit_window_seconds,
+                shared=group == "login",
+            )
+        except HTTPException as error:
+            await JSONResponse(
+                status_code=error.status_code,
+                content={"detail": error.detail},
+                headers=error.headers,
+            )(scope, receive, send)
+            return
         if result is not None and not result.allowed:
             # Sair sempre apaga os cookies; só a chamada ao SIGAA fica de fora.
             if method == "DELETE" and path == "/auth/sigaa":
@@ -141,6 +149,7 @@ async def _postgres_limit(
 
     now = int(time())
     start = now // window * window
+    prefix = f"{group}:{window}:"
     async with async_session.begin() as session:
         count = await session.scalar(
             text(
@@ -148,13 +157,16 @@ async def _postgres_limit(
                 "ON CONFLICT (bucket, window_start) DO UPDATE SET count = rate_windows.count + 1 "
                 "RETURNING count"
             ),
-            {"b": f"{group}:{identifier}", "w": start},
+            {"b": f"{prefix}{identifier}", "w": start},
         )
-        # limpeza aos poucos: 1 em 50 pedidos apaga janelas com mais de duas janelas de idade
+        # Só limpa o mesmo grupo e duração; outras cotas ainda podem estar válidas.
         if now % 50 == 0:
             await session.execute(
-                text("DELETE FROM rate_windows WHERE window_start < :old"),
-                {"old": start - 2 * window},
+                text(
+                    "DELETE FROM rate_windows "
+                    "WHERE starts_with(bucket, :prefix) AND window_start < :old"
+                ),
+                {"prefix": prefix, "old": start - 2 * window},
             )
     return _MemoryResult((count or 0) <= limit, start + window)
 
@@ -175,12 +187,13 @@ async def _limit(
             try:
                 async with asyncio.timeout(settings.redis_timeout_seconds + 1):
                     return await _postgres_limit(identifier, group, limit, window)
-            except Exception as error:  # noqa: BLE001 — sem banco, a cota local ainda vale
+            except Exception as error:  # noqa: BLE001 — fallback local só fora de produção
                 event(
                     "rate_limit.shared_unavailable",
                     level=logging.WARNING,
                     error_type=type(error).__name__,
                 )
+                _require_shared_backend(shared)
         return local
     try:
         async with asyncio.timeout(settings.redis_timeout_seconds):
@@ -195,7 +208,17 @@ async def _limit(
             level=logging.WARNING,
             error_type=type(error).__name__,
         )
+        _require_shared_backend(shared)
         return local
+
+
+def _require_shared_backend(shared: bool) -> None:
+    if shared and settings.environment == "production":
+        raise HTTPException(
+            status_code=503,
+            detail="Limite compartilhado indisponível. Tente novamente em instantes.",
+            headers={"Retry-After": "5", "Cache-Control": "no-store"},
+        )
 
 
 def reset_memory() -> None:

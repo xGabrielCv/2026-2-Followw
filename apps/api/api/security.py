@@ -28,11 +28,25 @@ _HEADERS = {
 _HSTS = (b"strict-transport-security", b"max-age=31536000; includeSubDomains")
 
 
-def _allowed_origin(origin: str, host: str | None) -> bool:
+def _allowed_origin(origin: str, host: str | None, scheme: str) -> bool:
+    try:
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            return False
+        _ = parsed.port
+    except ValueError:
+        return False
     if origin in settings.cors_origins:
         return True
-    parsed = urlsplit(origin)
-    if host and parsed.netloc == host:
+    if host and parsed.netloc == host and parsed.scheme == scheme:
         return True
     # Em desenvolvimento, o front no localhost chama a API por proxy.
     return settings.environment != "production" and parsed.hostname in (
@@ -56,7 +70,11 @@ class SecurityMiddleware:
             # Contra CSRF além do SameSite: escrita só vem do próprio app.
             origin = headers.get(b"origin", b"").decode("latin-1")
             host = headers.get(b"host", b"").decode("latin-1") or None
-            if origin and origin != "null" and not _allowed_origin(origin, host):
+            if (
+                origin
+                and origin != "null"
+                and not _allowed_origin(origin, host, scope["scheme"])
+            ):
                 await JSONResponse({"detail": "Origem recusada."}, 403)(
                     scope, receive, send
                 )

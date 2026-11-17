@@ -2,7 +2,9 @@
 
 import asyncio
 
+import httpx
 import pytest
+from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
@@ -95,3 +97,96 @@ async def test_sem_o_backend_postgres_nada_e_gravado(database, monkeypatch):
         assert (
             session.execute(text("SELECT count(*) FROM rate_windows")).scalar_one() == 0
         )
+
+
+@pytest.mark.parametrize("grupo_curto", ["login", "publicacao"])
+async def test_limpeza_curta_preserva_cota_longa_entre_workers(
+    compartilhado, monkeypatch, grupo_curto
+):
+    base = 1_800_000_000
+    monkeypatch.setattr(rate_limit, "time", lambda: base)
+    for _ in range(2):
+        assert (
+            await rate_limit._limit("publicacao", "origem", 2, 3600, shared=True)
+        ).allowed
+    rate_limit.reset_memory()
+    monkeypatch.setattr(rate_limit, "time", lambda: base + 200)
+    assert (
+        await rate_limit._limit(grupo_curto, "outra-origem", 2, 60, shared=True)
+    ).allowed
+    assert not (
+        await rate_limit._limit("publicacao", "origem", 2, 3600, shared=True)
+    ).allowed
+
+
+async def test_limpeza_remove_janelas_antigas_do_proprio_escopo(
+    compartilhado, database, monkeypatch
+):
+    base = 1_800_000_000
+    monkeypatch.setattr(rate_limit, "time", lambda: base)
+    await rate_limit._limit("login", "origem", 2, 60, shared=True)
+    rate_limit.reset_memory()
+    monkeypatch.setattr(rate_limit, "time", lambda: base + 200)
+    await rate_limit._limit("login", "origem", 2, 60, shared=True)
+    with database() as session:
+        starts = session.scalars(text("SELECT window_start FROM rate_windows")).all()
+    assert starts == [base + 180]
+
+
+@pytest.mark.parametrize("backend", ["postgres", "redis"])
+@pytest.mark.parametrize("falha", ["conexao", "timeout"])
+@pytest.mark.parametrize("ambiente", ["production", "development", "testing"])
+@pytest.mark.parametrize("path", ["/auth/sigaa", "/publicar"])
+async def test_backend_compartilhado_indisponivel_respeita_ambiente(
+    monkeypatch, backend, falha, ambiente, path
+):
+    monkeypatch.setattr(settings, "environment", ambiente)
+    monkeypatch.setattr(settings, "rate_limit_backend", "postgres")
+    monkeypatch.setattr(settings, "redis_timeout_seconds", 0.01)
+
+    async def indisponivel(*args, **kwargs):
+        if falha == "timeout":
+            await asyncio.sleep(2)
+        raise ConnectionError("backend fora")
+
+    monkeypatch.setattr(rate_limit, "_postgres_limit", indisponivel)
+    monkeypatch.setattr(
+        rate_limit, "redis_client", lambda: object() if backend == "redis" else None
+    )
+
+    class RedisIndisponivel:
+        def __init__(self, **kwargs):
+            pass
+
+        limit = staticmethod(indisponivel)
+
+    monkeypatch.setattr(rate_limit, "Ratelimit", RedisIndisponivel)
+    app = FastAPI()
+    app.add_middleware(rate_limit.RateLimitMiddleware)
+    chamadas = []
+
+    @app.post("/auth/sigaa")
+    @app.post("/publicar")
+    async def publicar():
+        if path == "/publicar":
+            await rate_limit.limit_by("publicacao", "origem", 2, 60)
+        chamadas.append(path)
+        return {"ok": True}
+
+    @app.get("/leitura")
+    async def leitura():
+        return {"ok": True}
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://teste"
+    ) as client:
+        response = await client.post(path)
+        if ambiente == "production":
+            assert response.status_code == 503
+            assert response.headers["cache-control"] == "no-store"
+            assert int(response.headers["retry-after"]) > 0
+            assert not chamadas
+        else:
+            assert response.status_code == 200
+            assert chamadas == [path]
+        assert (await client.get("/leitura")).status_code == 200
