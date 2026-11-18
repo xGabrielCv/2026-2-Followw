@@ -52,7 +52,7 @@ class Course(Base, TimestampMixin):
     sigaa_id: Mapped[int | None] = mapped_column(unique=True)
     name: Mapped[str] = mapped_column()
     shift: Mapped[str | None] = mapped_column()
-    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id"))
+    unit_id: Mapped[int] = mapped_column(ForeignKey("units.id"), index=True)
 
     unit: Mapped[Unit] = relationship(lazy="joined")
 
@@ -126,7 +126,7 @@ class Professor(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # `idPessoa` do SIGAA: único identificador dos docentes na lista de participantes.
     person_id: Mapped[int | None] = mapped_column(unique=True)
     name: Mapped[str] = mapped_column()
-    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"))
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"), index=True)
     photo: Mapped[str | None] = mapped_column()
     description: Mapped[str | None] = mapped_column(Text)
     education: Mapped[list[dict[str, object]] | None] = mapped_column(
@@ -146,7 +146,7 @@ class Subject(Base, TimestampMixin):
     code: Mapped[str] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column()
     hours: Mapped[int | None] = mapped_column(SmallInteger)
-    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"))
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"), index=True)
     # Expressões em OU de Es: `[["A", "B"], ["C"]]` é `(A E B) OU C`.
     prerequisites: Mapped[Requirements | None] = mapped_column(JSONB)
     corequisites: Mapped[Requirements | None] = mapped_column(JSONB)
@@ -176,6 +176,7 @@ class Classroom(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ),
         Index("ix_classroom_semester", "semester"),
         Index("ix_classroom_offer_active_semester", "offer_active", "semester"),
+        Index("ix_classroom_sigaa_id", "sigaa_id"),
     )
 
     sigaa_id: Mapped[int | None] = mapped_column()
@@ -302,6 +303,7 @@ class DemoRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Linha criada pelos dados de demonstração, para apagá-la depois sem tocar nos reais."""
 
     __tablename__ = "demo_records"
+    __table_args__ = (Index("ix_demo_records_kind_record", "kind", "record_id"),)
 
     kind: Mapped[str] = mapped_column()
     record_id: Mapped[uuid.UUID] = mapped_column()
@@ -339,6 +341,7 @@ class Material(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "materials"
     __table_args__ = (
         Index("ix_materials_subject_semester", "subject_code", "semester"),
+        Index("ix_materials_semester", "semester"),
     )
 
     subject_code: Mapped[str] = mapped_column()
@@ -379,7 +382,10 @@ class Report(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """Denúncia ou pedido de exclusão de um conteúdo da comunidade, para a moderação."""
 
     __tablename__ = "reports"
-    __table_args__ = (Index("ix_reports_status", "status", "created_at"),)
+    __table_args__ = (
+        Index("ix_reports_status", "status", "created_at"),
+        Index("ix_reports_target_status", "target_id", "status"),
+    )
 
     target_type: Mapped[str] = mapped_column()
     target_id: Mapped[uuid.UUID] = mapped_column()
@@ -414,7 +420,11 @@ class ForumPost(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """
 
     __tablename__ = "forum_posts"
-    __table_args__ = (Index("ix_forum_posts_activity", "last_activity_at"),)
+    __table_args__ = (
+        Index("ix_forum_posts_activity", "last_activity_at"),
+        Index("ix_forum_posts_created_at", "created_at"),
+        Index("ix_forum_posts_subject_code", "subject_code"),
+    )
 
     kind: Mapped[str] = mapped_column()
     resolved: Mapped[bool] = mapped_column(default=False, server_default="false")

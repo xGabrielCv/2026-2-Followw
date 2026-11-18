@@ -9,7 +9,7 @@ from typing import Annotated
 import httpx
 from pydantic import BaseModel, Field, StringConstraints
 from sigaa_client import SigaaError
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,7 +64,9 @@ async def set_sharing(
         try:
             async with asyncio.timeout(15):
                 minted.update(
-                    await fetch_and_share_statistics(account.connection, db, keys)
+                    await fetch_and_share_statistics(
+                        account.connection, db, keys, turmas=turmas
+                    )
                 )
         except TimeoutError, SigaaError, httpx.HTTPError:
             pending = True
@@ -79,11 +81,16 @@ async def set_sharing(
 
 
 async def fetch_and_share_statistics(
-    connection: SigaaConnection, db: Database, keys: dict[uuid.UUID, str]
+    connection: SigaaConnection,
+    db: Database,
+    keys: dict[uuid.UUID, str],
+    *,
+    turmas: list | None = None,
 ) -> dict[uuid.UUID, str]:
     """Job: busca os índices das turmas encerradas que faltam e os libera."""
-    account = Account(connection)
-    turmas = await ClassroomService(account, db).list_turmas("all")
+    if turmas is None:
+        account = Account(connection)
+        turmas = await ClassroomService(account, db).list_turmas("all")
     client = await connection.client()
     past = []
     for turma in turmas:
@@ -153,13 +160,17 @@ async def _share(
         )
         await apply_context(session)
         # Só a liberação de quem tem a chave: outro aluno que liberou a mesma turma continua valendo.
-        for id_ in classrooms:
-            known = keys_in.get(id_)
-            if known:
-                await session.execute(
-                    delete(SharedStatistics).where(
-                        SharedStatistics.classroom_id == id_,
-                        SharedStatistics.sharer_key == resource_key(known),
-                    )
+        pairs = [
+            (id_, resource_key(known))
+            for id_ in classrooms
+            if (known := keys_in.get(id_))
+        ]
+        if pairs:
+            await session.execute(
+                delete(SharedStatistics).where(
+                    tuple_(
+                        SharedStatistics.classroom_id, SharedStatistics.sharer_key
+                    ).in_(pairs)
                 )
+            )
     return len(with_statistics), minted

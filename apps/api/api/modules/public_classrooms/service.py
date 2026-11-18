@@ -9,7 +9,7 @@ from api.modules.public_classrooms.code import classroom_code_prefix
 from api.modules.public_classrooms.repository import UnitIndexRepository
 from api.resilience import OriginGuard, TTLCache
 from api.schemas import UnitRef
-from api.sigaa import SigaaPublicClientDep
+from api.sigaa import get_sigaa_public_client
 
 # As unidades da busca pública mudam raramente: uma consulta por hora por processo, não uma por aluno.
 UNITS_CACHE = TTLCache(ttl=3600, stale_ttl=24 * 3600)
@@ -26,9 +26,22 @@ CLASSROOMS_ORIGIN = OriginGuard(
 )
 
 
+async def _search_unit_classrooms(
+    selected: int, year: int | None, period: int | None
+) -> list[PublicClassroom]:
+    async for client in get_sigaa_public_client():
+        return list(await client.classrooms.search(selected, year=year, period=period))
+    return []
+
+
+async def _fetch_public_units():
+    async for client in get_sigaa_public_client():
+        return await client.classrooms.list_units()
+    return []
+
+
 class PublicClassroomService:
-    def __init__(self, client: SigaaPublicClientDep, db: DatabaseDep) -> None:
-        self._client = client
+    def __init__(self, db: DatabaseDep) -> None:
         self._db = db
 
     async def search(
@@ -72,8 +85,8 @@ class PublicClassroomService:
                     f"{selected}:{year}:{period}",
                     lambda selected=selected: CLASSROOMS_ORIGIN.fetch(
                         f"{selected}:{year}:{period}",
-                        lambda: self._client.classrooms.search(
-                            selected, year=year, period=period
+                        lambda selected=selected: _search_unit_classrooms(
+                            selected, year, period
                         ),
                     ),
                 )
@@ -150,9 +163,7 @@ class PublicClassroomService:
         # A lista inteira vem do cache compartilhado; o filtro por nome é local, igual ao do SIGAA client.
         units = await UNITS_CACHE.get(
             "units",
-            lambda: UNITS_ORIGIN.fetch(
-                "units", lambda: self._client.classrooms.list_units()
-            ),
+            lambda: UNITS_ORIGIN.fetch("units", _fetch_public_units),
         )
         if q is not None:
             needle = lookup_key(q)

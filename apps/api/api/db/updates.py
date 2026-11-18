@@ -124,6 +124,12 @@ def apply_updates(connection: Connection) -> None:
     )
     connection.execute(
         text(
+            "CREATE INDEX IF NOT EXISTS ix_rate_windows_window_start "
+            "ON rate_windows (window_start)"
+        )
+    )
+    connection.execute(
+        text(
             "CREATE TABLE IF NOT EXISTS schema_updates (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
         )
     )

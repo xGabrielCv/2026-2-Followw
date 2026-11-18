@@ -64,9 +64,30 @@ class RecommendationService:
             raise HTTPException(
                 422, "Recomendações disponíveis somente para graduação."
             )
-        return await self._db.write(
-            lambda session: _ranking(session, profile, completed, history, semester)
-        )
+        try:
+            return await self._db.read(
+                lambda session: _ranking(
+                    session,
+                    profile,
+                    completed,
+                    history,
+                    semester,
+                    create_missing=False,
+                )
+            )
+        except HTTPException as error:
+            if error.status_code == 422 and profile.course and profile.unit:
+                return await self._db.write(
+                    lambda session: _ranking(
+                        session,
+                        profile,
+                        completed,
+                        history,
+                        semester,
+                        create_missing=True,
+                    )
+                )
+            raise
 
 
 async def _ranking(
@@ -75,8 +96,10 @@ async def _ranking(
     completed: frozenset[str],
     history: Sequence[HistoryItem],
     semester: str | None = None,
+    *,
+    create_missing: bool = True,
 ) -> Ranking:
-    found = await enrollment(session, profile)
+    found = await enrollment(session, profile, create_missing=create_missing)
     if found.curriculum_id is None:
         raise HTTPException(422, "Matriz curricular do aluno não identificada.")
     curriculum = await RecommendationRepository(session).components(found.curriculum_id)

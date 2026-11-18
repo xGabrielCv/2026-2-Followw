@@ -108,6 +108,7 @@ def main():
             "api.main:app",
             host="127.0.0.1",
             port=int(os.environ.get("FOLLOWW_E2E_API_PORT", "8011")),
+            timeout_keep_alive=65,
             access_log=False,
         )
 

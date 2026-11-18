@@ -49,7 +49,13 @@ async def _quota(request: Request, username: str) -> None:
         ("admin-account", username.lower()),
         ("admin-ip", auth._client(request)),
     ]:
-        result = await _limit(group, key, 5 if group == "admin-account" else 30, 900)
+        result = await _limit(
+            group,
+            key,
+            5 if group == "admin-account" else 30,
+            900,
+            shared=True,
+        )
         if not result.allowed:
             raise HTTPException(
                 429,
@@ -132,6 +138,33 @@ class AdminAccounts:
         await _quota(request, username)
         await self.logout(request, response)
 
+        # Lê fora da transação de escrita para não segurar conexão do pool durante o Argon2id.
+        snapshot = await self.db.read(
+            lambda session: session.scalar(
+                select(AdminAccount).where(AdminAccount.username == username)
+            )
+        )
+        legacy_candidate = (
+            snapshot is None and auth.enabled() and username == settings.admin_username
+        )
+        if snapshot is None and not legacy_candidate:
+            await password_matches(password, _DUMMY_HASH)
+            raise HTTPException(
+                401,
+                "Não foi possível autenticar. Confira suas credenciais ou aguarde o bloqueio temporário.",
+            )
+        checked_hash = snapshot.password_hash if snapshot else None
+        precomputed_valid = (
+            await password_matches(password, checked_hash)
+            if checked_hash is not None
+            else False
+        )
+        upgraded_hash = (
+            await to_thread.run_sync(hash_password, password, limiter=_HASH_LIMIT)
+            if precomputed_valid and checked_hash and checked_hash.startswith("scrypt$")
+            else None
+        )
+
         async def write(session):
             account = await session.scalar(
                 select(AdminAccount)
@@ -165,6 +198,7 @@ class AdminAccounts:
                             hash_password, password, limiter=_HASH_LIMIT
                         ),
                         role="owner",
+                        totp_secret=pyotp.random_base32(),
                     )
                     session.add(account)
                     await session.flush()
@@ -175,9 +209,13 @@ class AdminAccounts:
                         target_id=account.id,
                         actor=account,
                     )
-            valid = await password_matches(
-                password, account.password_hash if account else _DUMMY_HASH
-            )
+                    return {"stage": challenge(response, account)}
+            if account and account.password_hash == checked_hash:
+                valid = precomputed_valid
+            else:
+                valid = await password_matches(
+                    password, account.password_hash if account else _DUMMY_HASH
+                )
             if account and _locked(account):
                 return {"error": 429}
             if not account or not account.enabled or not valid:
@@ -185,7 +223,7 @@ class AdminAccounts:
                     await _failed(session, account)
                 return {"error": 401}
             if account.password_hash.startswith("scrypt$"):
-                account.password_hash = await to_thread.run_sync(
+                account.password_hash = upgraded_hash or await to_thread.run_sync(
                     hash_password, password, limiter=_HASH_LIMIT
                 )
             if not account.totp_confirmed and not account.totp_secret:
@@ -201,26 +239,42 @@ class AdminAccounts:
         return result
 
     async def enrollment(self, request: Request) -> dict:
-        async def write(session):
-            account = await pending_account(session, request, "enroll")
+        async def read(session):
+            account = await pending_account(
+                session, request, "enroll", for_update=False
+            )
             if _locked(account):
                 raise HTTPException(429, "Conta temporariamente bloqueada.")
-            if not account.totp_secret:
-                raise HTTPException(401, "Entre novamente para iniciar o cadastro MFA.")
-            uri = pyotp.TOTP(account.totp_secret).provisioning_uri(
-                account.username, issuer_name="Followw UnB"
-            )
+            return account.username, account.totp_secret
+
+        username, totp_secret = await self.db.read(read)
+        if not totp_secret:
+
+            async def ensure_secret(session):
+                account = await pending_account(session, request, "enroll")
+                if _locked(account):
+                    raise HTTPException(429, "Conta temporariamente bloqueada.")
+                if not account.totp_secret:
+                    account.totp_secret = pyotp.random_base32()
+                return account.username, account.totp_secret
+
+            username, totp_secret = await self.db.write(ensure_secret)
+        uri = pyotp.TOTP(totp_secret).provisioning_uri(
+            username, issuer_name="Followw UnB"
+        )
+
+        def render_qr() -> str:
             image = qrcode.make(uri, image_factory=qrcode.image.svg.SvgPathImage)
             stream = BytesIO()
             image.save(stream)
-            return {
-                "uri": uri,
-                "secret": account.totp_secret,
-                "qr": "data:image/svg+xml;base64,"
-                + base64.b64encode(stream.getvalue()).decode(),
-            }
+            return base64.b64encode(stream.getvalue()).decode()
 
-        return await self.db.write(write)
+        encoded = await to_thread.run_sync(render_qr)
+        return {
+            "uri": uri,
+            "secret": totp_secret,
+            "qr": f"data:image/svg+xml;base64,{encoded}",
+        }
 
     async def verify(
         self, request: Request, response: Response, code: str, *, enroll: bool = False
@@ -418,11 +472,24 @@ class AdminAccounts:
         auth.logout(response)
 
     async def strengthen(self, actor: Principal, password: str, code: str) -> bool:
+        current_hash = await self.db.read(
+            lambda session: session.scalar(
+                select(AdminAccount.password_hash).where(AdminAccount.id == actor.id)
+            )
+        )
+        if not current_hash:
+            return False
+        precomputed_valid = await password_matches(password, current_hash)
+
         async def write(session):
             account = await session.get(AdminAccount, actor.id, with_for_update=True)
             if not account or _locked(account):
                 return False
-            valid_password = await password_matches(password, account.password_hash)
+            valid_password = (
+                precomputed_valid
+                if account.password_hash == current_hash
+                else await password_matches(password, account.password_hash)
+            )
             counter = (
                 totp_counter(account.totp_secret, code, account.last_totp_counter)
                 if account.totp_secret
@@ -514,6 +581,7 @@ class AdminAccounts:
                 actor=actor,
             )
             if actor.id == account.id:
+                account.totp_secret = pyotp.random_base32()
                 auth.logout(response)
                 return {"stage": challenge(response, account)}
             return {"stage": "password_required"}

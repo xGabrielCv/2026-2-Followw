@@ -125,3 +125,25 @@ def test_calendario_mesclado_controla_matricula_e_progresso(hoje):
     hoje(date(2030, 5, 10))
     assert is_enrollment_period("2030.1", calendar=cal) is False
     assert semester_progress_percent(calendar=cal) >= 50
+
+
+def test_calendario_padrao_reaproveita_leitura_em_memoria_ate_mudar_arquivo(
+    monkeypatch,
+):
+    from pathlib import Path
+
+    from api import academic_calendar
+
+    leituras = 0
+    original = Path.read_text
+
+    def contando(self: Path, *args, **kwargs):
+        nonlocal leituras
+        if self == academic_calendar.COLLECTED_CALENDAR:
+            leituras += 1
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", contando)
+    for _ in range(25):
+        assert academic_calendar.default_calendar().list_semesters()
+    assert leituras <= 1

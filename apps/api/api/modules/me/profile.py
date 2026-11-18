@@ -66,12 +66,17 @@ class Enrollment:
 
 
 async def enrollment(
-    session: AsyncSession, profile: sigaa_client.UserProfile
+    session: AsyncSession,
+    profile: sigaa_client.UserProfile,
+    *,
+    create_missing: bool = True,
 ) -> Enrollment:
     """A matriz pelo semestre de entrada, como o SIGAA não a informa."""
     pair = (profile.course, profile.unit)
     shift = profile.shift.value if profile.shift else None
-    course_id = (await course_ids(session, [pair], shift)).get(pair)
+    course_id = (
+        await course_ids(session, [pair], shift, create_missing=create_missing)
+    ).get(pair)
     if course_id is None:
         return Enrollment(None, None)
     course = await session.get_one(Course, course_id)
@@ -93,13 +98,23 @@ class ProfileService:
 
     async def get_profile(self) -> UserProfile:
         profile = await self._account.profile()
-        return await self._db.write(lambda session: _to_profile(session, profile))
+        result = await self._db.read(
+            lambda session: _to_profile(session, profile, create_missing=False)
+        )
+        if result.course is None and profile.course and profile.unit:
+            return await self._db.write(
+                lambda session: _to_profile(session, profile, create_missing=True)
+            )
+        return result
 
 
 async def _to_profile(
-    session: AsyncSession, profile: sigaa_client.UserProfile
+    session: AsyncSession,
+    profile: sigaa_client.UserProfile,
+    *,
+    create_missing: bool = True,
 ) -> UserProfile:
-    found = await enrollment(session, profile)
+    found = await enrollment(session, profile, create_missing=create_missing)
     codes = (
         sorted(await RecommendationRepository(session).components(found.curriculum.id))
         if found.curriculum

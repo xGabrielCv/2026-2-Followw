@@ -1,3 +1,5 @@
+import ssl
+from functools import lru_cache
 from typing import Self
 
 import httpx
@@ -5,6 +7,11 @@ import httpx
 from .calendar import Calendar
 from .config import DEFAULT_TIMEOUT, USER_AGENT
 from .restaurant import Restaurant
+
+
+@lru_cache(maxsize=1)
+def _default_ssl_context() -> ssl.SSLContext:
+    return httpx.create_ssl_context()
 
 
 class UnbBrowser:
@@ -20,6 +27,7 @@ class UnbBrowser:
             follow_redirects=True,
             timeout=timeout,
             transport=transport,
+            verify=_default_ssl_context() if transport is None else True,
         )
         self.restaurant = Restaurant(self._http)
         self.calendar = Calendar(self._http)

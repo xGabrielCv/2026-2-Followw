@@ -100,7 +100,7 @@ class ClassroomService:
         profile = await self._account.profile()
 
         async def kinds(session: AsyncSession):
-            found = await enrollment(session, profile)
+            found = await enrollment(session, profile, create_missing=False)
             if not found.curriculum_id:
                 return None
             components = await RecommendationRepository(session).components(

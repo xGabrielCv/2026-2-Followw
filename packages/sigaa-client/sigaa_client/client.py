@@ -1,3 +1,5 @@
+import ssl
+from functools import lru_cache
 from typing import Self
 
 import httpx
@@ -17,6 +19,11 @@ from .public.session import PublicSession
 from .public.subjects import PublicSubjects
 
 
+@lru_cache(maxsize=1)
+def _default_ssl_context() -> ssl.SSLContext:
+    return httpx.create_ssl_context()
+
+
 class _BaseClient:
     def __init__(
         self,
@@ -29,6 +36,7 @@ class _BaseClient:
             follow_redirects=True,
             timeout=timeout,
             transport=transport,
+            verify=_default_ssl_context() if transport is None else True,
         )
 
     async def __aenter__(self) -> Self:

@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Awaitable, Callable, Collection
 from typing import Annotated, Any, Literal
 
@@ -60,13 +59,8 @@ class SearchService:
             ),
         }
         wanted = [name for name in searches if not types or name in types]
-        # Espera todas as buscas antes de propagar a primeira falha.
-        results = await asyncio.gather(
-            *(searches[name]() for name in wanted), return_exceptions=True
-        )
-        for result in results:
-            if isinstance(result, BaseException):
-                raise result
+        # Executa em sequência para não ocupar 3 conexões simultâneas do pool num mesmo pedido.
+        results = [await searches[name]() for name in wanted]
         return SearchResult.model_validate(
             dict.fromkeys(searches) | dict(zip(wanted, results, strict=True))
         )

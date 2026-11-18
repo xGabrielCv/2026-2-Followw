@@ -22,12 +22,14 @@ from api.db.models import (
     SystemText,
     Tutorial,
 )
-from api.flags import flags, menu, texts
+from api.flags import flags, menu_and_flags, texts
 from api.metrics import observe_client_event
 from api.rate_limit import publish_quota
+from api.resilience import SingleFlight
 from api.semester_alert import SemesterAlertConfig, read_alert
 
 router = APIRouter()
+_VERSION_FLIGHT = SingleFlight()
 
 
 class TechnicalMetric(BaseModel):
@@ -78,14 +80,15 @@ class AppConfig(BaseModel):
 async def get_config(db: DatabaseDep, response: Response) -> AppConfig:
     async def read(session: AsyncSession) -> AppConfig:
         links = await texts(session)
+        resolved_menu, resolved_flags = await menu_and_flags(session)
         # ferramenta ligada sem link aparece como "em breve"
         return AppConfig(
-            menu=await menu(session),
+            menu=resolved_menu,
             links=AppLinks(
                 automatricula=links["automatricula_url"] or None,
                 monitor=links["monitor_url"] or None,
             ),
-            flags=await flags(session),
+            flags=resolved_flags,
             calendar={
                 key: SemesterCalendar.model_validate(value)
                 for key, value in (await read_custom_calendar(session)).items()
@@ -94,7 +97,7 @@ async def get_config(db: DatabaseDep, response: Response) -> AppConfig:
         )
 
     response.headers["Cache-Control"] = "no-cache"
-    return await db.read(read)
+    return await _VERSION_FLIGHT.run("config", lambda: db.read(read))
 
 
 # Cada parte da nuvem tem sua versão: o app só relê a que mudou.
@@ -155,4 +158,4 @@ async def get_version(db: DatabaseDep, response: Response) -> ContentVersion:
         return ContentVersion(parts=parts)
 
     response.headers["Cache-Control"] = "no-cache"
-    return await db.read(read)
+    return await _VERSION_FLIGHT.run("version", lambda: db.read(read))

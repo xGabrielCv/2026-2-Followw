@@ -53,20 +53,25 @@ TEXTS: dict[str, tuple[str, str]] = {
 _DEFAULT_OFF = {"telemetry", "current_plan"}
 
 
-async def flags(session: AsyncSession) -> dict[str, bool]:
+async def menu_and_flags(
+    session: AsyncSession,
+) -> tuple[dict[str, bool], dict[str, bool]]:
     saved = dict(
         (await session.execute(select(SystemFlag.key, SystemFlag.enabled))).all()
     )
-    return {key: saved.get(key, key not in _DEFAULT_OFF) for key in FLAGS}
+    resolved_menu = {
+        key: saved.get(f"menu.{key}", default) for key, (_, default) in MENU.items()
+    }
+    resolved_flags = {key: saved.get(key, key not in _DEFAULT_OFF) for key in FLAGS}
+    return resolved_menu, resolved_flags
+
+
+async def flags(session: AsyncSession) -> dict[str, bool]:
+    return (await menu_and_flags(session))[1]
 
 
 async def menu(session: AsyncSession) -> dict[str, bool]:
-    saved = dict(
-        (await session.execute(select(SystemFlag.key, SystemFlag.enabled))).all()
-    )
-    return {
-        key: saved.get(f"menu.{key}", default) for key, (_, default) in MENU.items()
-    }
+    return (await menu_and_flags(session))[0]
 
 
 async def texts(session: AsyncSession) -> dict[str, str]:

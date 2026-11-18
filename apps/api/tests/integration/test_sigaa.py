@@ -318,3 +318,95 @@ def test_erro_do_sigaa_na_rota_publica_vira_502(probe_app, sigaa):
 
     assert response.status_code == 502
     assert response.json()["detail"] == "SIGAA is unavailable"
+
+
+async def test_esgotamento_do_pool_de_locks_postgres_retorna_503_e_nao_500(monkeypatch):
+    from fastapi import HTTPException, Response
+    from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
+
+    from api import session_lock
+    from api.sigaa import _SESSION_LOCKS, SigaaConnection
+
+    async def pool_cheio(*_args, **_kwargs):
+        raise SQLAlchemyTimeoutError("QueuePool limit reached")
+
+    monkeypatch.setattr(settings, "session_lock_backend", "postgres")
+    monkeypatch.setattr(session_lock, "acquire", pool_cheio)
+    connection = SigaaConnection(CREDENCIAIS, response=Response())
+    with pytest.raises(HTTPException) as error:
+        await connection.client()
+    assert error.value.status_code == 503
+    assert error.value.headers["Retry-After"] == "5"
+    assert error.value.headers["Cache-Control"] == "no-store"
+    lock = _SESSION_LOCKS.get((asyncio.get_running_loop(), CREDENCIAIS.registration))
+    assert lock is None or not lock.locked()
+
+
+async def test_transporte_compartilhado_isola_cookies_entre_alunos_e_nao_recria_ssl(
+    sigaa, monkeypatch
+):
+    import ssl
+
+    from fastapi import Response
+
+    from api.sigaa import SigaaConnection
+
+    criacoes_ssl = 0
+    original_ssl = ssl.create_default_context
+
+    def contando_ssl(*args, **kwargs):
+        nonlocal criacoes_ssl
+        criacoes_ssl += 1
+        return original_ssl(*args, **kwargs)
+
+    monkeypatch.setattr(ssl, "create_default_context", contando_ssl)
+    sigaa.valid_tokens.update({"app14~ALUNO-A", "app14~ALUNO-B"})
+    cred_b = Credentials(registration="252000000", password=SecretStr("senha123"))
+
+    conn_a = SigaaConnection(CREDENCIAIS, "app14~ALUNO-A", response=Response())
+    conn_b = SigaaConnection(cred_b, "app14~ALUNO-B", response=Response())
+    try:
+        client_a = await conn_a.client()
+        client_b = await conn_b.client()
+        await client_a.profile.get_profile()
+        await client_b.profile.get_profile()
+        assert client_a._http.cookies.get("JSESSIONID") == "app14~ALUNO-A"
+        assert client_b._http.cookies.get("JSESSIONID") == "app14~ALUNO-B"
+    finally:
+        await conn_a.aclose()
+        await conn_b.aclose()
+
+    # Uma terceira conexão na mesma worker reutiliza o contexto TLS já carregado.
+    antes = criacoes_ssl
+    conn_c = SigaaConnection(CREDENCIAIS, "app14~ALUNO-A", response=Response())
+    try:
+        client_c = await conn_c.client()
+        await client_c.profile.get_profile()
+    finally:
+        await conn_c.aclose()
+    assert criacoes_ssl == antes
+
+
+async def test_extrato_ru_sem_cache_respeita_bloqueio_da_sessao_do_aluno(monkeypatch):
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from api.modules.me.router import get_statement
+    from api.sigaa import _SESSION_LOCKS, SigaaConnection
+
+    lock = asyncio.Lock()
+    await lock.acquire()
+    _SESSION_LOCKS[(asyncio.get_running_loop(), CREDENCIAIS.registration)] = lock
+    monkeypatch.setattr("api.sigaa._LOCK_TIMEOUT", 0.02)
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/me/ru-statement",
+        "headers": [(b"cache-control", b"no-cache")],
+    }
+    try:
+        with pytest.raises(HTTPException) as error:
+            await get_statement(Request(scope), SigaaConnection(CREDENCIAIS))
+        assert error.value.status_code == 503
+    finally:
+        lock.release()

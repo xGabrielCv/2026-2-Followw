@@ -10,9 +10,12 @@ from unb_browser import Campus, DailyMenu, UnbBrowser, UnbBrowserError
 
 from api.cache import NO_DIRECTIVES, CacheControl, is_stale
 from api.db.main import SessionmakerDep
+from api.http_pool import borrowed_transport
 from api.logger import event
 from api.modules.public_restaurant.repository import RestaurantRepository
 from api.resilience import CircuitOpenError, OriginGuard, count
+
+_REAL_UNB_BROWSER = UnbBrowser
 
 RESTAURANT_MENU_TTL = timedelta(days=5)
 BRASILIA = timezone(timedelta(hours=-3))
@@ -143,7 +146,12 @@ class RestaurantService:
         self, campus: Campus
     ) -> tuple[tuple[DailyMenu, ...], datetime, bool]:
         """Consulta a UnB e grava no banco: roda uma vez por campus, mesmo com muitos pedidos."""
-        async with UnbBrowser() as browser:
+        client = (
+            UnbBrowser(transport=borrowed_transport())
+            if UnbBrowser is _REAL_UNB_BROWSER
+            else UnbBrowser()
+        )
+        async with client as browser:
             days = await browser.restaurant.get_menu(campus)
         now = datetime.now(UTC)
         try:

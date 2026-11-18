@@ -46,7 +46,11 @@ def challenge(response: Response, account: AdminAccount) -> str:
 
 
 async def pending_account(
-    session: AsyncSession, request: Request, stage: str
+    session: AsyncSession,
+    request: Request,
+    stage: str,
+    *,
+    for_update: bool = True,
 ) -> AdminAccount:
     token = request.cookies.get(PENDING_COOKIE)
     claims = decrypt_cookie(PENDING_COOKIE, token) if token else None
@@ -55,7 +59,9 @@ async def pending_account(
     except ValueError, KeyError, TypeError:
         id_ = None
     account = (
-        await session.get(AdminAccount, id_, with_for_update=True) if id_ else None
+        await session.get(AdminAccount, id_, with_for_update=for_update)
+        if id_
+        else None
     )
     if (
         not claims

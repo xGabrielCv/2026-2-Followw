@@ -172,14 +172,34 @@ async def read_custom_calendar(
         return collected
 
 
-def collected_calendar() -> dict[str, dict]:
+_COLLECTED_CACHE: (
+    tuple[tuple[int, int] | None, dict[str, dict], AcademicCalendar] | None
+) = None
+
+
+def _load_collected() -> tuple[dict[str, dict], AcademicCalendar]:
+    global _COLLECTED_CACHE
+    try:
+        stat = COLLECTED_CALENDAR.stat()
+        stamp: tuple[int, int] | None = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        stamp = None
+    if _COLLECTED_CACHE is not None and _COLLECTED_CACHE[0] == stamp:
+        return _COLLECTED_CACHE[1], _COLLECTED_CACHE[2]
     try:
         calendar = AcademicCalendar.model_validate_json(
             COLLECTED_CALENDAR.read_text(encoding="utf-8")
         )
-        return calendar.model_dump(mode="json")["semesters"]
+        dumped = calendar.model_dump(mode="json")["semesters"]
     except OSError, ValueError:
-        return {}
+        dumped = {}
+        calendar = AcademicCalendar(semesters={})
+    _COLLECTED_CACHE = (stamp, dumped, calendar)
+    return dumped, calendar
+
+
+def collected_calendar() -> dict[str, dict]:
+    return dict(_load_collected()[0])
 
 
 async def read_calendar(session: AsyncSession) -> AcademicCalendar:
@@ -240,4 +260,4 @@ def shift_regular_semester(semester: str, offset: int) -> str:
 
 
 def default_calendar() -> AcademicCalendar:
-    return merged_calendar(json.dumps(collected_calendar()))
+    return _load_collected()[1]

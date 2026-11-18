@@ -10,6 +10,7 @@ from api.anonymous import UsageDep
 from api.cookies import clear_cookies, read_access_cookie, read_refresh_cookie
 from api.db.main import DatabaseDep
 from api.errors import SIGAA_ERRORS
+from api.http_pool import borrowed_transport
 from api.modules.auth.account import start_account
 from api.modules.community.permissions import router as community_permissions_router
 from api.rate_limit import limit_registration
@@ -76,7 +77,9 @@ async def sigaa_logout(request: Request, response: Response):
         try:
             async with (
                 asyncio.timeout(_SIGAA_LOGOUT_TIMEOUT),
-                SigaaClient(session_token=session_token) as client,
+                SigaaClient(
+                    session_token=session_token, transport=borrowed_transport()
+                ) as client,
             ):
                 await client.logout()
         except SigaaError, httpx.HTTPError, TimeoutError:

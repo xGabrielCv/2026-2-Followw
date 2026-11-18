@@ -82,6 +82,41 @@ async def test_cancelar_um_pedido_nao_derruba_a_consulta_dos_outros():
     assert await first == "ok"
 
 
+async def test_cancelar_pedido_lider_nao_derruba_os_seguidores_do_single_flight():
+    flights = SingleFlight()
+
+    async def origem():
+        await asyncio.sleep(0.05)
+        return "ok"
+
+    lider = asyncio.create_task(flights.run("lider", origem))
+    seguidor = asyncio.create_task(flights.run("lider", origem))
+    await asyncio.sleep(0.01)
+    lider.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await lider
+    assert await seguidor == "ok"
+
+
+async def test_cancelamento_do_cliente_ou_erro_de_filtro_nao_abre_o_circuit_breaker():
+    from sigaa_client import SigaaSearchError
+
+    breaker = CircuitBreaker("cliente", failure_threshold=2, reset_seconds=60)
+
+    async def cancelado():
+        raise asyncio.CancelledError
+
+    async def filtro_invalido():
+        raise SigaaSearchError("filtro inválido")
+
+    for _ in range(3):
+        with pytest.raises(asyncio.CancelledError):
+            await breaker.call(cancelado)
+        with pytest.raises(SigaaSearchError):
+            await breaker.call(filtro_invalido)
+    assert breaker.state == "closed"
+
+
 class Relogio:
     def __init__(self):
         self.now = 0.0
@@ -325,6 +360,28 @@ def test_unidades_do_sigaa_publico_saem_do_cache_e_filtram_localmente(
     filtrado = client.get("/public/classrooms/units", params={"q": "fisica"}).json()
     assert [u["name"] for u in filtrado] == ["Instituto de Física"]
     assert calls == [None]  # uma única consulta ao SIGAA, sem filtro: o filtro é local
+
+
+def test_hit_no_cache_de_unidades_nao_instancia_cliente_http_publico(
+    client, monkeypatch
+):
+    from sigaa_client import Unit
+
+    from api.modules.public_classrooms import service
+
+    service.UNITS_CACHE.clear()
+    service.UNITS_CACHE._store["units"] = (
+        [Unit(id=1, name="FACULDADE DO GAMA")],
+        service.UNITS_CACHE._clock(),
+    )
+
+    def proibido(*_args, **_kwargs):
+        raise AssertionError("Cache quente não deve abrir SigaaPublicClient")
+
+    monkeypatch.setattr("api.sigaa.SigaaPublicClient", proibido)
+    resposta = client.get("/public/classrooms/units")
+    assert resposta.status_code == 200
+    assert resposta.json()[0]["name"] == "FACULDADE DO GAMA"
 
 
 def test_unidades_vencidas_continuam_servindo_quando_o_sigaa_cai(client, monkeypatch):

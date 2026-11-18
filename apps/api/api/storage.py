@@ -28,9 +28,9 @@ class LocalStorage:
 
     async def save(self, key: str, data: bytes) -> None:
         path = self._path(key)
-        sealed = encrypt_bytes(data, f"materials:{key}")
 
         def write() -> None:
+            sealed = encrypt_bytes(data, f"materials:{key}")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(sealed)
 
@@ -39,15 +39,16 @@ class LocalStorage:
     async def read(self, key: str) -> bytes | None:
         """O arquivo decifrado; `None` se sumiu ou foi adulterado."""
         path = self._path(key)
-        sealed = await to_thread.run_sync(
-            lambda: path.read_bytes() if path.exists() else None
-        )
-        if sealed is None:
-            return None
-        try:
-            return decrypt_bytes(sealed, f"materials:{key}")
-        except ValueError:
-            return None
+
+        def load() -> bytes | None:
+            if not path.exists():
+                return None
+            try:
+                return decrypt_bytes(path.read_bytes(), f"materials:{key}")
+            except ValueError:
+                return None
+
+        return await to_thread.run_sync(load)
 
     async def delete(self, key: str) -> None:
         path = self._path(key)

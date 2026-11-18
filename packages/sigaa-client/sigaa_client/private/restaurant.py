@@ -60,7 +60,10 @@ class Restaurant:
 
     async def get_restaurant_credentials(self) -> RestaurantCredentials:
         """Token do QR code e validade da carteirinha estudantil (lida no RU)."""
-        return _credentials(await download_student_card_pdf(self._session))
+        import asyncio
+
+        pdf = await download_student_card_pdf(self._session)
+        return await asyncio.to_thread(_credentials, pdf)
 
 
 async def _read_statement(

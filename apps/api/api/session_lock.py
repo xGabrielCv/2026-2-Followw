@@ -30,11 +30,15 @@ def lock_engine() -> AsyncEngine:
         _engine = create_async_engine(
             settings.database_url,
             pool_size=settings.session_lock_pool,
-            max_overflow=0,
+            max_overflow=settings.session_lock_max_overflow,
             pool_timeout=settings.db_pool_timeout_seconds,
             pool_recycle=settings.db_pool_recycle_seconds,
             pool_pre_ping=True,
             hide_parameters=True,
+            connect_args={
+                "command_timeout": 15.0,
+                "server_settings": {"statement_timeout": "15000"},
+            },
         )
     return _engine
 

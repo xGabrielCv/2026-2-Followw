@@ -17,6 +17,11 @@ from api.db.updates import apply_updates
 from api.logger import event
 
 # A instância da Vercel congela entre requisições: a conexão parada pode ter caído.
+_command_timeout = (
+    max(5.0, settings.db_statement_timeout_ms / 1000 + 5.0)
+    if settings.db_statement_timeout_ms
+    else 65.0
+)
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
@@ -26,7 +31,14 @@ engine = create_async_engine(
     pool_timeout=settings.db_pool_timeout_seconds,
     pool_recycle=settings.db_pool_recycle_seconds,
     connect_args={
-        "server_settings": {"statement_timeout": str(settings.db_statement_timeout_ms)}
+        "command_timeout": _command_timeout,
+        "server_settings": {
+            "statement_timeout": str(settings.db_statement_timeout_ms),
+            "lock_timeout": str(settings.db_lock_timeout_ms),
+            "idle_in_transaction_session_timeout": str(
+                settings.db_idle_in_transaction_timeout_ms
+            ),
+        },
     },
 )
 
@@ -34,7 +46,11 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 # Manutenção (esquema, políticas, carga do catálogo): conta própria quando configurada.
 maintenance_engine = (
-    create_async_engine(settings.database_maintenance_url, hide_parameters=True)
+    create_async_engine(
+        settings.database_maintenance_url,
+        pool_pre_ping=True,
+        hide_parameters=True,
+    )
     if settings.database_maintenance_url
     else engine
 )

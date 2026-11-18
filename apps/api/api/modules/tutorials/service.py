@@ -99,7 +99,7 @@ class TutorialService:
         key = resource_key(author)
 
         async def write(session: AsyncSession) -> TutorialSubmitted:
-            await session.execute(text("SELECT pg_advisory_xact_lock(865942118)"))
+            await session.execute(text("SELECT pg_advisory_xact_lock(865942122)"))
             pending = await session.scalar(select(func.followw_pending_tutorials()))
             if (pending or 0) >= min(
                 MAX_PENDING_TOTAL, (await read_limits(session)).tutorials_pending

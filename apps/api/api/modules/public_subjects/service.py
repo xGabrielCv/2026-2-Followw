@@ -113,11 +113,38 @@ class PublicSubjectService:
         if profile is None:
             # Sem login não há escrita nenhuma: transação só de leitura.
             return await self._db.read(
-                lambda session: _search(session, q, code, unit, semester, None)
+                lambda session: _search(
+                    session, q, code, unit, semester, None, create_missing=False
+                )
             )
-        return await self._db.write(
-            lambda session: _search(session, q, code, unit, semester, profile)
+        result, needs_write = await self._db.read(
+            lambda session: _search_with_status(
+                session, q, code, unit, semester, profile
+            )
         )
+        if needs_write:
+            return await self._db.write(
+                lambda session: _search(
+                    session, q, code, unit, semester, profile, create_missing=True
+                )
+            )
+        return result
+
+
+async def _search_with_status(
+    session: AsyncSession,
+    q: str | None,
+    code: str | None,
+    unit: int | str | None,
+    semester: str | None,
+    profile: SigaaProfile,
+) -> tuple[list[CatalogSubject], bool]:
+    found = await enrollment(session, profile, create_missing=False)
+    if found.course is None and profile.course and profile.unit:
+        return [], True
+    return await _search(
+        session, q, code, unit, semester, profile, create_missing=False, resolved=found
+    ), False
 
 
 async def _search(
@@ -127,6 +154,9 @@ async def _search(
     unit: int | str | None,
     semester: str | None,
     profile: SigaaProfile | None,
+    *,
+    create_missing: bool = True,
+    resolved=None,
 ) -> list[CatalogSubject]:
     repository = SubjectCatalogRepository(session)
     unit_id = await find_unit_id(session, unit)
@@ -138,7 +168,9 @@ async def _search(
     )
     curriculum = None
     if profile is not None:
-        found = await enrollment(session, profile)
+        found = resolved or await enrollment(
+            session, profile, create_missing=create_missing
+        )
         if found.curriculum_id is not None:
             curriculum = await RecommendationRepository(session).components(
                 found.curriculum_id

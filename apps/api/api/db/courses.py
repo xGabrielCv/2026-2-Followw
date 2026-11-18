@@ -14,8 +14,10 @@ async def course_ids(
     session: AsyncSession,
     pairs: Collection[tuple[str | None, str | None]],
     shift: str | None = None,
+    *,
+    create_missing: bool = True,
 ) -> dict[tuple[str, str], int]:
-    """Os ids dos cursos por (nome, código da unidade), criando os que faltam; o `shift` desempata."""
+    """Os ids dos cursos por (nome, código da unidade); com `create_missing`, cria os ausentes."""
     wanted = {(name, unit) for name, unit in pairs if name and unit}
     units = await unit_ids(session, {unit for _, unit in wanted})
     keys = {(name, units[unit]): (name, unit) for name, unit in wanted if unit in units}
@@ -33,15 +35,21 @@ async def course_ids(
     ):
         found[(course.name, course.unit_id)].append(course)
 
-    for key in keys:
-        if not found[key]:
-            name, unit_id = key
-            course = Course(name=name, unit_id=unit_id)
-            session.add(course)
-            found[key].append(course)
-    await session.flush()
+    created = False
+    if create_missing:
+        for key in keys:
+            if not found[key]:
+                name, unit_id = key
+                course = Course(name=name, unit_id=unit_id)
+                session.add(course)
+                found[key].append(course)
+                created = True
+        if created:
+            await session.flush()
 
-    return {pair: _pick(found[key], shift).id for key, pair in keys.items()}
+    return {
+        pair: _pick(found[key], shift).id for key, pair in keys.items() if found[key]
+    }
 
 
 def _pick(courses: list[Course], shift: str | None) -> Course:

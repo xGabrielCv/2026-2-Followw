@@ -9,9 +9,9 @@ from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from api import session_lock
+from api import http_pool, session_lock
 from api.core.config import settings
-from api.db.main import engine
+from api.db.main import engine, maintenance_engine
 from api.errors import EXCEPTION_HANDLERS
 from api.logger import RequestLoggingMiddleware
 from api.maintenance import MaintenanceMiddleware
@@ -161,7 +161,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     finally:
         await scheduler.stop()
         await sink.stop()
+        await http_pool.close()
         await session_lock.close()
+        if maintenance_engine is not engine:
+            await maintenance_engine.dispose()
         await engine.dispose()
 
 
@@ -235,19 +238,23 @@ app.openapi = custom_openapi
 
 @app.get("/docs", include_in_schema=False)
 async def mintlify_docs() -> HTMLResponse:
+    import html
+
+    target = html.escape(settings.docs_url, quote=True)
+    title = html.escape(app.title)
     return HTMLResponse(
         f"""
         <!doctype html>
         <html lang="pt-BR">
           <head>
-            <title>{app.title} — Documentação</title>
+            <title>{title} — Documentação</title>
             <meta charset="utf-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1" />
-            <meta http-equiv="refresh" content="0; url={settings.docs_url}" />
-            <link rel="canonical" href="{settings.docs_url}" />
+            <meta http-equiv="refresh" content="0; url={target}" />
+            <link rel="canonical" href="{target}" />
           </head>
           <body>
-            <p>Redirecionando para a <a href="{settings.docs_url}">documentação no Mintlify</a>...</p>
+            <p>Redirecionando para a <a href="{target}">documentação no Mintlify</a>...</p>
           </body>
         </html>
         """

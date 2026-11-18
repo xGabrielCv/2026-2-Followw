@@ -8,6 +8,7 @@ from weakref import WeakValueDictionary
 import httpx
 from fastapi import Depends, HTTPException, Request, Response, status
 from sigaa_client import Credentials, SigaaClient, SigaaError, SigaaPublicClient
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 
 from api import session_lock
 from api.cookies import (
@@ -18,6 +19,7 @@ from api.cookies import (
     set_refresh_cookie,
 )
 from api.core.config import settings
+from api.http_pool import borrowed_transport
 from api.logger import event, operation
 
 # O SIGAA guarda na sessão a turma aberta: duas requisições do mesmo aluno ao mesmo tempo
@@ -43,10 +45,14 @@ class SigaaConnection:
         *,
         response: Response | None = None,
         credential_deadline: int | None = None,
+        lock_session: bool | None = None,
     ) -> None:
         self.credentials = credentials
         self._session_token = session_token
         self._response = response
+        self._lock_session = (
+            response is not None if lock_session is None else lock_session
+        )
         self._client: SigaaClient | None = None
         self._lock: asyncio.Lock | None = None
         self._shared_lock: session_lock.HeldLock | None = None
@@ -64,11 +70,19 @@ class SigaaConnection:
     async def client(self) -> SigaaClient:
         if self._client is None:
             await self._acquire()
-            client = SigaaClient(
-                credentials=self.credentials,
-                session_token=self._session_token,
-                on_session_renewed=self._renew,
-            )
+            try:
+                client = SigaaClient(
+                    credentials=self.credentials,
+                    session_token=self._session_token,
+                    on_session_renewed=self._renew,
+                    transport=borrowed_transport(),
+                )
+            except BaseException:
+                try:
+                    await self._release_shared()
+                finally:
+                    self._release()
+                raise
             try:
                 with operation("sigaa.connect", reused_session=self.authenticated):
                     token = self._session_token or await client.authenticate()
@@ -101,8 +115,8 @@ class SigaaConnection:
                 self._release()
 
     async def _acquire(self) -> None:
-        # Só a sessão do navegador é compartilhada; os jobs logam numa sessão própria.
-        if self._response is None or self._lock is not None:
+        # Só a sessão do navegador (ou renovação explícita da conta) é serializada; os jobs logam isolados.
+        if not self._lock_session or self._lock is not None:
             return
         key = (asyncio.get_running_loop(), self.registration)
         lock = _SESSION_LOCKS.get(key)
@@ -121,7 +135,7 @@ class SigaaConnection:
                 except BaseException:
                     lock.release()
                     raise
-        except TimeoutError, OSError:
+        except TimeoutError, OSError, SQLAlchemyTimeoutError:
             event("sigaa.session_lock_timeout")
             raise HTTPException(
                 status_code=503,
@@ -196,7 +210,7 @@ SigaaClientDep = Annotated[SigaaClient, Depends(get_sigaa_client)]
 
 
 async def get_sigaa_public_client() -> AsyncGenerator[SigaaPublicClient]:
-    async with SigaaPublicClient() as client:
+    async with SigaaPublicClient(transport=borrowed_transport()) as client:
         yield client
 
 

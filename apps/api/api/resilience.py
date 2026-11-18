@@ -17,6 +17,8 @@ import random
 import time
 from collections.abc import Awaitable, Callable
 
+from sigaa_client import SigaaSearchError
+
 _counters: dict[str, int] = {}
 # caches e guardas vivos: `reset_all` devolve tudo ao zero (testes não herdam estado do anterior)
 _caches: list[TTLCache] = []
@@ -47,27 +49,40 @@ class SingleFlight:
     """Uma execução por chave; quem chega durante ela recebe o mesmo resultado (ou o mesmo erro)."""
 
     def __init__(self) -> None:
-        self._running: dict[str, asyncio.Future] = {}
+        self._running: dict[str, tuple[asyncio.Task, int]] = {}
 
     async def run[T](self, key: str, factory: Callable[[], Awaitable[T]]) -> T:
-        running = self._running.get(key)
-        if running is not None:
+        entry = self._running.get(key)
+        if entry is not None:
+            task, waiters = entry
+            self._running[key] = (task, waiters + 1)
             count("single_flight.shared")
-            return await asyncio.shield(running)
-        future: asyncio.Future[T] = asyncio.get_running_loop().create_future()
-        self._running[key] = future
-        try:
-            result = await factory()
-        except BaseException as error:
-            # `shield` + exceção marcada como consumida: sem aviso se ninguém esperava.
-            future.set_exception(error)
-            future.exception()
-            raise
         else:
-            future.set_result(result)
-            return result
-        finally:
-            del self._running[key]
+
+            async def runner() -> T:
+                try:
+                    return await factory()
+                finally:
+                    self._running.pop(key, None)
+
+            task = asyncio.create_task(runner())
+            task.add_done_callback(
+                lambda done: done.exception() if not done.cancelled() else None
+            )
+            self._running[key] = (task, 1)
+
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            current = self._running.get(key)
+            if current is not None and current[0] is task:
+                remaining = current[1] - 1
+                if remaining <= 0:
+                    self._running.pop(key, None)
+                    task.cancel()
+                else:
+                    self._running[key] = (task, remaining)
+            raise
 
 
 class CircuitOpenError(Exception):
@@ -126,6 +141,9 @@ class CircuitBreaker:
             raise CircuitOpenError(self.name)
         try:
             result = await factory()
+        except asyncio.CancelledError, SigaaSearchError, ValueError:
+            self._probing = False
+            raise
         except BaseException:
             self.failure()
             raise

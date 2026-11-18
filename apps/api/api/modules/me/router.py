@@ -49,7 +49,7 @@ async def get_statement(
         client = await connection.client()
         return await client.restaurant.get_restaurant_statement()
 
-    fresh = SigaaConnection(connection.credentials)
+    fresh = SigaaConnection(connection.credentials, lock_session=True)
     try:
         client = await fresh.client()
         return await client.restaurant.get_restaurant_statement()

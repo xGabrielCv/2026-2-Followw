@@ -169,11 +169,13 @@ class Classrooms:
     async def get_classroom_statistics(
         self, classroom_id: str
     ) -> tuple[StatisticsShare, ...]:
+        import asyncio
+
         page = await self._read_screen(classroom_id, _open_statistics)
         # O gráfico já foi desenhado e tem URL própria: baixá-lo não depende
         # mais da turma que está aberta na sessão.
         chart = await self._session.get(_chart_source(BeautifulSoup(page, "lxml")))
-        return _parse_statistics(chart.content)
+        return await asyncio.to_thread(_parse_statistics, chart.content)
 
     async def list_classroom_news(self, classroom_id: str) -> list[News]:
         page = await self._read_screen(classroom_id, _open_news)
@@ -857,8 +859,11 @@ _CHARS = {glyph: char for char, glyph in _GLYPHS.items()}
 
 def _legend_percentages(png: bytes) -> tuple[float, ...]:
     """As porcentagens da legenda, na ordem em que o gráfico lista os itens."""
-    image = Image.open(BytesIO(png)).convert("RGB")
-    width, _ = image.size
+    raw = Image.open(BytesIO(png))
+    width, height = raw.size
+    if width <= 0 or height <= 0 or width * height > 4_000_000:
+        raise SigaaParseError("Dimensões inválidas no gráfico do SIGAA.")
+    image = raw.convert("RGB")
     pixels = image.load()
     if pixels is None:
         raise SigaaParseError("Gráfico do SIGAA veio sem pixels.")
