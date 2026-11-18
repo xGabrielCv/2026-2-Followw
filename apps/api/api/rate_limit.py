@@ -122,17 +122,22 @@ class _MemoryResult:
 
 # Sem Redis em produção (ex.: uma VPS só), a cota fica na memória do processo.
 _MEMORY: dict[tuple[str, str], _Window] = {}
-_MEMORY_MAX_KEYS = 50_000
+_MEMORY_MAX_KEYS = 200_000
 
 
 def _memory_limit(group: str, key: str, limit: int, window: int) -> _MemoryResult:
     now = time()
-    if len(_MEMORY) >= _MEMORY_MAX_KEYS:
+    cap = (
+        _MEMORY_MAX_KEYS - (_MEMORY_MAX_KEYS // 10)
+        if group == "api"
+        else _MEMORY_MAX_KEYS
+    )
+    if len(_MEMORY) >= cap:
         for stale in [k for k, w in _MEMORY.items() if now >= w.reset]:
             del _MEMORY[stale]
     current = _MEMORY.get((group, key))
     if current is None or now >= current.reset:
-        if current is None and len(_MEMORY) >= _MEMORY_MAX_KEYS:
+        if current is None and len(_MEMORY) >= cap:
             return _MemoryResult(False, now + window)
         current = _MEMORY[(group, key)] = _Window((now // window + 1) * window, 0)
     current.count += 1
@@ -194,6 +199,8 @@ async def _limit(
                     error_type=type(error).__name__,
                 )
                 _require_shared_backend(shared)
+                return local
+        _require_shared_backend(shared)
         return local
     try:
         async with asyncio.timeout(settings.redis_timeout_seconds):
@@ -257,11 +264,39 @@ def _bucket(host: str) -> str:
     return str(address)
 
 
+def _is_trusted_proxy(host: str) -> bool:
+    try:
+        raw = ip_address(host)
+        candidate = getattr(raw, "ipv4_mapped", None) or raw
+    except ValueError:
+        return False
+    for entry in settings.trusted_proxies:
+        try:
+            net = ip_network(entry, strict=False)
+        except ValueError:
+            continue
+        if candidate.version == net.version and candidate in net:
+            return True
+    return False
+
+
 def _client_host(request: Request) -> str:
-    host = request.client.host if request.client else "unknown"
-    # Só a Vercel sobrescreve este cabeçalho; fora dela, confie no servidor ASGI.
+    peer = request.client.host if request.client else "unknown"
+    host = peer
+    # Só a Vercel sobrescreve este cabeçalho; fora dela, confie apenas nos proxies configurados.
     if os.environ.get("VERCEL") == "1":
         host = request.headers.get("x-vercel-forwarded-for", host).split(",")[0].strip()
+    elif _is_trusted_proxy(peer) and (xff := request.headers.get("x-forwarded-for")):
+        hops = [part.strip() for part in xff.split(",") if part.strip()]
+        for hop in reversed(hops):
+            try:
+                parsed = ip_address(hop)
+            except ValueError:
+                continue
+            normalized = str(getattr(parsed, "ipv4_mapped", None) or parsed)
+            host = normalized
+            if not _is_trusted_proxy(normalized):
+                break
 
     secret = settings.rate_limit_secret_key
     forwarded = request.headers.get("x-followw-client")

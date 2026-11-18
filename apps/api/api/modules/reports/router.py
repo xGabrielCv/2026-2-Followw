@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from api.flags import require_enabled
 from api.modules.reports.service import ReportCreated, ReportInput, ReportServiceDep
+from api.rate_limit import publish_quota
 
 router = APIRouter()
 
@@ -14,7 +15,7 @@ router = APIRouter()
     summary="Denunciar ou pedir a exclusão de um conteúdo da comunidade",
     description="Vai para a fila da moderação, que decide se apaga. Não guarda quem pediu.",
     responses={404: {"description": "Conteúdo não encontrado."}},
-    dependencies=[require_enabled("reports")],
+    dependencies=[require_enabled("reports"), publish_quota("reports", 20)],
 )
 async def create_report(body: ReportInput, service: ReportServiceDep) -> ReportCreated:
     return await service.create(body)

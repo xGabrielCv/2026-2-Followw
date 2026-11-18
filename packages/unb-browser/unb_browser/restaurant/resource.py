@@ -2,7 +2,7 @@ import asyncio
 import re
 from datetime import date, timedelta
 from typing import NamedTuple
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -67,9 +67,13 @@ def _menu_links(page: BeautifulSoup, campus: Campus) -> list[_MenuLink]:
 
         href = node.get("href")
         if in_section and isinstance(href, str) and href.lower().endswith(".pdf"):
-            links.append(
-                _MenuLink(urljoin(RU_MENU_URL, href), _menu_days(node.get_text()))
-            )
+            resolved = urljoin(RU_MENU_URL, href)
+            parsed = urlsplit(resolved)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme in {"http", "https"} and (
+                host == "unb.br" or host.endswith(".unb.br")
+            ):
+                links.append(_MenuLink(resolved, _menu_days(node.get_text())))
 
     if not found:
         raise UnbParseError(

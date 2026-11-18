@@ -10,6 +10,8 @@ import yara_x
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
+from api.modules.materials import office
+
 
 class ScanRejected(Exception):
     """Arquivo barrado por um motor de segurança antes ou após sanitização."""
@@ -277,22 +279,54 @@ def _inspect_office_deep(data: bytes) -> None:
                     "zip_bomb",
                     "Arquivo Office excede o limite estrutural de entradas.",
                 )
+            seen: set[str] = set()
             total = 0
             for info in infos:
+                if info.is_dir():
+                    continue
+                lowered = info.filename.lower()
+                if lowered in seen:
+                    raise ScanRejected(
+                        "office-ole",
+                        "office_duplicate_entry",
+                        "Arquivo Office com entradas duplicadas não é aceito.",
+                    )
+                seen.add(lowered)
+                if info.flag_bits & 0x1:
+                    raise ScanRejected(
+                        "office-ole",
+                        "office_encrypted",
+                        "Documento Office protegido por senha não é aceito.",
+                    )
                 if info.file_size > _MAX_SCAN_ENTRY_BYTES:
                     raise ScanRejected(
                         "office-ole",
                         "zip_bomb",
                         "Entrada interna grande demais no documento Office.",
                     )
-                total += info.file_size
+                try:
+                    entry_bytes = office.read_zip_entry_safe(
+                        data, info, _MAX_SCAN_ENTRY_BYTES
+                    )
+                except office.ZipEntryTooLarge as error:
+                    raise ScanRejected(
+                        "office-ole",
+                        "zip_bomb",
+                        "Entrada interna grande demais no documento Office.",
+                    ) from error
+                except office.InvalidOffice as error:
+                    raise ScanRejected(
+                        "office-ole",
+                        "office_corrupted",
+                        str(error),
+                    ) from error
+                total += len(entry_bytes)
                 if total > _MAX_SCAN_TOTAL_BYTES:
                     raise ScanRejected(
                         "office-ole",
                         "zip_bomb",
                         "Documento Office excede o tamanho descompactado permitido.",
                     )
-                entry_bytes = archive.read(info.filename)
                 finding = _run_yara(entry_bytes) or _scan_ole_bytes(entry_bytes)
                 if finding is not None:
                     raise ScanRejected(
@@ -345,5 +379,7 @@ def verify_clean(clean: bytes, mime: str) -> None:
     finding = _run_yara(clean)
     if finding is not None:
         raise ScanRejected(finding.engine, finding.reason_code, finding.detail)
-    if mime.startswith("application/vnd.openxmlformats-"):
+    if mime == "application/pdf":
+        _inspect_pdf_deep(clean)
+    elif mime.startswith("application/vnd.openxmlformats-"):
         _inspect_office_deep(clean)

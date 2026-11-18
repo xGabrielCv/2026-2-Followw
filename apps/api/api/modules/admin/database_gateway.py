@@ -90,53 +90,62 @@ async def proxy(request: Request, path: str) -> Response:
         raise HTTPException(
             503, "CloudBeaver indisponível. O supervisor tentará recuperá-lo."
         ) from None
-    forwarded = {
-        name: value
-        for name, value in response.headers.items()
-        if name.lower()
-        in {"content-type", "content-disposition", "content-range", "accept-ranges"}
-    }
-    forwarded.update(
-        {
-            "Cache-Control": "no-store",
-            "Referrer-Policy": "no-referrer",
-            "X-Frame-Options": "DENY",
+    try:
+        forwarded = {
+            name: value
+            for name, value in response.headers.items()
+            if name.lower()
+            in {
+                "content-type",
+                "content-disposition",
+                "content-range",
+                "accept-ranges",
+            }
         }
-    )
-    if location := response.headers.get("location"):
-        if location.startswith(PREFIX):
-            forwarded["Location"] = location
-        elif location.startswith(INTERNAL + PREFIX):
-            forwarded["Location"] = location.removeprefix(INTERNAL)
-        else:
+        forwarded.update(
+            {
+                "Cache-Control": "no-store",
+                "Referrer-Policy": "no-referrer",
+                "X-Frame-Options": "DENY",
+                "Content-Security-Policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+            }
+        )
+        if location := response.headers.get("location"):
+            if location.startswith(PREFIX):
+                forwarded["Location"] = location
+            elif location.startswith(INTERNAL + PREFIX):
+                forwarded["Location"] = location.removeprefix(INTERNAL)
+            else:
+                raise HTTPException(
+                    502, "Redirecionamento externo do gerenciador recusado."
+                )
+
+        async def close():
             await response.aclose()
             await client.aclose()
-            raise HTTPException(
-                502, "Redirecionamento externo do gerenciador recusado."
-            )
 
-    async def close():
+        result = StreamingResponse(
+            response.aiter_bytes(),
+            status_code=response.status_code,
+            headers=forwarded,
+            background=BackgroundTask(close),
+        )
+        for value in response.headers.get_list("set-cookie"):
+            if value.lower().startswith("cb-session-id="):
+                parsed = SimpleCookie()
+                parsed.load(value)
+                if token := parsed.get("cb-session-id"):
+                    result.set_cookie(
+                        "cb-session-id",
+                        token.value,
+                        path=PREFIX,
+                        httponly=True,
+                        secure=settings.environment == "production",
+                        samesite="strict",
+                        max_age=0 if token["max-age"] == "0" else None,
+                    )
+        return result
+    except BaseException:
         await response.aclose()
         await client.aclose()
-
-    result = StreamingResponse(
-        response.aiter_bytes(),
-        status_code=response.status_code,
-        headers=forwarded,
-        background=BackgroundTask(close),
-    )
-    for value in response.headers.get_list("set-cookie"):
-        if value.lower().startswith("cb-session-id="):
-            parsed = SimpleCookie()
-            parsed.load(value)
-            if token := parsed.get("cb-session-id"):
-                result.set_cookie(
-                    "cb-session-id",
-                    token.value,
-                    path=PREFIX,
-                    httponly=True,
-                    secure=settings.environment == "production",
-                    samesite="strict",
-                    max_age=0 if token["max-age"] == "0" else None,
-                )
-    return result
+        raise

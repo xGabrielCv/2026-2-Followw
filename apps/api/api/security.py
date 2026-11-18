@@ -3,6 +3,7 @@
 from urllib.parse import urlsplit
 
 from anyio import CapacityLimiter, WouldBlock
+from starlette._utils import get_route_path
 from starlette.exceptions import HTTPException
 from starlette.formparsers import MultiPartParser
 from starlette.responses import JSONResponse, Response
@@ -70,6 +71,7 @@ class SecurityMiddleware:
             # Contra CSRF além do SameSite: escrita só vem do próprio app.
             origin = headers.get(b"origin", b"").decode("latin-1")
             host = headers.get(b"host", b"").decode("latin-1") or None
+            fetch_site = headers.get(b"sec-fetch-site", b"").decode("latin-1").lower()
             if (
                 origin
                 and origin != "null"
@@ -79,21 +81,29 @@ class SecurityMiddleware:
                     scope, receive, send
                 )
                 return
-            if origin == "null":
+            if origin == "null" or (
+                not origin and fetch_site in {"cross-site", "same-site"}
+            ):
                 await JSONResponse({"detail": "Origem recusada."}, 403)(
                     scope, receive, send
                 )
                 return
             length = headers.get(b"content-length")
-            content_type = headers.get(b"content-type", b"")
-            limit = _MAX_UPLOAD if content_type.startswith(b"multipart/") else _MAX_BODY
+            content_type = headers.get(b"content-type", b"").lower()
+            route_path = get_route_path(scope).rstrip("/")
+            is_material_upload = (
+                method == "POST"
+                and route_path.startswith("/materials/")
+                and content_type.startswith(b"multipart/")
+            )
+            limit = _MAX_UPLOAD if is_material_upload else _MAX_BODY
             if length is not None and (not length.isdigit() or int(length) > limit):
                 await JSONResponse({"detail": "Corpo grande demais."}, 413)(
                     scope, receive, send
                 )
                 return
             receive = _capped(receive, limit)
-            if content_type.startswith(b"multipart/"):
+            if is_material_upload:
                 try:
                     _UPLOADS.acquire_nowait()
                     upload_slot = True

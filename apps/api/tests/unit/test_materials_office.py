@@ -295,3 +295,113 @@ def test_scanner_recusa_office_criptografado_sem_erro_interno():
     with pytest.raises(scanner.ScanRejected) as erro:
         scanner.scan_raw(bytes(dados), office.DOCX)
     assert erro.value.status_code == 422
+
+
+def test_scanner_bloqueia_entrada_duplicada_e_zip_bomb_com_tamanho_adulterado(
+    monkeypatch,
+):
+    import struct
+    import warnings
+
+    from api.modules.materials import scanner
+
+    eicar = (
+        b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR" + b"-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+    )
+    duplicado = BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with zipfile.ZipFile(duplicado, "w", zipfile.ZIP_DEFLATED) as arquivo:
+            arquivo.writestr("[Content_Types].xml", CONTENT_TYPES)
+            arquivo.writestr("word/document.xml", eicar)
+            arquivo.writestr("word/document.xml", b"<w:document/>")
+    with pytest.raises(scanner.ScanRejected):
+        scanner.scan_raw(duplicado.getvalue(), office.DOCX)
+
+    monkeypatch.setattr(scanner, "_MAX_SCAN_ENTRY_BYTES", 1024)
+    bomba = bytearray(pacote(extra={"word/grande.xml": b"A" * 65536}))
+    # Adultera uncompressed_size nos cabeçalhos ZIP para parecer apenas 10 bytes.
+    for assinatura, offset in ((b"PK\x03\x04", 22), (b"PK\x01\x02", 24)):
+        pos = 0
+        while (idx := bomba.find(assinatura, pos)) != -1:
+            if struct.unpack_from("<I", bomba, idx + offset)[0] == 65536:
+                struct.pack_into("<I", bomba, idx + offset, 10)
+            pos = idx + 4
+    with pytest.raises(scanner.ScanRejected) as erro_bomba:
+        scanner.scan_raw(bytes(bomba), office.DOCX)
+    assert erro_bomba.value.reason_code == "zip_bomb"
+
+
+def test_sanitizacao_remove_exif_gps_e_comentarios_de_autoria_em_docx_e_pdf():
+    from PIL import Image
+    from pypdf import PdfReader, PdfWriter
+    from pypdf.generic import (
+        DictionaryObject,
+        EncodedStreamObject,
+        NameObject,
+        NumberObject,
+    )
+
+    # JPEG sintético com segmento APP1 EXIF carregando identificação.
+    img_buf = BytesIO()
+    Image.new("RGB", (8, 8), (120, 140, 160)).save(img_buf, format="JPEG")
+    raw_jpg = img_buf.getvalue()
+    exif_payload = b"Exif\x00\x00AutorSecretoGPS"
+    app1 = b"\xff\xe1" + (len(exif_payload) + 2).to_bytes(2, "big") + exif_payload
+    jpg_com_exif = raw_jpg[:2] + app1 + raw_jpg[2:]
+
+    docx_bruto = pacote(
+        conteudo=(
+            b'<?xml version="1.0"?><w:document>'
+            b'<w:ins w:author="Gabriel Autor Real"><w:t>ok</w:t></w:ins>'
+            b"</w:document>"
+        ),
+        extra={
+            "word/comments.xml": b'<w:comments><w:comment w:author="Gabriel Autor Real">segredo</w:comment></w:comments>',
+            "word/people.xml": b'<w15:people w15:author="Gabriel Autor Real"/>',
+            "word/media/image1.jpg": jpg_com_exif,
+        },
+    )
+    docx_limpo = sanitize(docx_bruto, office.DOCX)
+    with zipfile.ZipFile(BytesIO(docx_limpo)) as zf:
+        nomes = set(zf.namelist())
+        assert "word/comments.xml" not in nomes
+        assert "word/people.xml" not in nomes
+        todo_conteudo = b"".join(zf.read(n) for n in nomes)
+        assert b"Gabriel Autor Real" not in todo_conteudo
+        assert b"AutorSecretoGPS" not in todo_conteudo
+        assert b"Exif\x00\x00" not in zf.read("word/media/image1.jpg")
+
+    # PDF com imagem JPEG embutida contendo EXIF/GPS e /PieceInfo na página.
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=100, height=100)
+    xobj = EncodedStreamObject()
+    xobj._data = jpg_com_exif
+    xobj.update(
+        {
+            NameObject("/Type"): NameObject("/XObject"),
+            NameObject("/Subtype"): NameObject("/Image"),
+            NameObject("/Width"): NumberObject(8),
+            NameObject("/Height"): NumberObject(8),
+            NameObject("/ColorSpace"): NameObject("/DeviceRGB"),
+            NameObject("/BitsPerComponent"): NumberObject(8),
+            NameObject("/Filter"): NameObject("/DCTDecode"),
+        }
+    )
+    xobj_ref = writer._add_object(xobj)
+    page[NameObject("/Resources")] = writer._add_object(
+        DictionaryObject(
+            {NameObject("/XObject"): DictionaryObject({NameObject("/Im0"): xobj_ref})}
+        )
+    )
+    page[NameObject("/PieceInfo")] = writer._add_object(
+        DictionaryObject({NameObject("/Private"): NameObject("/GabrielAutorPDF")})
+    )
+    pdf_buf = BytesIO()
+    writer.write(pdf_buf)
+    assert b"AutorSecretoGPS" in pdf_buf.getvalue()
+
+    pdf_limpo = sanitize(pdf_buf.getvalue(), "application/pdf")
+    assert b"AutorSecretoGPS" not in pdf_limpo
+    assert b"GabrielAutorPDF" not in pdf_limpo
+    assert len(PdfReader(BytesIO(pdf_limpo)).pages) == 1

@@ -6,21 +6,22 @@ O estado é lido do banco com validade curta (5 s), então vale em todos os proc
 import time
 
 from sqlalchemy import select
+from starlette._utils import get_route_path
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from api.db.main import async_session
 from api.db.models import SystemFlag
+from api.resilience import SingleFlight
 
 KEY = "maintenance"
 _CACHE = {"on": False, "at": 0.0}
 _TTL = 5.0
 _OPEN = ("/admin", "/public/config")
+_FLIGHT = SingleFlight()
 
 
-async def enabled(force: bool = False) -> bool:
-    if not force and time.monotonic() - _CACHE["at"] < _TTL:
-        return bool(_CACHE["on"])
+async def _query_flag() -> bool:
     try:
         async with async_session() as session:
             row = await session.scalar(
@@ -30,6 +31,12 @@ async def enabled(force: bool = False) -> bool:
         row = None
     _CACHE.update(on=bool(row), at=time.monotonic())
     return bool(row)
+
+
+async def enabled(force: bool = False) -> bool:
+    if not force and time.monotonic() - _CACHE["at"] < _TTL:
+        return bool(_CACHE["on"])
+    return await _FLIGHT.run("maintenance", _query_flag)
 
 
 def invalidate() -> None:
@@ -43,7 +50,7 @@ class MaintenanceMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if (
             scope["type"] == "http"
-            and not scope["path"].startswith(_OPEN)
+            and not get_route_path(scope).startswith(_OPEN)
             and await enabled()
         ):
             response = JSONResponse(

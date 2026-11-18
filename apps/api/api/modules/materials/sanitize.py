@@ -42,7 +42,7 @@ def sniff(data: bytes, filename: str = "") -> str | None:
         return "image/jpeg"
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
-    if data.startswith(b"PK"):
+    if data.startswith(b"PK\x03\x04"):
         return office.detect(data)
     if office.sniff_text(data, filename):
         return office.TEXT
@@ -93,6 +93,8 @@ _FORBIDDEN_PDF_ACTIONS = {
     "/RichMedia",
     "/SubmitForm",
     "/ImportData",
+    "/JavaScript",
+    "/JS",
 }
 
 
@@ -123,6 +125,65 @@ def _pdf_has_forbidden_content(reader: PdfReader) -> bool:
     return False
 
 
+def _strip_jpeg_segments(jpeg: bytes) -> bytes:
+    """Remove segmentos EXIF/XMP/IPTC e comentários de streams JPEG sem alterar os pixels."""
+    if not jpeg.startswith(b"\xff\xd8"):
+        return jpeg
+    out = bytearray(b"\xff\xd8")
+    pos = 2
+    size = len(jpeg)
+    while pos < size:
+        if jpeg[pos] != 0xFF:
+            out.extend(jpeg[pos:])
+            break
+        while pos < size and jpeg[pos] == 0xFF:
+            pos += 1
+        if pos >= size:
+            break
+        marker = jpeg[pos]
+        pos += 1
+        if marker in (0xD9, 0xDA):
+            out.extend((0xFF, marker))
+            out.extend(jpeg[pos:])
+            break
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            out.extend((0xFF, marker))
+            continue
+        if pos + 2 > size:
+            return jpeg
+        seg_len = int.from_bytes(jpeg[pos : pos + 2], "big")
+        if seg_len < 2 or pos + seg_len > size:
+            return jpeg
+        # Preserva APP0 (JFIF) e APP14 (Adobe CMYK/RGB); descarta APP1..APP13, APP15 e COM (0xFE).
+        if marker != 0xFE and not (0xE1 <= marker <= 0xEF and marker != 0xEE):
+            out.extend((0xFF, marker))
+            out.extend(jpeg[pos : pos + seg_len])
+        pos += seg_len
+    return bytes(out)
+
+
+def _clean_page_xobjects(page) -> None:
+    resources = page.get("/Resources")
+    res_obj = resources.get_object() if hasattr(resources, "get_object") else resources
+    if not isinstance(res_obj, dict):
+        return
+    xobjects = res_obj.get("/XObject")
+    xobj_dict = xobjects.get_object() if hasattr(xobjects, "get_object") else xobjects
+    if not isinstance(xobj_dict, dict):
+        return
+    for ref in list(xobj_dict.values()):
+        obj = ref.get_object() if hasattr(ref, "get_object") else ref
+        if not isinstance(obj, dict):
+            continue
+        obj.pop("/Metadata", None)
+        flt = obj.get("/Filter")
+        is_dct = flt == "/DCTDecode" or (
+            isinstance(flt, list) and len(flt) == 1 and flt[0] == "/DCTDecode"
+        )
+        if is_dct and hasattr(obj, "_data") and isinstance(obj._data, bytes):
+            obj._data = _strip_jpeg_segments(obj._data)
+
+
 def _pdf(data: bytes) -> bytes:
     try:
         reader = PdfReader(BytesIO(data))
@@ -136,8 +197,11 @@ def _pdf(data: bytes) -> bytes:
             )
         writer = PdfWriter()
         for page in reader.pages:
-            # Ações ao abrir a página (JavaScript) não vão junto.
+            # Ações ao abrir a página, metadados XMP por página e EXIF de JPEGs não vão junto.
             page.pop("/AA", None)
+            page.pop("/Metadata", None)
+            page.pop("/PieceInfo", None)
+            _clean_page_xobjects(page)
             writer.add_page(page)
         # Links, comentários e campos de formulário podem carregar ações e dados.
         writer.remove_annotations(subtypes=None)

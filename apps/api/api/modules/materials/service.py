@@ -16,14 +16,13 @@ from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
 from api.anonymous import owns, resource_key
 from api.community_limits import read_limits
 from api.db.context import set_context, use_context
-from api.db.main import DatabaseDep, after_commit
+from api.db.main import DatabaseDep, after_commit, after_rollback
 from api.db.models import Classroom, Material, MaterialRejection, Subject
 from api.db.search import contains_term
 from api.modules.community.quotas import MAX_DAILY_UPLOAD_ATTEMPTS
@@ -341,7 +340,12 @@ class MaterialService:
         storage_key = uuid.uuid4().hex
         set_context(oldest_semester=oldest_semester())
 
+        entered_session = False
+
         async def write(session: AsyncSession) -> MaterialItem:
+            nonlocal entered_session
+            entered_session = True
+            after_rollback(session, partial(self._storage.delete, storage_key))
             await _subject(session, code)
             raw_limits = await read_limits(session)
             configured = await effective_limits(session)
@@ -422,9 +426,10 @@ class MaterialService:
         await self._storage.save(storage_key, clean)
         try:
             return await self._db.write(write)
-        except HTTPException, IntegrityError:
-            # Falhas confirmadamente revertidas permitem limpar; queda de conexão tem resultado incerto.
-            await self._storage.delete(storage_key)
+        except BaseException:
+            # Se falhou antes mesmo de abrir sessão (ex.: pool cheio ou cancelamento), `after_rollback` não rodou.
+            if not entered_session:
+                await self._storage.delete(storage_key)
             raise
 
     async def download(

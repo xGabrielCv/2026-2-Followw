@@ -14,6 +14,7 @@ from api.modules.class_groups.service import (
     GroupsInput,
 )
 from api.modules.community.permissions import CommunityWriteDep
+from api.rate_limit import publish_quota
 from api.schemas import SearchText
 
 router = APIRouter()
@@ -68,7 +69,7 @@ async def get_groups(
     summary="Trocar os grupos de conversa de uma turma (até 3)",
     description="Qualquer aluno logado edita; só a turma e os links são gravados, nunca quem editou.",
     responses=_NOT_FOUND,
-    dependencies=[require_enabled("groups")],
+    dependencies=[require_enabled("groups"), publish_quota("groups", 30)],
 )
 async def put_groups(
     _: CommunityWriteDep,

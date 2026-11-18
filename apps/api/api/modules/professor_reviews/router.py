@@ -13,6 +13,7 @@ from api.modules.professor_reviews.service import (
     ReviewInput,
     ReviewServiceDep,
 )
+from api.rate_limit import publish_quota
 
 router = APIRouter()
 
@@ -35,7 +36,7 @@ _NOT_FOUND = {404: {"description": "Avaliação não encontrada ou segredo errad
     status_code=201,
     summary="Avaliar um docente anonimamente",
     responses={**SIGAA_ERRORS, 404: {"description": "Docente não encontrado."}},
-    dependencies=[require_enabled("reviews")],
+    dependencies=[require_enabled("reviews"), publish_quota("reviews", 30)],
 )
 async def create_review(
     _: CommunityWriteDep, service: ReviewServiceDep, body: NewReview
@@ -48,7 +49,7 @@ async def create_review(
     response_model=Review,
     summary="Editar a própria avaliação",
     responses=_NOT_FOUND,
-    dependencies=[require_enabled("reviews")],
+    dependencies=[require_enabled("reviews"), publish_quota("reviews", 30)],
 )
 async def update_review(
     _: CommunityWriteDep,
