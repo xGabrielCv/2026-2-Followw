@@ -1,5 +1,5 @@
 import { noop, onlineManager, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouterState } from '@tanstack/react-router';
+import { useRouter, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { persistQueryCache, warmPages } from '#/integrations/offline/storage';
@@ -17,13 +17,14 @@ const serviceWorkerEnabled = () => import.meta.env.PROD && 'serviceWorker' in na
 /** Liga o modo offline: cache persistido, service worker e pré-carga. Devolve se o cache ainda está sendo restaurado. */
 export function useOfflineSupport() {
     const queryClient = useQueryClient();
+    const router = useRouter();
     const online = useOnline();
     const { data: user, isSuccess } = useQuery(meQueryOptions);
     const [restoring, setRestoring] = useState(true);
     const loggedIn = Boolean(user);
     const campus = campusOf(user?.unit?.code);
 
-    // só depois de a rota (com o código dela) carregar e hidratar: o SSR não traz dado pessoal, e
+    // só depois de a rota (com o código lazy dela) carregar e hidratar: o SSR não traz dado pessoal, e
     // o cache restaurado antes disso faria a tela divergir do HTML do servidor
     const routerIdle = useRouterState({ select: (state) => state.status === 'idle' });
     const started = useRef(false);
@@ -31,14 +32,29 @@ export function useOfflineSupport() {
     // para de salvar só ao desmontar: trocar de rota não interrompe a persistência
     useEffect(() => () => stop.current(), []);
     useEffect(() => {
-        if (!routerIdle || started.current) return;
-        started.current = true;
+        if (!routerIdle || started.current) return undefined;
+        let cancelled = false;
         onlineManager.setOnline(navigator.onLine);
         if (serviceWorkerEnabled()) navigator.serviceWorker.register('/sw.js').catch(noop);
-        requestAnimationFrame(() => {
-            stop.current = persistQueryCache(queryClient, () => setRestoring(false));
+        const chunks = router.state.matches.map((match) => {
+            const route = router.routesById[match.routeId];
+            return Promise.resolve(route ? router.loadRouteChunk(route) : undefined);
         });
-    }, [queryClient, routerIdle]);
+        void Promise.all(chunks)
+            .catch(noop)
+            .then(() => {
+                requestAnimationFrame(() => {
+                    if (!cancelled && !started.current) {
+                        started.current = true;
+                        stop.current = persistQueryCache(queryClient, () => setRestoring(false));
+                    }
+                });
+                return undefined;
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [queryClient, router, routerIdle]);
 
     // com o app aberto e online, deixa páginas e cardápio da semana prontos para o modo offline
     useEffect(() => {

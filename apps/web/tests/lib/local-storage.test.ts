@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { isStorageBlocked, localStorageRepository } from '#/lib/local-storage';
+import {
+    accountStore,
+    clearRegistrationData,
+    isStorageBlocked,
+    localStorageRepository,
+    registeredStoreCount
+} from '#/lib/local-storage';
 
 import { MemoryStorage } from '../helpers/memory-storage';
 
@@ -171,5 +177,53 @@ describe('localStorageRepository', () => {
         });
 
         expect(isStorageBlocked()).toBe(true);
+    });
+
+    test('no SSR não acumula chaves de matrícula nos mapas globais do processo', () => {
+        Reflect.deleteProperty(globalThis, 'window');
+        Reflect.deleteProperty(globalThis, 'localStorage');
+
+        const before = registeredStoreCount();
+        const settings = accountStore('settings:231012345', { displayName: null });
+        const events = accountStore('events:231012345', []);
+
+        expect(settings.getServerSnapshot()).toEqual({ displayName: null });
+        expect(events.getServerSnapshot()).toEqual([]);
+        expect(registeredStoreCount()).toEqual(before);
+    });
+
+    test('clearRegistrationData apaga chaves acadêmicas da matrícula preservando credenciais', async () => {
+        const reg = '231099999';
+        const settings = accountStore(`settings:${reg}`, {});
+        settings.set({ displayName: 'Estudante' });
+        localStorageRepository.set(`events:${reg}`, [{ id: '1' }]);
+        localStorageRepository.set(`marks:${reg}`, { T1: { a1: 'falta' } });
+        localStorageRepository.set(`schedule-plans:${reg}`, { active: 'p1', plans: [] });
+        localStorageRepository.set(`academic-simulation:${reg}`, { grades: {} });
+        localStorageRepository.set(`post-reading:${reg}`, ['p1']);
+        localStorageRepository.set(`graduation:${reg}:plan`, { semesters: [] });
+        localStorageRepository.set(`semester-alert-dismissed:${reg}`, '2026.2');
+        localStorageRepository.set(`author:${reg}`, { post: { id1: 'chave' } });
+        localStorageRepository.set(`reviews:${reg}`, { p1: { id: '1', token: 't', rating: 5 } });
+
+        await clearRegistrationData(reg);
+
+        expect(settings.getSnapshot()).toEqual({});
+        for (const key of [
+            `settings:${reg}`,
+            `events:${reg}`,
+            `marks:${reg}`,
+            `schedule-plans:${reg}`,
+            `academic-simulation:${reg}`,
+            `post-reading:${reg}`,
+            `graduation:${reg}:plan`,
+            `semester-alert-dismissed:${reg}`
+        ]) {
+            expect(localStorageRepository.get(key)).toBeNull();
+        }
+        expect(localStorageRepository.get(`author:${reg}`)).toEqual({ post: { id1: 'chave' } });
+        expect(localStorageRepository.get(`reviews:${reg}`)).toEqual({
+            p1: { id: '1', token: 't', rating: 5 }
+        });
     });
 });

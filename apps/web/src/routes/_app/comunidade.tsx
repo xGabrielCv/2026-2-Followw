@@ -14,7 +14,7 @@ import type { ForumListQuery, PostItem } from '#/queries/community';
 import type { Campus } from '#/queries/groups';
 
 import { NewPostDialog, POST_KIND_LABELS } from '#/components/community/NewPostDialog';
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
@@ -230,7 +230,7 @@ function PostList({
 }) {
     const pages = useInfiniteQuery(forumListQueryOptions(query));
     if (pages.isPending) return <LoadingText>Carregando conversas...</LoadingText>;
-    if (pages.isError)
+    if (pages.isLoadingError)
         return (
             <ErrorCard
                 message="Não foi possível carregar as conversas."
@@ -241,6 +241,7 @@ function PostList({
     if (items.length === 0)
         return (
             <div className="flex flex-col items-center gap-3 rounded-2xl bg-card p-6 text-center">
+                {pages.isError && <StaleDataNotice subject="as conversas" />}
                 <p className="text-sm text-muted-foreground">Nenhuma conversa por aqui ainda.</p>
                 {onWrite && (
                     <Button variant="outline" onClick={onWrite}>
@@ -251,6 +252,7 @@ function PostList({
         );
     return (
         <section aria-label="Conversas" className="flex flex-col gap-2">
+            {pages.isError && <StaleDataNotice subject="as conversas" />}
             <ul className="flex flex-col gap-2">
                 {items.map((post) => (
                     <li key={post.id}>

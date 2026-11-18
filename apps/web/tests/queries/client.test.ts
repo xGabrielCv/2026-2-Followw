@@ -27,6 +27,8 @@ beforeAll(async () => {
             return new Request(incoming.url, { headers });
         },
         getRequestUrl: () => new URL(inRequest().url),
+        getResponseHeader: (name: string) =>
+            name === 'set-cookie' ? inRequest().setCookie : undefined,
         setResponseHeader: (name: string, value: string[]) => {
             if (name === 'set-cookie') inRequest().setCookie = value;
         }
@@ -135,6 +137,35 @@ describe('cliente da API', () => {
         await getMe(() => Response.json(null, { headers }));
 
         expect(ssr.setCookie).toEqual(['access=novo; Path=/', 'refresh=novo; Path=/']);
+    });
+
+    test('no SSR não encaminha cookies para rotas públicas e preserva x-forwarded-proto https', async () => {
+        process.env.API_INTERNAL_URL = 'http://127.0.0.1:8011';
+        ssr = { url: 'https://followw.app/ru', cookie: 'access=segredo; refresh_token=segredo' };
+
+        const captured: Request[] = [];
+        const fetch = async (request: Request) => {
+            captured.push(request);
+            return Response.json({ version: '1', parts: {} });
+        };
+        await apiClient.GET('/public/config/version', { fetch });
+        const me = await getMe();
+
+        expect(captured[0]?.headers.get('cookie')).toBeNull();
+        expect(captured[0]?.headers.get('x-forwarded-proto')).toBe('https');
+        expect(me.headers.get('cookie')).toBe('access=segredo; refresh_token=segredo');
+        expect(me.headers.get('x-forwarded-proto')).toBe('https');
+    });
+
+    test('chamadas seguidas no SSR acumulam Set-Cookie sem sobrescrever anteriores', async () => {
+        ssr = { url: 'https://followw.app/' };
+        const first = new Headers({ 'set-cookie': 'access=novo; Path=/' });
+        const second = new Headers({ 'set-cookie': 'csrf=novo; Path=/' });
+
+        await getMe(() => Response.json(null, { headers: first }));
+        await getMe(() => Response.json(null, { headers: second }));
+
+        expect(ssr.setCookie).toEqual(['access=novo; Path=/', 'csrf=novo; Path=/']);
     });
 
     test('erro com detail vira ApiError com status e mensagem da API', async () => {

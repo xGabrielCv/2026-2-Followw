@@ -23,14 +23,23 @@ const baseUrl = createIsomorphicFn()
     .server(() => 'http://localhost/api')();
 
 const getSsrHeaders = createIsomorphicFn()
-    .client(() => new Headers())
-    .server(async () => {
+    .client((_pathname: string) => new Headers())
+    .server(async (pathname: string) => {
         const headers = new Headers();
         try {
             const { getRequest } = await import('@tanstack/react-start/server');
             const incoming = getRequest();
+            const isPublic = pathname.startsWith('/api/public/');
             const cookie = incoming.headers.get('cookie');
-            if (cookie) headers.set('cookie', cookie);
+            if (cookie && !isPublic) headers.set('cookie', cookie);
+            const forwardedProto = incoming.headers
+                .get('x-forwarded-proto')
+                ?.split(',')[0]
+                ?.trim()
+                .toLowerCase();
+            if (forwardedProto === 'https' || new URL(incoming.url).protocol === 'https:') {
+                headers.set('x-forwarded-proto', 'https');
+            }
             // a assinatura do IP é opcional: falhar aqui não pode derrubar a sessão
             const { clientIpHeaders } = await import('#/queries/client-ip.server');
             clientIpHeaders(incoming).forEach((value, name) => headers.set(name, value));
@@ -49,16 +58,22 @@ const toSsrOrigin = createIsomorphicFn()
 const forwardSsrSetCookie = createIsomorphicFn()
     .client((_cookies: string[]) => {})
     .server(async (cookies: string[]) => {
-        const { setResponseHeader } = await import('@tanstack/react-start/server');
+        const server = await import('@tanstack/react-start/server');
         try {
-            setResponseHeader('set-cookie', cookies);
+            const current = server.getResponseHeader?.('set-cookie');
+            const prior = Array.isArray(current)
+                ? current.map(String)
+                : typeof current === 'string' && current
+                  ? [current]
+                  : [];
+            server.setResponseHeader('set-cookie', [...new Set([...prior, ...cookies])]);
         } catch {}
     });
 
 const ssrMiddleware: Middleware = {
     async onRequest({ request: original }) {
         const request = await toSsrOrigin(original);
-        const headers = await getSsrHeaders();
+        const headers = await getSsrHeaders(new URL(request.url).pathname);
         headers.forEach((value, name) => request.headers.set(name, value));
         return request;
     },

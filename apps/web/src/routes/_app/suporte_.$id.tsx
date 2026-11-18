@@ -82,7 +82,9 @@ function TicketThread({ id, secret }: { id: string; secret: string }) {
                 </div>
                 <p className="text-xs text-muted-foreground">
                     Chamado #{ticket.number} · {TICKET_CATEGORY_LABELS[ticket.category]} · aberto em{' '}
-                    {new Date(ticket.created_at).toLocaleDateString('pt-BR')}
+                    {new Date(ticket.created_at).toLocaleDateString('pt-BR', {
+                        timeZone: 'America/Sao_Paulo'
+                    })}
                 </p>
                 <p className="font-mono text-[11px] break-all text-muted-foreground">
                     Identificador: {ticket.id}
@@ -118,7 +120,9 @@ function TicketThread({ id, secret }: { id: string; secret: string }) {
                     >
                         <p className="mb-1 text-[11px] font-semibold text-muted-foreground">
                             {message.sender === 'student' ? 'Você' : 'Atendimento'} ·{' '}
-                            {new Date(message.created_at).toLocaleString('pt-BR')}
+                            {new Date(message.created_at).toLocaleString('pt-BR', {
+                                timeZone: 'America/Sao_Paulo'
+                            })}
                         </p>
                         <p className="break-words whitespace-pre-wrap">{message.body}</p>
                     </li>

@@ -12,16 +12,26 @@ import { curriculumQueryOptions, shiftLabels } from '#/queries/curriculum';
 export interface CourseSummaryProps {
     course: Pick<PublicCourse, 'id' | 'name' | 'shift'>;
     entrySemester?: string | null;
+    unit?: { code?: string | null; name: string } | null;
+    fetchCourse?: boolean;
 }
 
 /** Erros e carregamento ficam com a página; aqui só o que já estiver em cache. */
-export function CourseSummary({ course, entrySemester }: CourseSummaryProps) {
-    const listed = useQuery(courseQueryOptions(course.id));
+export function CourseSummary({
+    course,
+    entrySemester,
+    unit: providedUnit,
+    fetchCourse = true
+}: CourseSummaryProps) {
+    const listed = useQuery({
+        ...courseQueryOptions(course.id),
+        enabled: fetchCourse && providedUnit === undefined
+    });
     const matrix = useQuery({
         ...curriculumQueryOptions(course.id, entrySemester ?? ''),
         enabled: Boolean(entrySemester)
     });
-    const unit = listed.data?.unit;
+    const unit = providedUnit !== undefined ? providedUnit : listed.data?.unit;
     const curriculum = matrix.data;
     const shift = course.shift ?? (curriculum?.shift && shiftLabels[curriculum.shift]);
     const flow = useMemo(() => (curriculum ? normalizeCurriculum(curriculum) : null), [curriculum]);

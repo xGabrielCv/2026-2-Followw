@@ -136,7 +136,9 @@ function TicketRow({ ticket }: { ticket: OwnTicket }) {
                     <span className="truncate text-sm font-semibold">{ticket.title}</span>
                     <span className="text-xs text-muted-foreground">
                         Chamado #{ticket.number} ·{' '}
-                        {new Date(ticket.createdAt).toLocaleDateString('pt-BR')}
+                        {new Date(ticket.createdAt).toLocaleDateString('pt-BR', {
+                            timeZone: 'America/Sao_Paulo'
+                        })}
                     </span>
                 </span>
                 {unread && <Badge>Nova resposta</Badge>}

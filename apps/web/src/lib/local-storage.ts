@@ -149,8 +149,13 @@ const ACCOUNT_KEYS: string[] = [
 const stores = new Map<string, { clear: () => void; reset: () => void }>();
 
 /** Valor salvo no storage e observável pelo `useSyncExternalStore`. */
-export function storedValue<T>(key: string, empty: T) {
+export function storedValue<T>(
+    key: string,
+    empty: T,
+    options?: { register?: boolean; onServerWrite?: () => void; onServerClear?: () => void }
+) {
     const listeners = new Set<() => void>();
+    const headlessScoped = new Map<string, T>();
     let snapshot: T | undefined;
     const update = (value: T) => {
         snapshot = value;
@@ -172,33 +177,66 @@ export function storedValue<T>(key: string, empty: T) {
             };
         },
         set: (value: T) => {
+            if (typeof window === 'undefined') options?.onServerWrite?.();
             localStorageRepository.set(key, value);
             update(value);
         },
         atAccount(account: string): { getSnapshot: () => T; set: (value: T) => void } {
             if (!SCOPED_KEYS.has(key)) throw new Error('Este valor não é separado por conta');
             return {
-                getSnapshot: (): T =>
-                    account === localAccount()
-                        ? store.getSnapshot()
-                        : (localStorageRepository.get<T>(`${key}:${account}`) ?? empty),
+                getSnapshot: (): T => {
+                    if (account === localAccount()) return store.getSnapshot();
+                    if (!getStorage()) return headlessScoped.get(account) ?? empty;
+                    return localStorageRepository.get<T>(`${key}:${account}`) ?? empty;
+                },
                 set: (value: T): void => {
                     if (account === localAccount()) store.set(value);
+                    else if (!getStorage()) headlessScoped.set(account, value);
                     else localStorageRepository.set(`${key}:${account}`, value);
                 }
             };
         },
         clear: () => {
+            headlessScoped.clear();
             localStorageRepository.remove(key);
             update(empty);
+            if (typeof window === 'undefined') options?.onServerClear?.();
         },
         reset: () => {
             snapshot = undefined;
             for (const listener of listeners) listener();
         }
     };
-    stores.set(key, store);
+    if (options?.register !== false) stores.set(key, store);
     return store;
+}
+
+export function registeredStoreCount() {
+    return { stores: stores.size, accounts: accountStores.size };
+}
+
+export function resetLocalStores() {
+    for (const store of stores.values()) store.reset();
+}
+
+export async function clearRegistrationData(registration: string) {
+    const storage = getStorage();
+    if (!storage) return;
+    for (const prefix of [
+        'settings',
+        'events',
+        'marks',
+        'post-reading',
+        STORAGE_KEYS.SCHEDULE_PLANS,
+        STORAGE_KEYS.ACADEMIC_SIMULATION,
+        STORAGE_KEYS.ALERT_DISMISSED
+    ]) {
+        localStorageRepository.remove(`${prefix}:${registration}`);
+    }
+    const vault = localVault(storage);
+    vault.clearRegistrationNonCredentials(registration);
+    resetLocalStores();
+    await vault.flush();
 }
 
 export function clearAccountStorage() {
@@ -258,11 +296,32 @@ const accountStores = new Map<string, ReturnType<typeof storedValue<unknown>>>()
  * a meses sem abrir o app, e nunca vai para o servidor.
  */
 export function accountStore<T>(key: string, empty: T) {
-    let store = accountStores.get(key);
-    if (!store) {
-        store = storedValue<unknown>(key, empty);
-        accountStores.set(key, store);
+    const existing = accountStores.get(key);
+    if (existing) {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- mesma chave, mesmo tipo
+        return existing as ReturnType<typeof storedValue<T>>;
     }
+    if (typeof window === 'undefined') {
+        const ephemeral: ReturnType<typeof storedValue<unknown>> = storedValue<unknown>(
+            key,
+            empty,
+            {
+                register: false,
+                onServerWrite: () => {
+                    stores.set(key, ephemeral);
+                    accountStores.set(key, ephemeral);
+                },
+                onServerClear: () => {
+                    stores.delete(key);
+                    accountStores.delete(key);
+                }
+            }
+        );
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- no SSR não retém matrícula em leitura
+        return ephemeral as ReturnType<typeof storedValue<T>>;
+    }
+    const store = storedValue<unknown>(key, empty);
+    accountStores.set(key, store);
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- mesma chave, mesmo tipo
     return store as ReturnType<typeof storedValue<T>>;
 }

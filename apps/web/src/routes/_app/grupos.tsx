@@ -15,7 +15,7 @@ import type { Campus, GroupedClassroom } from '#/queries/groups';
 
 import { GroupsDialog } from '#/components/community/GroupsDialog';
 import { WhatsAppIcon } from '#/components/community/PlatformIcon';
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
@@ -160,7 +160,7 @@ function GroupList({
     );
 
     if (pages.isPending) return <LoadingText>Carregando turmas...</LoadingText>;
-    if (pages.isError)
+    if (pages.isLoadingError)
         return (
             <ErrorCard
                 message="Não foi possível carregar as turmas."
@@ -172,15 +172,19 @@ function GroupList({
     const total = pages.data.pages[0]?.total ?? 0;
     if (items.length === 0)
         return (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-                {withGroups
-                    ? 'Nenhuma turma com grupo cadastrado nesse filtro.'
-                    : 'Nenhuma turma encontrada.'}
-            </p>
+            <div className="flex flex-col gap-2">
+                {pages.isError && <StaleDataNotice subject="as turmas" />}
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                    {withGroups
+                        ? 'Nenhuma turma com grupo cadastrado nesse filtro.'
+                        : 'Nenhuma turma encontrada.'}
+                </p>
+            </div>
         );
 
     return (
         <section aria-label="Turmas" className="flex flex-col gap-2">
+            {pages.isError && <StaleDataNotice subject="as turmas" />}
             <p className="px-1 text-xs text-muted-foreground">
                 {total} {total === 1 ? 'turma' : 'turmas'} · toque para ver os grupos
             </p>

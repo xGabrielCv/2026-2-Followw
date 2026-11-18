@@ -6,7 +6,12 @@ import { createStandardSchemaV1, parseAsStringLiteral } from 'nuqs/server';
 
 import type { SubjectRate } from '#/queries/comparison';
 
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import {
+    ErrorCard,
+    ErrorState,
+    SIGAA_DOWN_MESSAGE,
+    StaleDataNotice
+} from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
@@ -49,7 +54,9 @@ function Compare({ courseId }: { courseId?: number }) {
 
     if (data.isPending || history.isPending)
         return <LoadingText>Juntando seus dados e as médias gerais...</LoadingText>;
-    if (data.isError)
+    if (history.isLoadingError)
+        return <ErrorCard message={SIGAA_DOWN_MESSAGE} onRetry={() => history.refetch()} />;
+    if (data.isLoadingError)
         return (
             <ErrorCard
                 message="Não foi possível carregar as médias gerais."
@@ -63,6 +70,8 @@ function Compare({ courseId }: { courseId?: number }) {
 
     return (
         <div className="flex flex-col gap-4 pb-8">
+            {history.isError && <StaleDataNotice subject="seu histórico" />}
+            {data.isError && <StaleDataNotice subject="as médias gerais" />}
             <Card className="flex-row gap-3 bg-primary/5 p-3 text-sm ring-primary/20">
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                 <p className="text-muted-foreground">

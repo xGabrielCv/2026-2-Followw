@@ -15,6 +15,12 @@ if ($Clean -or $Compress) {
             }
         }
     }
+    $escapedRoot = [Regex]::Escape($Root)
+    $running = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine -match $escapedRoot -and
+        $_.CommandLine -match 'uvicorn|vite|bun(\.exe)?"? (run )?dev|cloudbeaver-service\.ps1'
+    }
+    if ($running) { throw 'Pare o Followw antes de limpar ou comprimir as dependencias.' }
 }
 if ($Clean) {
     foreach ($relative in @('.pytest_cache','.ruff_cache','apps/web/.output','apps/web/.nitro','apps/web/.tanstack','apps/web/dist','apps/web/node_modules/.vite','apps/web/node_modules/.nitro','apps/web/playwright-report','apps/web/test-results')) {

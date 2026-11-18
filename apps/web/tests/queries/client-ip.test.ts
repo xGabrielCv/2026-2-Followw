@@ -4,12 +4,15 @@ import { clientIpHeaders } from '#/queries/client-ip.server';
 
 const originalSecret = process.env.RATE_LIMIT_SECRET_KEY;
 const originalVercel = process.env.VERCEL;
+const originalTrustProxy = process.env.TRUST_PROXY;
 
 afterEach(() => {
     if (originalSecret === undefined) delete process.env.RATE_LIMIT_SECRET_KEY;
     else process.env.RATE_LIMIT_SECRET_KEY = originalSecret;
     if (originalVercel === undefined) delete process.env.VERCEL;
     else process.env.VERCEL = originalVercel;
+    if (originalTrustProxy === undefined) delete process.env.TRUST_PROXY;
+    else process.env.TRUST_PROXY = originalTrustProxy;
 });
 
 test('fora da Vercel não assina cabeçalhos de IP enviados pelo usuário', () => {
@@ -37,4 +40,16 @@ test('sem segredo não emite encaminhamento sem autenticação', () => {
         headers: { 'x-vercel-forwarded-for': '203.0.113.1' }
     });
     expect([...clientIpHeaders(request)]).toEqual([]);
+});
+
+test('com TRUST_PROXY=1 assina o último IP válido de x-forwarded-for sem aceitar forjamento inicial', () => {
+    process.env.RATE_LIMIT_SECRET_KEY = 'chave-de-teste-nao-usar-em-producao';
+    delete process.env.VERCEL;
+    process.env.TRUST_PROXY = '1';
+    const request = new Request('https://followw.app', {
+        headers: { 'x-forwarded-for': '198.51.100.99, 203.0.113.7' }
+    });
+    const headers = clientIpHeaders(request);
+    expect(headers.get('x-followw-client')).toMatch(/^\d+:203\.0\.113\.7$/);
+    expect(headers.get('x-followw-client-signature')).toMatch(/^[0-9a-f]{64}$/);
 });

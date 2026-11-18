@@ -14,6 +14,7 @@ describe('PersonPhoto', () => {
         expect(large).toContain('w-20');
         expect(small).toContain('src="https://foto"');
         expect(large).toContain('src="https://foto"');
+        expect(small).toContain('referrerPolicy="no-referrer"');
     });
 
     test('mostra o avatar quando não há foto', () => {

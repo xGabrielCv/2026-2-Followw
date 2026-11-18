@@ -30,7 +30,7 @@ import {
 import { Button } from '#/components/ui/button';
 import { Card } from '#/components/ui/card';
 import { clearOfflineData } from '#/integrations/offline/storage';
-import { localStorageRepository } from '#/lib/local-storage';
+import { clearRegistrationData } from '#/lib/local-storage';
 import { cn } from '#/lib/shadcn';
 import { meQueryOptions } from '#/queries/me';
 
@@ -304,8 +304,7 @@ function ClearDevice({ registration }: { registration: string }) {
     const [done, setDone] = useState(false);
 
     const clear = async () => {
-        for (const key of ['settings', 'events', 'marks'])
-            localStorageRepository.remove(`${key}:${registration}`);
+        await clearRegistrationData(registration);
         queryClient.removeQueries({ predicate: ({ queryKey: [, path] }) => path !== '/me' });
         await clearOfflineData();
         setDone(true);

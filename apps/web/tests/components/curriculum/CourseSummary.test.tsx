@@ -153,3 +153,16 @@ test('grau e modalidade ausentes na matriz são omitidos', () => {
     expect(page.getByText('Diurno')).toBeDefined();
     expect(page.queryByText('Bacharelado')).toBeNull();
 });
+
+test('usa a unidade recebida do perfil sem consultar o catálogo público', async () => {
+    client.removeQueries({ queryKey: courseQueryOptions(course.id).queryKey });
+    const page = renderSummary({
+        course,
+        entrySemester: '2026.2',
+        unit: course.unit,
+        fetchCourse: false
+    });
+    expect(page.getByText('FCTE').parentElement?.textContent).toBe('FCTE · Matriz 0123 - 2024.1');
+    expect(page.getByText('Faculdade de Ciências e Tecnologias em Engenharia')).toBeDefined();
+    expect(requests).toEqual([]);
+});

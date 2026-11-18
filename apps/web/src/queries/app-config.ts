@@ -22,7 +22,7 @@ export function useAppConfig() {
     const query = useQuery(appConfigQueryOptions);
     const calendar = query.data?.calendar;
     useEffect(() => {
-        if (calendar) setCustomSemesters(calendar);
+        setCustomSemesters(calendar ?? {});
     }, [calendar]);
     return {
         config: query.data,

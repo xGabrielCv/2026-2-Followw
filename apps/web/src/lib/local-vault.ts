@@ -239,6 +239,22 @@ export class LocalVault {
         for (const key of Object.keys(this.values)) if (!credentialKey(key)) this.remove(key);
     }
 
+    /** Apaga o que é acadêmico de uma matrícula específica, preservando credenciais e outras contas. */
+    clearRegistrationNonCredentials(registration: string) {
+        const suffix = `:${registration}`;
+        const infix = `:${registration}:`;
+        const matches = (key: string) => key.endsWith(suffix) || key.includes(infix);
+        for (const key of Object.keys(this.values)) {
+            if (matches(key) && !credentialKey(key)) this.remove(key);
+        }
+        for (let i = this.storage.length - 1; i >= 0; i--) {
+            const key = this.storage.key(i);
+            if (key && key.startsWith('followw:') && matches(key) && !credentialKey(key)) {
+                this.storage.removeItem(key);
+            }
+        }
+    }
+
     private schedule() {
         if (!this.initialized) return;
         this.queue = this.queue

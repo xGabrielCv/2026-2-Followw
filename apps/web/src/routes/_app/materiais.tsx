@@ -4,7 +4,7 @@ import { BookOpen, ChevronRight, FolderOpen, Search } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { createStandardSchemaV1, parseAsString, parseAsStringLiteral } from 'nuqs/server';
 
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
@@ -118,7 +118,7 @@ function Materials() {
 function WithMaterial({ text }: { text: string }) {
     const subjects = useQuery(materialSubjectsQueryOptions(text.length >= 3 ? text : undefined));
     if (subjects.isPending) return <LoadingText>Carregando matérias...</LoadingText>;
-    if (subjects.isError)
+    if (subjects.isLoadingError)
         return (
             <ErrorCard
                 message="Não foi possível carregar as matérias."
@@ -127,23 +127,29 @@ function WithMaterial({ text }: { text: string }) {
         );
     if (subjects.data.length === 0)
         return (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-                {text
-                    ? 'Nenhuma matéria com material encontrada. Tente em "Outras disciplinas".'
-                    : 'Ninguém compartilhou material ainda. Busque uma disciplina em "Outras disciplinas".'}
-            </p>
+            <>
+                {subjects.isError && <StaleDataNotice subject="as matérias" />}
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                    {text
+                        ? 'Nenhuma matéria com material encontrada. Tente em "Outras disciplinas".'
+                        : 'Ninguém compartilhou material ainda. Busque uma disciplina em "Outras disciplinas".'}
+                </p>
+            </>
         );
     return (
-        <ul className="flex flex-col gap-2" aria-label="Matérias com material">
-            {subjects.data.map((subject) => (
-                <SubjectLink
-                    key={subject.code}
-                    code={subject.code}
-                    name={subject.name}
-                    detail={`${subject.files} ${subject.files === 1 ? 'arquivo' : 'arquivos'}`}
-                />
-            ))}
-        </ul>
+        <>
+            {subjects.isError && <StaleDataNotice subject="as matérias" />}
+            <ul className="flex flex-col gap-2" aria-label="Matérias com material">
+                {subjects.data.map((subject) => (
+                    <SubjectLink
+                        key={subject.code}
+                        code={subject.code}
+                        name={subject.name}
+                        detail={`${subject.files} ${subject.files === 1 ? 'arquivo' : 'arquivos'}`}
+                    />
+                ))}
+            </ul>
+        </>
     );
 }
 
@@ -157,7 +163,7 @@ function AllSubjects({ text }: { text: string }) {
             </p>
         );
     if (search.isPending) return <LoadingText>Buscando disciplinas...</LoadingText>;
-    if (search.isError)
+    if (search.isLoadingError)
         return (
             <ErrorCard
                 message="Não foi possível buscar as disciplinas."
@@ -167,22 +173,28 @@ function AllSubjects({ text }: { text: string }) {
     const subjects = search.data.subjects ?? [];
     if (subjects.length === 0)
         return (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-                Nenhuma disciplina encontrada.
-            </p>
+            <>
+                {search.isError && <StaleDataNotice subject="as disciplinas" />}
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                    Nenhuma disciplina encontrada.
+                </p>
+            </>
         );
     return (
-        <ul className="flex flex-col gap-2" aria-label="Disciplinas do catálogo">
-            {subjects.map((subject) => (
-                <SubjectLink
-                    key={subject.code}
-                    code={subject.code}
-                    name={subject.name}
-                    detail="Ver material"
-                    catalog
-                />
-            ))}
-        </ul>
+        <>
+            {search.isError && <StaleDataNotice subject="as disciplinas" />}
+            <ul className="flex flex-col gap-2" aria-label="Disciplinas do catálogo">
+                {subjects.map((subject) => (
+                    <SubjectLink
+                        key={subject.code}
+                        code={subject.code}
+                        name={subject.name}
+                        detail="Ver material"
+                        catalog
+                    />
+                ))}
+            </ul>
+        </>
     );
 }
 

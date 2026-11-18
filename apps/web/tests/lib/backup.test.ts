@@ -87,9 +87,53 @@ describe('backup do que fica só no aparelho', () => {
             { ...valid, settings: { completedSubjects: ['<script>'] } },
             { ...valid, events: [{ id: 'e', title: '', date: 'ontem', kind: 'prova' }] },
             { ...valid, plans: { active: 'a', plans: [] } },
+            {
+                ...valid,
+                plans: {
+                    active: 'p1',
+                    plans: [
+                        {
+                            id: 'p1',
+                            name: 'Grade',
+                            items: [
+                                {
+                                    code: 'FGA0030',
+                                    name: 'ED2',
+                                    number: '01',
+                                    semester: '2026.2',
+                                    professors: null
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
             { ...valid, reviews: { x: { id: 'nao-uuid', token: 't', rating: 1 } } }
         ])
             expect(parseBackup(JSON.stringify(broken))).toBe('conteudo-invalido');
         expect(parseBackup('x'.repeat(3 * 1024 * 1024))).toBe('grande-demais');
+    });
+
+    test('importação preserva foto e bio locais e grava grades na matrícula informada', () => {
+        const valid = exportBackup(REG);
+        valid.settings = { displayName: 'Novo Nome', completedSubjects: ['FGA0030'] };
+        valid.plans = {
+            active: 'plano-importado',
+            plans: [{ id: 'plano-importado', name: 'Importado', items: [] }]
+        };
+        settingsStore(REG).set({
+            displayName: 'Antigo',
+            profile: { bio: 'Bio local', photo: 'data:image/webp;base64,AAA' }
+        });
+
+        importBackup(REG, valid);
+
+        expect(settingsStore(REG).getSnapshot()).toMatchObject({
+            displayName: 'Novo Nome',
+            completedSubjects: ['FGA0030'],
+            profile: { bio: 'Bio local', photo: 'data:image/webp;base64,AAA' }
+        });
+        expect(schedulePlans.atAccount(REG).getSnapshot().active).toBe('plano-importado');
+        expect(schedulePlans.getSnapshot().active).not.toBe('plano-importado');
     });
 });

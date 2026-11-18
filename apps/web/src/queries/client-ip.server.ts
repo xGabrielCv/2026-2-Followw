@@ -10,6 +10,17 @@ export function clientIpHeaders(request: Request): Headers {
     let ip: string | undefined;
     if (process.env.VERCEL === '1') {
         ip = request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim();
+    } else if (process.env.TRUST_PROXY === '1') {
+        ip = request.headers
+            .get('x-forwarded-for')
+            ?.split(',')
+            .map((part) => part.trim())
+            .findLast((part) => isIP(part) !== 0);
+        if (!ip) {
+            try {
+                ip = getRequestIP({ xForwardedFor: true });
+            } catch {}
+        }
     } else {
         try {
             ip = getRequestIP();

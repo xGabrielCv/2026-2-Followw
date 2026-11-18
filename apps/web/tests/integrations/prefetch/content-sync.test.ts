@@ -1,7 +1,11 @@
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, test } from 'bun:test';
 
-import { invalidateChanged, sharedAcrossTabs } from '#/integrations/prefetch/ContentSync';
+import {
+    applyFollowerVersion,
+    invalidateChanged,
+    sharedAcrossTabs
+} from '#/integrations/prefetch/ContentSync';
 
 const key = (path: string) => ['get', path, {}];
 
@@ -23,6 +27,14 @@ describe('checagem de atualizações da nuvem', () => {
         client.setQueryData(key('/forum'), {});
         expect(invalidateChanged(client, { forum: 'b' }, { forum: 'b' })).toEqual([]);
         expect(client.getQueryState(key('/forum'))?.isInvalidated).toBe(false);
+    });
+
+    test('aba seguidora invalida consultas na primeira mensagem recebida da aba líder', () => {
+        const client = new QueryClient();
+        client.setQueryData(key('/forum'), { items: [] });
+        const next = applyFollowerVersion(client, null, { forum: 'v2' });
+        expect(next).toEqual({ forum: 'v2' });
+        expect(client.getQueryState(key('/forum'))?.isInvalidated).toBe(true);
     });
 });
 

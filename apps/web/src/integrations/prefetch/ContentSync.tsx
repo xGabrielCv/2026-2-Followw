@@ -41,6 +41,16 @@ export function invalidateChanged(
     return changed;
 }
 
+/** Aplica a versão publicada pela aba líder na aba seguidora, inclusive na primeira mensagem. */
+export function applyFollowerVersion(
+    queryClient: QueryClient,
+    previous: Record<string, string> | null,
+    incoming: Record<string, string>
+): Record<string, string> {
+    invalidateChanged(queryClient, previous ?? {}, incoming);
+    return incoming;
+}
+
 const LEADER_LOCK = 'followw-content-sync';
 const CHANNEL = 'followw-content-version';
 
@@ -75,8 +85,7 @@ export function ContentSync() {
         const listener = new BroadcastChannel(CHANNEL);
         channel.current = listener;
         listener.addEventListener('message', (event: MessageEvent<Record<string, string>>) => {
-            if (last.current) invalidateChanged(queryClient, last.current, event.data);
-            last.current = event.data;
+            last.current = applyFollowerVersion(queryClient, last.current, event.data);
         });
         return () => {
             stopElection();

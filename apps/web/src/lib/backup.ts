@@ -59,45 +59,48 @@ export function exportBackup(registration: string, now = new Date()): Backup {
             })),
         marks: marksStore(registration).getSnapshot(),
         plans: {
-            active: schedulePlans.getSnapshot().active,
-            plans: schedulePlans.getSnapshot().plans.map(({ id, name, items }) => ({
-                id,
-                name,
-                items: items.map(
-                    ({
-                        code,
-                        name: subjectName,
-                        hours,
-                        number,
-                        semester,
-                        schedule,
-                        room,
-                        sigaa_id,
-                        vacancies,
-                        occupied,
-                        professors
-                    }) => ({
-                        code,
-                        name: subjectName,
-                        hours,
-                        number,
-                        semester,
-                        schedule,
-                        room,
-                        sigaa_id,
-                        vacancies,
-                        occupied,
-                        professors: professors.map(
-                            ({ siape, name: professorName, photo, email }) => ({
-                                siape,
-                                name: professorName,
-                                photo,
-                                email
-                            })
-                        )
-                    })
-                )
-            }))
+            active: schedulePlans.atAccount(registration).getSnapshot().active,
+            plans: schedulePlans
+                .atAccount(registration)
+                .getSnapshot()
+                .plans.map(({ id, name, items }) => ({
+                    id,
+                    name,
+                    items: items.map(
+                        ({
+                            code,
+                            name: subjectName,
+                            hours,
+                            number,
+                            semester,
+                            schedule,
+                            room,
+                            sigaa_id,
+                            vacancies,
+                            occupied,
+                            professors
+                        }) => ({
+                            code,
+                            name: subjectName,
+                            hours,
+                            number,
+                            semester,
+                            schedule,
+                            room,
+                            sigaa_id,
+                            vacancies,
+                            occupied,
+                            professors: professors.map(
+                                ({ siape, name: professorName, photo, email }) => ({
+                                    siape,
+                                    name: professorName,
+                                    photo,
+                                    email
+                                })
+                            )
+                        })
+                    )
+                }))
         },
         reviews: {}
     };
@@ -148,7 +151,11 @@ function validPlans(value: unknown): value is SchedulePlans {
                         typeof item.code === 'string' &&
                         typeof item.name === 'string' &&
                         typeof item.number === 'string' &&
-                        typeof item.semester === 'string'
+                        typeof item.semester === 'string' &&
+                        Array.isArray(item.professors) &&
+                        item.professors.every(
+                            (prof: unknown) => isObject(prof) && typeof prof.name === 'string'
+                        )
                 )
         )
     );
@@ -216,12 +223,15 @@ export function parseBackup(text: string): Backup | BackupError {
 }
 
 export function importBackup(registration: string, backup: Backup) {
-    settingsStore(registration).set(backup.settings);
+    const existingProfile = settingsStore(registration).getSnapshot().profile;
+    settingsStore(registration).set(
+        existingProfile ? { ...backup.settings, profile: existingProfile } : backup.settings
+    );
     entriesStore(registration).set(backup.events);
     marksStore(registration).set(backup.marks);
-    schedulePlans.set(backup.plans);
+    schedulePlans.atAccount(registration).set(backup.plans);
     if (backup.version === 1) {
-        ownReviews.set(backup.reviews);
+        ownReviews.atAccount(registration).set(backup.reviews);
         if (backup.author) setAuthorSecret(backup.author);
     }
 }

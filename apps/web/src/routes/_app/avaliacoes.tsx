@@ -10,7 +10,7 @@ import {
 
 import type { ProfessorOrder } from '#/queries/reviews';
 
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { ProfessorCard } from '#/components/search/ProfessorCard';
@@ -162,7 +162,7 @@ function Ranking({
     );
 
     if (pages.isPending) return <LoadingText>Carregando docentes...</LoadingText>;
-    if (pages.isError)
+    if (pages.isLoadingError)
         return (
             <ErrorCard
                 message="Não foi possível carregar os docentes."
@@ -175,13 +175,17 @@ function Ranking({
     const ranked = order === 'best' || order === 'worst' || order === 'reviews';
     if (items.length === 0)
         return (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-                Nenhum docente encontrado com esses filtros.
-            </p>
+            <div className="flex flex-col gap-2">
+                {pages.isError && <StaleDataNotice subject="os docentes" />}
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                    Nenhum docente encontrado com esses filtros.
+                </p>
+            </div>
         );
 
     return (
         <section aria-label="Docentes" className="flex flex-col gap-2">
+            {pages.isError && <StaleDataNotice subject="os docentes" />}
             <p className="px-1 text-xs text-muted-foreground">
                 {total} {total === 1 ? 'docente' : 'docentes'}
             </p>

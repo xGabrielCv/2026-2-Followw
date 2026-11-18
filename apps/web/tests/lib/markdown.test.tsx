@@ -69,10 +69,12 @@ describe('Markdown', () => {
         'JaVaScRiPt:alert%281%29',
         'vbscript:msgbox%281%29',
         'data:text/html;base64,PHNjcmlwdD4='
-    ])('bloqueia URL perigosa %s em links e imagens', (url) => {
+    ])('bloqueia URL perigosa %s em links e imagens sem gerar âncora vazia', (url) => {
         const markup = render(`[Link](${url})\n\n![Imagem](${url})`);
 
         expect(markup).not.toContain(url);
+        expect(markup).not.toContain('<a');
+        expect(markup).toContain('<span>Link</span>');
         expect(markup).not.toContain('target="_blank"');
     });
 

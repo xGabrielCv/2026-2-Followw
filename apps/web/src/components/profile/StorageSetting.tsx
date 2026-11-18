@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { HardDrive } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 import { MetricsInformation } from '#/components/profile/MetricsInformation';
 import { Button } from '#/components/ui/button';
@@ -14,9 +14,9 @@ import {
     DialogTrigger
 } from '#/components/ui/dialog';
 import { clearOfflineData } from '#/integrations/offline/storage';
-import { localStorageRepository } from '#/lib/local-storage';
+import { localStorageRepository, resetLocalStores } from '#/lib/local-storage';
 import { clearAcademicData, localVault, retentionDays, RETENTION_DAYS } from '#/lib/local-vault';
-import { setAnalyticsConsent } from '#/queries/telemetry';
+import { analyticsConsentStore, setAnalyticsConsent } from '#/queries/telemetry';
 
 const megabytes = (bytes: number) =>
     `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB`;
@@ -56,10 +56,11 @@ export function StorageSetting() {
         setBusy(true);
         try {
             await client.cancelQueries();
-            client.clear();
+            client.removeQueries({ predicate: ({ queryKey: [, path] }) => path !== '/me' });
             await clearOfflineData();
             // só o que é acadêmico: as chaves das suas publicações e chamados continuam
             await clearAcademicData(window.localStorage);
+            resetLocalStores();
             setConfirming(false);
             setMessage('Informações acadêmicas apagadas deste navegador.');
             measure();
@@ -189,7 +190,11 @@ export function StorageSetting() {
 
 /** Métricas opcionais de uso: separadas do prazo de armazenamento, desligadas por padrão. */
 export function AnalyticsSetting() {
-    const [on, setOn] = useState(() => localStorageRepository.get('analytics-consent') === true);
+    const on = useSyncExternalStore(
+        analyticsConsentStore.subscribe,
+        analyticsConsentStore.getSnapshot,
+        analyticsConsentStore.getServerSnapshot
+    );
     return (
         <div className="flex min-w-0 items-start gap-1 py-2.5 text-sm">
             <label className="flex min-w-0 flex-1 items-start gap-3">
@@ -198,7 +203,6 @@ export function AnalyticsSetting() {
                     aria-label="Ajudar a melhorar o Followw"
                     checked={on}
                     onChange={(event) => {
-                        setOn(event.target.checked);
                         setAnalyticsConsent(event.target.checked);
                     }}
                     className="mt-1 size-4"

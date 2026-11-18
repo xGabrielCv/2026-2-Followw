@@ -158,9 +158,8 @@ function HomePage() {
                 />
                 {user && classes.length > 0 && <DaySummary overview={overview} isToday={isToday} />}
                 <RemindersSection entries={entries} today={now.date} />
-                <div className="flex flex-col gap-6 desk:hidden">{side}</div>
             </div>
-            <aside aria-label="Resumo" className="hidden flex-col gap-6 desk:flex">
+            <aside aria-label="Resumo" className="flex flex-col gap-6">
                 {side}
             </aside>
         </div>

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Verifica e instala as dependências do Followw e sobe tudo no localhost.
 
@@ -422,7 +422,7 @@ try {
         Wait-DatabaseManager
     }
     $api = Start-Process -FilePath 'uv' -WorkingDirectory $ApiDir -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $Local 'api.out.log') -RedirectStandardError (Join-Path $Local 'api.err.log') -ArgumentList @(
-        'run', '--no-sync', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', $ApiPort, '--no-access-log',
+        'run', '--no-sync', 'uvicorn', 'api.main:app', '--host', '127.0.0.1', '--port', $ApiPort, '--timeout-keep-alive', '65', '--no-access-log',
         # O front recarrega sozinho; a API também, para nunca rodar código antigo.
         '--reload', '--reload-dir', 'api', '--reload-dir', '..\..\packages'
     )

@@ -22,6 +22,7 @@ import {
     parseBackup
 } from '#/lib/backup';
 import { saveFile } from '#/lib/download';
+import { flushLocalStorage } from '#/lib/local-storage';
 
 /** Exporta e importa o que fica só neste aparelho, para trocar de celular sem usar a nuvem. */
 export function BackupSetting({ registration }: { registration: string }) {
@@ -141,6 +142,7 @@ export function BackupSetting({ registration }: { registration: string }) {
                         <Button
                             onClick={() => {
                                 importBackup(registration, pending);
+                                void flushLocalStorage();
                                 setPending(null);
                                 setMessage({ error: false, text: 'Backup importado.' });
                             }}

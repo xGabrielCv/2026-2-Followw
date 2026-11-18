@@ -89,7 +89,12 @@ function FlowStatisticsPage() {
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
-                <CourseSummary course={user.course} entrySemester={entrySemester} />
+                <CourseSummary
+                    course={user.course}
+                    entrySemester={entrySemester}
+                    unit={user.unit}
+                    fetchCourse={false}
+                />
                 <Link
                     to="/cursos/$id"
                     params={{ id }}

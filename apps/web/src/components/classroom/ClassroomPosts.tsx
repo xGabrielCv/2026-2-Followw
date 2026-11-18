@@ -245,7 +245,7 @@ function PostContent({ post, reading }: { post: ClassroomPost; reading?: Reading
                     {reading.read ? 'Marcar como não lida' : 'Marcar como lida'}
                 </Button>
             )}
-            {post.content && <Markdown>{post.content}</Markdown>}
+            {post.content && <Markdown community>{post.content}</Markdown>}
             {post.type === 'assessment' && postDateLabel(post) && (
                 <p className="text-sm text-muted-foreground">
                     Agendada para {postDateLabel(post)}.

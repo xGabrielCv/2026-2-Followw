@@ -8,6 +8,7 @@ import {
     RouterContextProvider
 } from '@tanstack/react-router';
 import { afterEach, expect, spyOn, test } from 'bun:test';
+import { NuqsTestingAdapter } from 'nuqs/adapters/testing';
 
 import { GroupsContent } from '#/components/community/GroupsDialog';
 import {
@@ -15,13 +16,26 @@ import {
     ReviewsBrowser
 } from '#/components/community/ProfessorReviewsSection';
 import { SubjectMaterialsPanel } from '#/components/materials/SubjectMaterialsPanel';
-import { forumPostQueryOptions, subjectMaterialsQueryOptions } from '#/queries/community';
+import { allClassroomsQueryOptions } from '#/queries/classrooms';
+import {
+    forumPostQueryOptions,
+    materialSubjectsQueryOptions,
+    subjectMaterialsQueryOptions,
+    tutorialQueryOptions,
+    tutorialsQueryOptions
+} from '#/queries/community';
+import { comparisonQueryOptions } from '#/queries/comparison';
 import { classroomGroupsQueryOptions } from '#/queries/groups';
 import { meQueryOptions } from '#/queries/me';
 import { professorReviewsQueryOptions } from '#/queries/reviews';
 import { Route } from '#/routes/_app/comunidade_.$id';
+import { Route as EstatisticasRoute } from '#/routes/_app/estatisticas';
+import { Route as GuiasRoute } from '#/routes/_app/guias';
+import { Route as GuiaRoute } from '#/routes/_app/guias_.$id';
+import { Route as MateriaisRoute } from '#/routes/_app/materiais';
 
 import { useDom } from '../../helpers/dom';
+import { userProfile } from '../../helpers/profile';
 
 const dom = useDom();
 const clients: QueryClient[] = [];
@@ -143,6 +157,54 @@ const cases = [
             const Component = Route.options.component!;
             return <Component />;
         }
+    },
+    {
+        name: 'lista de guias',
+        key: tutorialsQueryOptions(undefined, undefined).queryKey,
+        data: [
+            {
+                id: 't1',
+                title: 'Guia salvo de matrícula',
+                summary: 'Resumo salvo',
+                category: 'matricula',
+                published_at: '2026-11-17T12:00:00Z'
+            }
+        ],
+        content: 'Guia salvo de matrícula',
+        error: 'Não foi possível carregar os guias.',
+        render: () => {
+            const Component = GuiasRoute.options.component!;
+            return <Component />;
+        }
+    },
+    {
+        name: 'detalhe do guia',
+        key: tutorialQueryOptions('p1').queryKey,
+        data: {
+            id: 'p1',
+            title: 'Guia completo salvo',
+            summary: 'Resumo',
+            body: 'Conteúdo salvo',
+            category: 'matricula',
+            published_at: '2026-11-17T12:00:00Z'
+        },
+        content: 'Guia completo salvo',
+        error: 'Guia não encontrado.',
+        render: () => {
+            const Component = GuiaRoute.options.component!;
+            return <Component />;
+        }
+    },
+    {
+        name: 'matérias com material',
+        key: materialSubjectsQueryOptions(undefined).queryKey,
+        data: [{ code: 'FGA0030', name: 'Estruturas Salvas', files: 2 }],
+        content: 'Estruturas Salvas',
+        error: 'Não foi possível carregar as matérias.',
+        render: () => {
+            const Component = MateriaisRoute.options.component!;
+            return <Component />;
+        }
     }
 ];
 
@@ -150,7 +212,9 @@ function render(client: QueryClient, children: ReactNode) {
     const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
     return dom.testing.render(
         <QueryClientProvider client={client}>
-            <RouterContextProvider router={router}>{children}</RouterContextProvider>
+            <RouterContextProvider router={router}>
+                <NuqsTestingAdapter hasMemory>{children}</NuqsTestingAdapter>
+            </RouterContextProvider>
         </QueryClientProvider>
     );
 }
@@ -179,6 +243,7 @@ for (const scenario of cases) {
                 fetchStatus: 'idle'
             });
             const params = spyOn(Route, 'useParams').mockReturnValue({ id: 'p1' });
+            const guiaParams = spyOn(GuiaRoute, 'useParams').mockReturnValue({ id: 'p1' });
             try {
                 const page = render(client, scenario.render());
                 if (saved) {
@@ -191,7 +256,40 @@ for (const scenario of cases) {
                 }
             } finally {
                 params.mockRestore();
+                guiaParams.mockRestore();
             }
         });
     }
 }
+
+test('estatísticas comparadas avisam quando o histórico falha sem cache em vez de exibir zero matérias', () => {
+    const client = new QueryClient({
+        defaultOptions: {
+            queries: {
+                retry: false,
+                retryOnMount: false,
+                refetchOnMount: false,
+                staleTime: Infinity
+            }
+        }
+    });
+    clients.push(client);
+    client.setQueryData(meQueryOptions.queryKey, userProfile());
+    client.setQueryData(comparisonQueryOptions(1).queryKey, {
+        course: { approved: 80, failed: 20, dropped: 0, classrooms: 10 },
+        unb: { approved: 75, failed: 25, dropped: 0, classrooms: 100 },
+        subjects: []
+    });
+    const historyQuery = client.getQueryCache().build(client, {
+        queryKey: allClassroomsQueryOptions.queryKey
+    });
+    historyQuery.setState({
+        status: 'error',
+        error: new Error('SIGAA indisponível'),
+        fetchStatus: 'idle'
+    });
+    const Component = EstatisticasRoute.options.component!;
+    const page = render(client, <Component />);
+    expect(page.baseElement.textContent).not.toContain('0 matérias suas com dados');
+    expect(page.baseElement.textContent).toContain('SIGAA');
+});

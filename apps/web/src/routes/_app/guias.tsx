@@ -4,7 +4,7 @@ import { BookOpenText, ChevronRight, PenLine, Search } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { createStandardSchemaV1, parseAsString, parseAsStringLiteral } from 'nuqs/server';
 
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
@@ -85,46 +85,52 @@ function GuiasPage() {
             />
             {tutorials.isPending ? (
                 <LoadingText>Carregando guias...</LoadingText>
-            ) : tutorials.isError ? (
+            ) : tutorials.isLoadingError ? (
                 <ErrorCard
                     message="Não foi possível carregar os guias."
                     onRetry={() => tutorials.refetch()}
                 />
             ) : tutorials.data.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                    Nenhum guia aqui ainda. Que tal escrever o primeiro?
-                </p>
+                <>
+                    {tutorials.isError && <StaleDataNotice subject="os guias" />}
+                    <p className="py-6 text-center text-sm text-muted-foreground">
+                        Nenhum guia aqui ainda. Que tal escrever o primeiro?
+                    </p>
+                </>
             ) : (
-                <ul className="flex flex-col gap-2" aria-label="Guias">
-                    {tutorials.data.map((tutorial) => (
-                        <li key={tutorial.id}>
-                            <Link
-                                to="/guias/$id"
-                                params={{ id: tutorial.id }}
-                                className="group flex items-start gap-3 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/8 hover:ring-primary/40"
-                            >
-                                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-flow-1/15 text-flow-1">
-                                    <BookOpenText className="size-4" aria-hidden="true" />
-                                </span>
-                                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                    <span className="text-xs font-medium text-muted-foreground">
-                                        {TUTORIAL_CATEGORY_LABELS[tutorial.category]}
+                <>
+                    {tutorials.isError && <StaleDataNotice subject="os guias" />}
+                    <ul className="flex flex-col gap-2" aria-label="Guias">
+                        {tutorials.data.map((tutorial) => (
+                            <li key={tutorial.id}>
+                                <Link
+                                    to="/guias/$id"
+                                    params={{ id: tutorial.id }}
+                                    className="group flex items-start gap-3 rounded-2xl bg-card p-3 shadow-card ring-1 ring-foreground/8 hover:ring-primary/40"
+                                >
+                                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-flow-1/15 text-flow-1">
+                                        <BookOpenText className="size-4" aria-hidden="true" />
                                     </span>
-                                    <span className="text-sm leading-snug font-semibold">
-                                        {tutorial.title}
+                                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                        <span className="text-xs font-medium text-muted-foreground">
+                                            {TUTORIAL_CATEGORY_LABELS[tutorial.category]}
+                                        </span>
+                                        <span className="text-sm leading-snug font-semibold">
+                                            {tutorial.title}
+                                        </span>
+                                        <span className="line-clamp-2 text-xs text-muted-foreground">
+                                            {tutorial.summary}
+                                        </span>
                                     </span>
-                                    <span className="line-clamp-2 text-xs text-muted-foreground">
-                                        {tutorial.summary}
-                                    </span>
-                                </span>
-                                <ChevronRight
-                                    className="mt-3 size-4 shrink-0 text-muted-foreground"
-                                    aria-hidden="true"
-                                />
-                            </Link>
-                        </li>
-                    ))}
-                </ul>
+                                    <ChevronRight
+                                        className="mt-3 size-4 shrink-0 text-muted-foreground"
+                                        aria-hidden="true"
+                                    />
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </>
             )}
         </div>
     );

@@ -90,7 +90,7 @@ export function Conversation({ post, canEdit = false }: { post: PostDetails; can
                             {post.course.name}
                         </span>
                     )}
-                    <span className="ml-auto text-muted-foreground">
+                    <span className="ml-auto text-muted-foreground" suppressHydrationWarning>
                         {relativeTime(post.created_at)}
                     </span>
                 </div>
@@ -195,7 +195,9 @@ function ReplyRow({
                 {mine && !reply.by_author && (
                     <span className="rounded-full bg-muted px-2 py-0.5">Sua resposta</span>
                 )}
-                <span className="ml-auto">{relativeTime(reply.created_at)}</span>
+                <span className="ml-auto" suppressHydrationWarning>
+                    {relativeTime(reply.created_at)}
+                </span>
                 {canEdit && mine ? (
                     <button
                         type="button"

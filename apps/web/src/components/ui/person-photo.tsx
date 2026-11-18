@@ -21,6 +21,7 @@ export function PersonPhoto({
             <img
                 src={src}
                 alt=""
+                referrerPolicy="no-referrer"
                 className={cn(className, 'object-cover', size !== 'sm' && 'ring-1 ring-foreground/10')}
                 onError={() => setFailedSrc(src)}
             />

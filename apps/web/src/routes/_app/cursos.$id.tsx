@@ -109,7 +109,14 @@ function FlowPage() {
         <div ref={ref} className="flex min-h-0 flex-1 flex-col">
             <div className="shrink-0 px-4 pb-5 desk:px-6">
                 <FlowHeader legend={Boolean(desktop && loggedIn && course && entrySemester)} />
-                {course && <CourseSummary course={course} entrySemester={entrySemester} />}
+                {course && (
+                    <CourseSummary
+                        course={course}
+                        entrySemester={entrySemester}
+                        unit={ownCourse ? user?.unit : undefined}
+                        fetchCourse={!ownCourse}
+                    />
+                )}
                 {ownCourse && loggedIn && entrySemester && (
                     <StatisticsShortcut courseId={courseId} />
                 )}

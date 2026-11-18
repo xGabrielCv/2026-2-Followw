@@ -1,14 +1,15 @@
-import { localStorageRepository } from '#/lib/local-storage';
+import { localStorageRepository, storedValue } from '#/lib/local-storage';
 
 const pending = new Set<AbortController>();
 export type TechnicalEvent = 'login_session_lost';
+export const analyticsConsentStore = storedValue<boolean>('analytics-consent', false);
 
 export function metricsAllowed() {
     return localStorageRepository.get('analytics-consent') === true;
 }
 
 export function setAnalyticsConsent(allowed: boolean) {
-    localStorageRepository.set('analytics-consent', allowed);
+    analyticsConsentStore.set(allowed);
     if (!allowed) {
         for (const controller of pending) controller.abort();
         pending.clear();

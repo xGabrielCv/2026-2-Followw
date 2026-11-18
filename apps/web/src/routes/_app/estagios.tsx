@@ -65,8 +65,21 @@ function EstagiosPage() {
     return user ? <Internships /> : <LoginPromptCard />;
 }
 
-const dateTime = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+const dateTime = new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'America/Sao_Paulo'
+});
 const formatDate = (value: string) => dateTime.format(new Date(value));
+const safeHttpUrl = (value: string | null | undefined) => {
+    if (!value) return null;
+    try {
+        const parsed = new URL(value);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null;
+    } catch {
+        return null;
+    }
+};
 
 function Internships() {
     const [search, setSearch] = useQueryStates(estagiosParsers, {
@@ -247,9 +260,9 @@ function InternshipDialog({ item, onClose }: { item: InternshipItem | null; onCl
                                 <Markdown community>{data.description}</Markdown>
                             </section>
                         )}
-                        {data.attachment && (
+                        {data.attachment && safeHttpUrl(data.attachment.url) && (
                             <a
-                                href={data.attachment.url}
+                                href={safeHttpUrl(data.attachment.url)!}
                                 target="_blank"
                                 rel="external noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-primary underline underline-offset-4"

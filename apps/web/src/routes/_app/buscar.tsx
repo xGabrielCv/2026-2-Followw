@@ -249,7 +249,7 @@ function BuscarPage() {
             </div>
             <SchedulePreview />
             <div aria-live="polite" className="flex flex-col gap-5 pb-8">
-                {subjects && !choices.some((choice) => choice.available) && (
+                {subjects && offer !== undefined && !choices.some((choice) => choice.available) && (
                     <p className="text-sm text-muted-foreground">
                         A oferta do semestre atual e do próximo ainda não foi coletada. Os
                         resultados de turmas serão exibidos após a atualização do catálogo.

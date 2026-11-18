@@ -94,7 +94,7 @@ export function ToolDialog({
                     <Button variant="outline" onClick={() => onOpenChange(false)}>
                         Voltar
                     </Button>
-                    {tool.href ? (
+                    {tool.href && /^https?:\/\//i.test(tool.href) ? (
                         <a
                             href={tool.href}
                             target="_blank"

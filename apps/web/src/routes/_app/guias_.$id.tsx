@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 
 import { ReportButton } from '#/components/community/ReportButton';
-import { ErrorCard, ErrorState } from '#/components/ErrorState';
+import { ErrorCard, ErrorState, StaleDataNotice } from '#/components/ErrorState';
 import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { Markdown } from '#/lib/markdown';
@@ -18,18 +18,22 @@ export const Route = createFileRoute('/_app/guias_/$id')({
     component: GuiaPage
 });
 
-const published = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'long' });
+const published = new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'long',
+    timeZone: 'America/Sao_Paulo'
+});
 
 function GuiaPage() {
     const { id } = Route.useParams();
     const tutorial = useQuery(tutorialQueryOptions(id));
     if (tutorial.isPending) return <LoadingText>Carregando guia...</LoadingText>;
-    if (tutorial.isError)
+    if (tutorial.isLoadingError)
         return <ErrorCard message="Guia não encontrado." onRetry={() => tutorial.refetch()} />;
     const { title, summary, body, category, published_at: at } = tutorial.data;
 
     return (
         <article className="flex flex-col gap-3 pb-8">
+            {tutorial.isError && <StaleDataNotice subject="este guia" />}
             <header className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-primary">
                     {TUTORIAL_CATEGORY_LABELS[category]}
