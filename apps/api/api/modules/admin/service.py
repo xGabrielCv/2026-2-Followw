@@ -40,11 +40,12 @@ from api.db.models import (
     Tutorial,
 )
 from api.flags import FLAGS, MENU, TEXTS, flags, menu, texts
-from api.modules.admin.models import AdminAccount
+from api.modules.admin.models import AdminAccount, AdminSession
 from api.modules.admin.permissions import Principal
 from api.modules.auth.account import periods
+from api.modules.logs.models import AppEvent
 from api.modules.materials import av as material_av
-from api.modules.materials.service import purge_expired
+from api.modules.materials.service import oldest_semester, purge_expired
 from api.modules.reports.service import TARGETS, delete_target
 from api.storage import material_storage
 
@@ -705,10 +706,62 @@ class AdminService:
 
         return await self._db.write(write)
 
+    async def maintenance_preview(self) -> dict[str, int]:
+        """Quantos itens vencidos ou encerrados seriam removidos pela limpeza."""
+
+        async def read(session: AsyncSession) -> dict[str, int]:
+            now = datetime.now(UTC)
+            oldest = academic_calendar.today() - timedelta(days=_ACTIVITY_DAYS)
+            materials = await _count(
+                session, Material, Material.semester < oldest_semester()
+            )
+            activity = await _count(
+                session,
+                ActiveUser,
+                ActiveUser.period < f"d:{oldest.isoformat()}",
+                ActiveUser.period.like("d:%"),
+            )
+            reports = await _count(
+                session,
+                Report,
+                Report.status != "pending",
+                Report.resolved_at < now - timedelta(days=_RESOLVED_REPORTS_DAYS),
+            )
+            sessions = await _count(
+                session,
+                AdminSession,
+                (AdminSession.revoked.is_(True)) | (AdminSession.expires_at <= now),
+            )
+            windows = (
+                await session.scalar(
+                    text(
+                        "SELECT count(*) FROM rate_windows WHERE window_start < :cutoff"
+                    ),
+                    {"cutoff": int(time.time()) - 86400},
+                )
+                or 0
+            )
+            events = await _count(
+                session,
+                AppEvent,
+                AppEvent.at < now - timedelta(days=settings.log_retention_days),
+            )
+            return {
+                "materiais vencidos": materials,
+                "registros de uso antigos": activity,
+                "denúncias resolvidas antigas": reports,
+                "sessões administrativas encerradas": sessions,
+                "janelas de cota vencidas": int(windows),
+                "eventos técnicos vencidos": events,
+            }
+
+        return await self._db.read(read)
+
     async def maintenance(self) -> dict[str, int]:
-        """Apaga o que já venceu: materiais fora da janela, uso antigo e denúncias resolvidas."""
+        """Apaga o que já venceu: materiais fora da janela, uso antigo, denúncias e efêmeros."""
 
         async def write(session: AsyncSession) -> dict[str, int]:
+            now = datetime.now(UTC)
             materials = await purge_expired(session, material_storage())
             oldest = academic_calendar.today() - timedelta(days=_ACTIVITY_DAYS)
             activity = await session.execute(
@@ -720,14 +773,30 @@ class AdminService:
             reports = await session.execute(
                 delete(Report).where(
                     Report.status != "pending",
-                    Report.resolved_at
-                    < datetime.now(UTC) - timedelta(days=_RESOLVED_REPORTS_DAYS),
+                    Report.resolved_at < now - timedelta(days=_RESOLVED_REPORTS_DAYS),
+                )
+            )
+            sessions = await session.execute(
+                delete(AdminSession).where(
+                    (AdminSession.revoked.is_(True)) | (AdminSession.expires_at <= now)
+                )
+            )
+            windows = await session.execute(
+                text("DELETE FROM rate_windows WHERE window_start < :cutoff"),
+                {"cutoff": int(time.time()) - 86400},
+            )
+            events = await session.execute(
+                delete(AppEvent).where(
+                    AppEvent.at < now - timedelta(days=settings.log_retention_days)
                 )
             )
             result = {
                 "materiais vencidos": materials,
                 "registros de uso antigos": activity.rowcount or 0,
                 "denúncias resolvidas antigas": reports.rowcount or 0,
+                "sessões administrativas encerradas": sessions.rowcount or 0,
+                "janelas de cota vencidas": windows.rowcount or 0,
+                "eventos técnicos vencidos": events.rowcount or 0,
             }
             await self._log(session, "maintenance", detail=str(result))
             return result

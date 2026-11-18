@@ -1,4 +1,4 @@
-import { call, el, when } from './dashboard-core.js';
+import { call, downloadData, el, when } from './dashboard-core.js';
 
 const state = { page: 1, page_size: 20, order: 'newest' };
 
@@ -8,6 +8,15 @@ export async function auditView(render) {
     const field = (name, label, type = 'text') => el('label', {}, label,
         el('input', { name, type, value: state[name] || '', maxlength: name === 'actor' ? 64 : 80 }));
     const select = (name, label, options) => el('label', {}, label, el('select', { name }, options.map(([value, title]) => el('option', { value, selected: String(state[name] ?? '') === value }, title))));
+    const exportRows = () => result.items.map((item) => ({
+        created_at: item.created_at,
+        actor: item.actor || 'legado',
+        actor_role: item.actor_role || '',
+        action: item.action,
+        target_type: item.target_type || '',
+        target_id: item.target_id || '',
+        detail: item.detail || '',
+    }));
     const filters = el('form', { class: 'toolbar', onsubmit: (event) => {
         event.preventDefault();
         Object.assign(state, Object.fromEntries(new FormData(event.currentTarget)), { page: 1 });
@@ -22,7 +31,9 @@ export async function auditView(render) {
         for (const key of Object.keys(state)) delete state[key];
         Object.assign(state, { page: 1, page_size: 20, order: 'newest' });
         void render();
-    } }, 'Limpar filtros'));
+    } }, 'Limpar filtros'),
+    el('button', { type: 'button', onclick: () => downloadData('followw-auditoria', exportRows(), 'csv') }, 'Exportar CSV'),
+    el('button', { type: 'button', onclick: () => downloadData('followw-auditoria', exportRows(), 'json') }, 'Exportar JSON'));
     const pages = Math.max(1, Math.ceil(result.total / result.page_size));
     return [el('h1', {}, 'Auditoria'), el('p', { class: 'muted' }, 'Ações administrativas e justificativas. Registro somente de leitura; filtros por data usam UTC.'),
         el('div', { class: 'panel' }, filters,

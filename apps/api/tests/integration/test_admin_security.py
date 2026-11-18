@@ -558,3 +558,138 @@ def test_alerta_recusa_textos_vazios_longos_e_cadencia_invalida(owner):
         ).status_code
         == 422
     )
+
+
+def test_leitura_administrativa_continua_ativa_apos_15_min_mas_escrita_sensivel_exige_step_up_mfa(
+    owner, database
+):
+    from datetime import UTC, datetime, timedelta
+
+    from api.modules.admin.models import AdminSession
+
+    client = owner["client"]
+    antigo = datetime.now(UTC) - timedelta(minutes=20)
+    with database.begin() as session:
+        ativa = session.scalar(select(AdminSession))
+        ativa.created_at = antigo
+        ativa.updated_at = antigo
+
+    for path in (
+        "/admin/api/accounts",
+        "/admin/api/limits",
+        "/admin/api/alert",
+        "/admin/api/calendar",
+        "/admin/api/database",
+    ):
+        assert client.get(path, headers=HEADERS).status_code == 200, path
+
+    recusada = client.put(
+        "/admin/api/flags/forum", json={"enabled": False}, headers=HEADERS
+    )
+    assert recusada.status_code == 403
+    assert recusada.headers.get("X-Admin-Step-Up") == "mfa"
+    assert client.get("/admin/database/").status_code == 403
+
+    revalidado = client.post(
+        "/admin/api/self/mfa-check",
+        json={"code": owner["recovery"][1]},
+        headers=HEADERS,
+    )
+    assert revalidado.status_code == 200, revalidado.text
+    assert (
+        client.put(
+            "/admin/api/flags/forum", json={"enabled": True}, headers=HEADERS
+        ).status_code
+        == 200
+    )
+
+
+def test_sessoes_proprias_listagem_revogacao_individual_e_troca_de_senha(owner):
+    client = owner["client"]
+    primeira = dict(client.cookies)
+
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/admin/api/login",
+            json={"username": "owner-teste", "password": PASSWORD},
+            headers=HEADERS,
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/admin/api/mfa/verify",
+            json={"code": owner["recovery"][2]},
+            headers=HEADERS,
+        ).status_code
+        == 200
+    )
+    segunda = dict(client.cookies)
+
+    sessoes = client.get("/admin/api/self/sessions", headers=HEADERS)
+    assert sessoes.status_code == 200
+    itens = sessoes.json()
+    assert len(itens) == 2
+    assert sum(1 for item in itens if item["current"]) == 1
+    assert "token" not in str(itens).lower() and "ip" not in str(itens).lower()
+
+    outra_id = next(item["id"] for item in itens if not item["current"])
+    assert (
+        client.delete(
+            f"/admin/api/self/sessions/{outra_id}", headers=HEADERS
+        ).status_code
+        == 204
+    )
+
+    client.cookies.clear()
+    client.cookies.update(primeira)
+    assert client.get("/admin/api/overview", headers=HEADERS).status_code == 401
+
+    client.cookies.clear()
+    client.cookies.update(segunda)
+    assert client.get("/admin/api/overview", headers=HEADERS).status_code == 200
+
+    nova_senha = "nova-senha-forte-sintetica-admin"
+    troca = client.post(
+        "/admin/api/self/password",
+        json={
+            "password": PASSWORD,
+            "new_password": nova_senha,
+            "code": owner["recovery"][3],
+        },
+        headers=HEADERS,
+    )
+    assert troca.status_code == 200, troca.text
+    assert client.get("/admin/api/overview", headers=HEADERS).status_code == 200
+
+    client.cookies.clear()
+    assert (
+        client.post(
+            "/admin/api/login",
+            json={"username": "owner-teste", "password": PASSWORD},
+            headers=HEADERS,
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/admin/api/login",
+            json={"username": "owner-teste", "password": nova_senha},
+            headers=HEADERS,
+        ).status_code
+        == 200
+    )
+
+
+def test_ativos_do_painel_importam_base_e_preservam_rotas_no_hash(client):
+    js = client.get("/admin/assets/dashboard.js").text
+    core = client.get("/admin/assets/dashboard-core.js").text
+    assert "export const base =" in core
+    assert "base," in js or "base }" in js
+    assert (
+        'el("a", { href:`${base}/materials/${id}/file`, download:"" }, el("button"'
+        not in js
+    )
+    for aba in ("sync", "logs", "demo"):
+        assert f"{aba}:" in js or f"'{aba}':" in js or f'"{aba}":' in js

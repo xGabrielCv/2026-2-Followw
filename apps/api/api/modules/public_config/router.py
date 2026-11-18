@@ -27,6 +27,7 @@ from api.metrics import observe_client_event
 from api.rate_limit import publish_quota
 from api.resilience import SingleFlight
 from api.semester_alert import SemesterAlertConfig, read_alert
+from api.system_banner import PublicBanner, public_banner
 
 router = APIRouter()
 _VERSION_FLIGHT = SingleFlight()
@@ -70,6 +71,7 @@ class AppConfig(BaseModel):
     flags: dict[str, bool]
     calendar: dict[str, SemesterCalendar]
     alert: SemesterAlertConfig
+    banner: PublicBanner | None = None
 
 
 @router.get(
@@ -94,6 +96,7 @@ async def get_config(db: DatabaseDep, response: Response) -> AppConfig:
                 for key, value in (await read_custom_calendar(session)).items()
             },
             alert=await read_alert(session),
+            banner=await public_banner(session),
         )
 
     response.headers["Cache-Control"] = "no-cache"

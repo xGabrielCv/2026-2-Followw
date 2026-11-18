@@ -1,4 +1,4 @@
-import { call, el, when } from './dashboard-core.js';
+import { call, downloadData, el, when } from './dashboard-core.js';
 
 const state = { level: '', event: '', q: '', since: '', from: '', until: '', status_code: '', order: 'newest', page: 1 };
 const LEVELS = [['', 'Todos os níveis'], ['INFO', 'Informação'], ['WARNING', 'Aviso'], ['ERROR', 'Erro'], ['CRITICAL', 'Crítico']];
@@ -19,10 +19,15 @@ export async function logsView(render) {
     query.set('order', state.order);
     const [page, summary] = await Promise.all([call(`/logs?${query}`), call('/logs/summary')]);
     const pages = Math.max(1, Math.ceil(page.total / page.page_size));
-    const select = (name, options) => el('select', { 'aria-label': name, onchange: (event) => { state[name] = event.target.value; state.page = 1; render(); } },
-        options.map(([value, label]) => el('option', { value, selected: state[name] === value }, label)));
+    const select = (name, labelText, options) => el('label', {}, labelText, el('select', { 'aria-label': name, onchange: (event) => { state[name] = event.target.value; state.page = 1; render(); } },
+        options.map(([value, label]) => el('option', { value, selected: state[name] === value }, label))));
+    const exportRows = () => page.items.map((item) => ({ at: item.at, level: item.level, event: item.event, fields: fields(item) }));
     return [
-        el('div', { class: 'toolbar' }, el('h2', { class: 'grow' }, 'Registros técnicos'), el('button', { onclick: render }, 'Atualizar')),
+        el('div', { class: 'toolbar' },
+            el('h2', { class: 'grow' }, 'Registros técnicos'),
+            el('button', { type: 'button', onclick: () => downloadData('followw-eventos-tecnicos', exportRows(), 'csv') }, 'Exportar CSV'),
+            el('button', { type: 'button', onclick: () => downloadData('followw-eventos-tecnicos', exportRows(), 'json') }, 'Exportar JSON'),
+            el('button', { onclick: render }, 'Atualizar')),
         el('p', { class: 'muted' }, `Avisos, erros, sincronização e respostas 5xx, guardados por ${summary.retention_days} dias. Não há texto de usuário, matrícula, cookie nem corpo de pedido. O painel lê só do banco; não abre arquivos do servidor.`),
         el('div', { class: 'grid g4' }, ['INFO', 'WARNING', 'ERROR', 'CRITICAL'].map((level) =>
             el('div', { class: `panel tile${level === 'ERROR' || level === 'CRITICAL' ? ' warn' : ''}` }, el('div', { class: 'value' }, fmt(summary.last_24_hours[level])), el('div', { class: 'label' }, `${LEVELS.find(([value]) => value === level)[1]} (24 h)`)))),
@@ -36,20 +41,20 @@ export async function logsView(render) {
             state.page = 1;
             render();
         } },
-            select('level', LEVELS), select('since', WINDOWS),
-            select('order', [['newest', 'Mais recentes'], ['oldest', 'Mais antigos']]),
+            select('level', 'Nível', LEVELS), select('since', 'Período', WINDOWS),
+            select('order', 'Ordem', [['newest', 'Mais recentes'], ['oldest', 'Mais antigos']]),
             el('label', {}, 'Início', el('input', { name: 'from', type: 'datetime-local', value: state.from })),
             el('label', {}, 'Fim', el('input', { name: 'until', type: 'datetime-local', value: state.until })),
-            el('input', { name: 'status_code', type: 'number', min: 100, max: 599, placeholder: 'Status HTTP', 'aria-label': 'Status HTTP', value: state.status_code }),
-            el('input', { name: 'event', placeholder: 'Evento (ex.: sync.)', pattern: '[a-z0-9_.]{1,80}', value: state.event, 'aria-label': 'Evento' }),
-            el('input', { name: 'q', placeholder: 'Buscar nos campos', maxlength: 64, value: state.q, 'aria-label': 'Buscar' }),
-            el('button', { type: 'submit' }, 'Filtrar')),
+            el('label', {}, 'Status HTTP', el('input', { name: 'status_code', type: 'number', min: 100, max: 599, placeholder: 'Status HTTP', 'aria-label': 'Status HTTP', value: state.status_code })),
+            el('label', {}, 'Evento', el('input', { name: 'event', placeholder: 'Evento (ex.: sync.)', pattern: '[a-z0-9_.]{1,80}', value: state.event, 'aria-label': 'Evento' })),
+            el('label', {}, 'Buscar', el('input', { name: 'q', placeholder: 'Buscar nos campos', maxlength: 64, value: state.q, 'aria-label': 'Buscar' })),
+            el('button', { type: 'submit', class: 'primary' }, 'Filtrar')),
         el('div', { class: 'panel' }, page.items.length
-            ? el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Nível', 'Evento', 'Campos'].map((label) => el('th', {}, label)))),
-                el('tbody', {}, page.items.map((item) => el('tr', {}, el('td', {}, when(item.at)), el('td', {}, item.level), el('td', {}, item.event), el('td', { class: 'muted' }, fields(item))))))
-            : el('p', { class: 'muted' }, 'Nenhum registro com este filtro.')),
-        el('div', { class: 'toolbar' }, el('button', { disabled: state.page <= 1, onclick: () => { state.page -= 1; render(); } }, 'Anterior'),
-            el('span', { class: 'muted' }, `Página ${page.page} de ${pages} · ${fmt(page.total)} registro(s)`),
-            el('button', { disabled: state.page >= pages, onclick: () => { state.page += 1; render(); } }, 'Próxima')),
+            ? el('div', { class: 'table-scroll' }, el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Nível', 'Evento', 'Campos'].map((label) => el('th', {}, label)))),
+                el('tbody', {}, page.items.map((item) => el('tr', {}, el('td', {}, when(item.at)), el('td', {}, item.level), el('td', {}, item.event), el('td', { class: 'muted' }, fields(item)))))))
+            : el('p', { class: 'muted' }, 'Nenhum registro com este filtro.'),
+            el('div', { class: 'pager' }, el('button', { disabled: state.page <= 1, onclick: () => { state.page -= 1; render(); } }, 'Anterior'),
+                el('span', { class: 'muted' }, `Página ${page.page} de ${pages} · ${fmt(page.total)} registro(s)`),
+                el('button', { disabled: state.page >= pages, onclick: () => { state.page += 1; render(); } }, 'Próxima'))),
     ].filter(Boolean);
 }

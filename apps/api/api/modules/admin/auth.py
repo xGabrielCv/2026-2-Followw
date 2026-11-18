@@ -83,7 +83,11 @@ async def require_admin(request: Request, db: DatabaseDep) -> Principal:
         ):
             return None
         return Principal(
-            account.id, account.username, account.role, active.id, active.created_at
+            account.id,
+            account.username,
+            account.role,
+            active.id,
+            active.created_at,
         )
 
     principal = await db.read(read)
@@ -99,21 +103,35 @@ async def require_admin(request: Request, db: DatabaseDep) -> Principal:
 
 def require_permission(permission: Permission):
     async def check(
+        request: Request,
         principal: Annotated[Principal, Depends(require_admin)],
     ) -> Principal:
-        return authorize(principal, permission)
+        return authorize(
+            principal,
+            permission,
+            require_fresh_mfa=request.method not in {"GET", "HEAD"},
+        )
 
     return Depends(check)
 
 
-def authorize(principal: Principal, permission: Permission) -> Principal:
+def authorize(
+    principal: Principal,
+    permission: Permission,
+    *,
+    require_fresh_mfa: bool = True,
+) -> Principal:
     if not allowed(principal.role, permission):
         raise HTTPException(403, "Seu cargo não permite esta operação.")
-    if permission in {"accounts", "owner", "maintenance", "configure"} and datetime.now(
-        UTC
-    ) - principal.authenticated_at > timedelta(minutes=15):
+    if (
+        require_fresh_mfa
+        and permission in {"accounts", "owner", "maintenance", "configure"}
+        and datetime.now(UTC) - principal.authenticated_at > timedelta(minutes=15)
+    ):
         raise HTTPException(
-            403, "Entre novamente com MFA para executar esta operação sensível."
+            403,
+            "Entre novamente com MFA para executar esta operação sensível.",
+            headers={"X-Admin-Step-Up": "mfa"},
         )
     return principal
 

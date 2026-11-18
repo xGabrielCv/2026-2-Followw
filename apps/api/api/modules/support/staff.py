@@ -147,7 +147,9 @@ class StaffService:
     ) -> StaffPage:
         async def read(session: AsyncSession) -> StaffPage:
             query = select(Ticket)
-            if status:
+            if status == "all":
+                pass
+            elif status:
                 query = query.where(Ticket.status == status)
             else:
                 query = query.where(Ticket.status != "closed")
@@ -161,11 +163,14 @@ class StaffService:
                 query = query.where(Ticket.assigned_to.is_(None))
             query = query.order_by(Ticket.updated_at.desc(), Ticket.number.desc())
             if q:
+                number_q = q.removeprefix("#").strip()
+                wanted_num = int(number_q) if number_q.isdigit() else None
                 # Título cifrado: a busca decifra só uma janela recente, em memória.
                 rows = [
                     row
                     for row in await session.scalars(query.limit(_SEARCH_WINDOW))
-                    if matches(q, row.title)
+                    if (wanted_num is not None and row.number == wanted_num)
+                    or matches(q, row.title)
                 ]
                 total = len(rows)
                 rows = rows[(page - 1) * page_size : page * page_size]
@@ -361,7 +366,7 @@ async def summary(_: Staff, service: StaffServiceDep) -> dict[str, int]:
 async def tickets(
     actor: Staff,
     service: StaffServiceDep,
-    status: Annotated[Status | None, Query()] = None,
+    status: Annotated[Status | Literal["all"] | None, Query()] = None,
     category: Annotated[Category | None, Query()] = None,
     priority: Annotated[Priority | None, Query()] = None,
     assignee: Annotated[Literal["me", "none"] | None, Query()] = None,

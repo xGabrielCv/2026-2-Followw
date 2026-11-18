@@ -40,6 +40,7 @@ class _LoopPool:
 
 
 _POOLS: WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopPool] = WeakKeyDictionary()
+_SATURATED = 0
 
 
 def _current_pool() -> _LoopPool:
@@ -59,6 +60,8 @@ class BorrowedAsyncTransport(httpx.AsyncBaseTransport):
             async with asyncio.timeout(settings.sigaa_queue_timeout_seconds):
                 await pool.semaphore.acquire()
         except TimeoutError:
+            global _SATURATED
+            _SATURATED += 1
             event("sigaa.outbound_pool_saturated")
             raise HTTPException(
                 status_code=503,
@@ -76,6 +79,25 @@ class BorrowedAsyncTransport(httpx.AsyncBaseTransport):
 
 def borrowed_transport() -> BorrowedAsyncTransport:
     return BorrowedAsyncTransport()
+
+
+def pool_status() -> dict[str, int]:
+    max_concurrent = settings.sigaa_max_concurrent_requests
+    active = 0
+    try:
+        loop = asyncio.get_running_loop()
+        pool = _POOLS.get(loop)
+        if pool is not None:
+            active = max(0, max_concurrent - pool.semaphore._value)
+    except RuntimeError:
+        pass
+    return {
+        "active_requests": active,
+        "max_concurrent": max_concurrent,
+        "max_connections": settings.sigaa_http_max_connections,
+        "keepalive_connections": settings.sigaa_http_keepalive_connections,
+        "saturated": _SATURATED,
+    }
 
 
 async def close() -> None:

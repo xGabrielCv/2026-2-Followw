@@ -125,6 +125,15 @@ _MEMORY: dict[tuple[str, str], _Window] = {}
 _MEMORY_MAX_KEYS = 200_000
 
 
+def status() -> dict[str, object]:
+    backend = "redis" if redis_client() is not None else settings.rate_limit_backend
+    return {
+        "backend": backend,
+        "memory_keys": len(_MEMORY),
+        "memory_max_keys": _MEMORY_MAX_KEYS,
+    }
+
+
 def _memory_limit(group: str, key: str, limit: int, window: int) -> _MemoryResult:
     now = time()
     cap = (

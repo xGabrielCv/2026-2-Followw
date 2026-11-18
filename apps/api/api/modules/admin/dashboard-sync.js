@@ -52,9 +52,9 @@ function settingsForm(settings, render) {
     el('h3', {}, 'Configuração'),
     el('p', { class: 'muted' }, 'Horários no fuso America/Sao_Paulo. Os limites seguros são fixos no servidor; este painel só escolhe dentro deles. Só as fontes conhecidas podem ser sincronizadas.'),
     el('div', { class: 'grid g2' },
-        el('label', {}, el('input', { type: 'checkbox', name: 'catalog_enabled', checked: settings.catalog_enabled }), ' Catálogo ligado'),
+        el('label', { class: 'inline-check' }, el('input', { type: 'checkbox', name: 'catalog_enabled', checked: settings.catalog_enabled }), ' Catálogo ligado'),
         field('catalog_times', 'Horários do catálogo (HH:MM separados por vírgula, 1 a 6, 1 h de distância)', { value: settings.catalog_times.join(', '), pattern: '^\\s*([01]\\d|2[0-3]):[0-5]\\d(\\s*,\\s*([01]\\d|2[0-3]):[0-5]\\d)*\\s*$' }),
-        el('label', {}, el('input', { type: 'checkbox', name: 'restaurant_enabled', checked: settings.restaurant_enabled }), ' Verificação diária do RU ligada'),
+        el('label', { class: 'inline-check' }, el('input', { type: 'checkbox', name: 'restaurant_enabled', checked: settings.restaurant_enabled }), ' Verificação diária do RU ligada'),
         field('restaurant_time', 'Horário do RU (HH:MM)', { value: settings.restaurant_time, pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
         NUMBERS.map(([key, label, min, max]) => el('label', {}, label,
             el('input', { name: key, type: 'number', min, max, step: 1, required: true, value: settings[key] }),
@@ -71,13 +71,13 @@ function historyTable(page, state, render) {
             select('source', [['', 'Todas as fontes'], ['catalog', 'Catálogo'], ['restaurant', 'Cardápio do RU']]),
             select('status', [['', 'Todos os resultados'], ['running', 'Executando'], ['success', 'Atualizado'], ['unchanged', 'Sem mudanças'], ['failed', 'Falhou'], ['skipped', 'Ignorado'], ['cancelled', 'Cancelado']])),
         page.items.length
-            ? el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Fonte', 'Origem', 'Resultado', 'Registros', 'Detalhe'].map((label) => el('th', {}, label)))),
+            ? el('div', { class: 'table-scroll' }, el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Fonte', 'Origem', 'Resultado', 'Registros', 'Detalhe'].map((label) => el('th', {}, label)))),
                 el('tbody', {}, page.items.map((run) => el('tr', {},
                     el('td', {}, date(run.started_at)), el('td', {}, run.source === 'catalog' ? `Catálogo · ${RESOURCES.find(([key]) => key === run.resource)?.[1] || 'completo'}` : 'Cardápio do RU'),
                     el('td', {}, TRIGGER[run.trigger] || run.trigger), el('td', {}, STATUS[run.status] || run.status, run.changed ? ' (houve mudança)' : ''),
-                    el('td', { class: 'num' }, fmt(run.records)), el('td', {}, run.error || '', Object.keys(run.metrics || {}).length ? el('details', {}, el('summary', {}, 'Medições da carga'), el('p', { class: 'muted' }, `Antes: ${fmt(run.metrics.before)} · Depois: ${fmt(run.metrics.after)} · Inseridos: ${fmt(run.metrics.inserted)} · Alterados: ${fmt(run.metrics.changed)} · Inalterados: ${fmt(run.metrics.unchanged)} · Vínculos removidos: ${fmt(run.metrics.removed)} · Carga: ${fmt(run.metrics.duration_ms)} ms`), el('p', { class: 'muted' }, `Banco: ${fmt(run.metrics.database_bytes_before)} → ${fmt(run.metrics.database_bytes_after)} bytes · Índices: ${fmt(run.metrics.index_bytes_before)} → ${fmt(run.metrics.index_bytes_after)} bytes`)) : null)))))
+                    el('td', { class: 'num' }, fmt(run.records)), el('td', {}, run.error || '', Object.keys(run.metrics || {}).length ? el('details', {}, el('summary', {}, 'Medições da carga'), el('p', { class: 'muted' }, `Antes: ${fmt(run.metrics.before)} · Depois: ${fmt(run.metrics.after)} · Inseridos: ${fmt(run.metrics.inserted)} · Alterados: ${fmt(run.metrics.changed)} · Inalterados: ${fmt(run.metrics.unchanged)} · Vínculos removidos: ${fmt(run.metrics.removed)} · Carga: ${fmt(run.metrics.duration_ms)} ms`), el('p', { class: 'muted' }, `Banco: ${fmt(run.metrics.database_bytes_before)} → ${fmt(run.metrics.database_bytes_after)} bytes · Índices: ${fmt(run.metrics.index_bytes_before)} → ${fmt(run.metrics.index_bytes_after)} bytes`)) : null))))))
             : el('p', { class: 'muted' }, 'Nenhuma execução registrada com este filtro.'),
-        el('div', { class: 'toolbar' }, el('button', { disabled: state.page <= 1, onclick: () => { state.page -= 1; render(); } }, 'Anterior'),
+        el('div', { class: 'pager' }, el('button', { disabled: state.page <= 1, onclick: () => { state.page -= 1; render(); } }, 'Anterior'),
             el('span', { class: 'muted' }, `Página ${page.page} de ${pages}`),
             el('button', { disabled: state.page >= pages, onclick: () => { state.page += 1; render(); } }, 'Próxima')));
 }
@@ -144,13 +144,13 @@ export async function syncView(render) {
         el('div', { class: 'toolbar' }, el('h2', { class: 'grow' }, 'Sincronização e catálogos'), el('button', { onclick: render }, 'Atualizar')),
         !overview.scheduler_enabled ? el('p', { class: 'muted' }, 'O agendador está desligado na configuração desta execução (por exemplo, -Offline ou -SkipDataUpdate). Os horários abaixo continuam configurados, mas não serão disparados automaticamente. A execução manual continua sujeita ao acesso de rede permitido.') : null,
         el('p', { class: 'muted' }, 'O catálogo e o cardápio são públicos: nada aqui envolve dados de alunos. Se uma fonte falhar, o último dado válido continua sendo servido e uma nova tentativa acontece com espera crescente.'),
-        el('div', { class: 'panel' }, el('table', {}, el('thead', {}, el('tr', {}, ['Fonte', 'Situação', 'Última consulta', 'Último sucesso', 'Última mudança real', 'Próxima execução', 'Registros', ''].map((label) => el('th', {}, label)))),
+        el('div', { class: 'panel table-scroll' }, el('table', {}, el('thead', {}, el('tr', {}, ['Fonte', 'Situação', 'Última consulta', 'Último sucesso', 'Última mudança real', 'Próxima execução', 'Registros', ''].map((label) => el('th', {}, label)))),
             el('tbody', {}, overview.sources.map((source) => sourceRow(source, render))))),
         calendarPanel(calendar, render),
         el('div', { class: 'panel' }, el('h3', {}, 'Atividade da comunidade'),
             el('p', { class: 'muted' }, 'Só agregados: a última atividade aparece em hora cheia e não há como ligar um item a quem o publicou.'),
-            el('table', {}, el('thead', {}, el('tr', {}, ['Recurso', 'Última atividade (hora)', 'Nas últimas 24 h', 'Total'].map((label) => el('th', {}, label)))),
-                el('tbody', {}, resources.map((item) => el('tr', {}, el('td', {}, item.label), el('td', {}, item.last_activity_hour ? new Date(item.last_activity_hour).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'), el('td', { class: 'num' }, fmt(item.last_24_hours)), el('td', { class: 'num' }, fmt(item.total))))))),
+            el('div', { class: 'table-scroll' }, el('table', {}, el('thead', {}, el('tr', {}, ['Recurso', 'Última atividade (hora)', 'Nas últimas 24 h', 'Total'].map((label) => el('th', {}, label)))),
+                el('tbody', {}, resources.map((item) => el('tr', {}, el('td', {}, item.label), el('td', {}, item.last_activity_hour ? new Date(item.last_activity_hour).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'), el('td', { class: 'num' }, fmt(item.last_24_hours)), el('td', { class: 'num' }, fmt(item.total)))))))),
         hasPermission('configure') ? settingsForm(overview.settings, render) : null,
         historyTable(history, historyState, render),
     ].filter(Boolean);

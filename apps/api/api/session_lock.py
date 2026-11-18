@@ -50,6 +50,29 @@ async def close() -> None:
         _engine = None
 
 
+def pool_status() -> dict[str, object]:
+    info: dict[str, object] = {
+        "backend": settings.session_lock_backend,
+        "size": settings.session_lock_pool,
+        "max_overflow": settings.session_lock_max_overflow,
+        "in_use": 0,
+        "idle": 0,
+        "overflow": 0,
+    }
+    if _engine is not None:
+        pool = _engine.pool
+        try:
+            info.update(
+                size=pool.size(),
+                in_use=pool.checkedout(),
+                idle=pool.checkedin(),
+                overflow=pool.overflow(),
+            )
+        except AttributeError:
+            pass
+    return info
+
+
 def lock_key(name: str) -> int:
     """Inteiro de 64 bits (o tipo do advisory lock), sem relação reversível com o nome."""
     digest = hmac.digest(derive_key("followw:session-lock"), name.encode(), "sha256")

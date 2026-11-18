@@ -27,7 +27,15 @@
 
 <div id="app">
   <nav aria-label="Seções">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">F</span><h1>Followw</h1><span class="muted">Central de administração</span><span class="muted" id="who"></span></div>
+    <div class="brand">
+      <div class="brand-top">
+        <span class="brand-mark" aria-hidden="true">F</span>
+        <button id="nav-toggle" class="nav-toggle" type="button" aria-expanded="true">Recolher seções</button>
+      </div>
+      <h1>Followw</h1>
+      <span class="muted">Central de administração</span>
+      <span class="muted" id="who"></span>
+    </div>
     <span class="nav-label">Acompanhamento</span>
     <button data-view="overview" data-permission="operations">Visão geral</button>
     <button data-view="usage" data-permission="operations">Uso e estatísticas</button>

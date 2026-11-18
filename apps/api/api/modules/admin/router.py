@@ -333,6 +333,14 @@ async def set_text(
     return await service.set_text(key, body.value)
 
 
+@api.get(
+    "/maintenance/preview",
+    dependencies=[auth.require_permission("operations")],
+)
+async def maintenance_preview(service: AdminServiceDep) -> dict[str, int]:
+    return await service.maintenance_preview()
+
+
 @api.post("/maintenance", dependencies=[auth.require_permission("maintenance")])
 async def maintenance(service: AdminServiceDep) -> dict[str, int]:
     return await service.maintenance()
@@ -361,6 +369,10 @@ class AccountChange(BaseModel):
 
 class StrongFactor(Factor):
     password: Annotated[str, StringConstraints(min_length=12, max_length=256)]
+
+
+class PasswordChange(StrongFactor):
+    new_password: Annotated[str, StringConstraints(min_length=12, max_length=256)]
 
 
 @api.get("/accounts", dependencies=[auth.require_permission("accounts")])
@@ -432,6 +444,44 @@ async def transfer_owner(
     request: Request, account_id: UUID, body: StrongFactor, accounts: AdminAccountsDep
 ) -> None:
     await accounts.transfer(request.state.admin, account_id, body.password, body.code)
+
+
+@api.post("/self/mfa-check")
+async def reverify_own_mfa(
+    request: Request, response: Response, body: Factor, accounts: AdminAccountsDep
+) -> dict:
+    return await accounts.reverify_mfa(request.state.admin, response, body.code)
+
+
+@api.get("/self/sessions")
+async def own_sessions(request: Request, accounts: AdminAccountsDep) -> list[dict]:
+    return await accounts.list_own_sessions(request.state.admin)
+
+
+@api.delete("/self/sessions/{session_id}", status_code=204)
+async def revoke_own_session(
+    request: Request,
+    response: Response,
+    session_id: UUID,
+    accounts: AdminAccountsDep,
+) -> None:
+    await accounts.revoke_own_session(request.state.admin, session_id, response)
+
+
+@api.post("/self/password")
+async def change_own_password(
+    request: Request,
+    response: Response,
+    body: PasswordChange,
+    accounts: AdminAccountsDep,
+) -> dict:
+    return await accounts.change_own_password(
+        request.state.admin,
+        body.password,
+        body.new_password,
+        body.code,
+        response,
+    )
 
 
 @api.post("/self/recovery-codes")

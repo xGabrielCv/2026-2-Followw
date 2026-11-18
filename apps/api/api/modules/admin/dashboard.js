@@ -1,5 +1,5 @@
 import { alertPanel } from './dashboard-alert.js';
-import { $, call, closeDrawer, confirmation, currentUser, el, hasPermission, notice, openDrawer, setReadSignal, when } from './dashboard-core.js';
+import { $, base, call, closeDrawer, confirmation, downloadData, el, hasPermission, notice, openDrawer, promptStepUpMfa, setReadSignal, when } from './dashboard-core.js';
 import { initializeAuth } from './dashboard-auth.js';
 import { accountsView, securityView } from './dashboard-accounts.js';
 import { supportView } from './dashboard-support.js';
@@ -25,6 +25,7 @@ const svg = (tag, attrs = {}) => {
 const fmt = (n) => new Intl.NumberFormat("pt-BR").format(n);
 const bytes = (n) => { const u = ["B","KB","MB","GB","TB"]; let i = 0; while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; } return `${n.toFixed(i ? 1 : 0)} ${u[i]}`; };
 const duration = (s) => { const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}min` : `${m}min`; };
+const tableWrap = (table) => el("div", { class:"table-scroll" }, table);
 
 let rendering = 0;
 let readController;
@@ -37,6 +38,15 @@ $('#theme').addEventListener('click', () => {
     document.documentElement.dataset.theme = dark ? 'light' : 'dark';
     try { localStorage.setItem('followw:theme', JSON.stringify(dark ? 'light' : 'dark')); } catch {}
 });
+const navToggle = $('#nav-toggle');
+if (navToggle) {
+    navToggle.addEventListener('click', () => {
+        const nav = document.querySelector('nav');
+        const collapsed = nav.classList.toggle('collapsed');
+        navToggle.setAttribute('aria-expanded', String(!collapsed));
+        navToggle.textContent = collapsed ? 'Mostrar seções' : 'Recolher seções';
+    });
+}
 for (const button of document.querySelectorAll('nav [data-view]')) {
     button.addEventListener('click', () => {
         state.view = button.dataset.view;
@@ -132,8 +142,9 @@ function tooltip(event, text) {
   const tip = $("#tooltip");
   tip.textContent = text;
   tip.style.display = "block";
-  tip.style.left = `${event.clientX + 12}px`;
-  tip.style.top = `${event.clientY - 28}px`;
+  const maxLeft = Math.max(8, window.innerWidth - tip.offsetWidth - 8);
+  tip.style.left = `${Math.max(8, Math.min(event.clientX + 12, maxLeft))}px`;
+  tip.style.top = `${Math.max(8, event.clientY - 28)}px`;
 }
 function hideTooltip() { $("#tooltip").style.display = "none"; }
 
@@ -169,8 +180,11 @@ async function usage() {
     metrics.map((m) => el("option", { value:m, selected:m === state.metric }, m)));
   const values = s.series[state.metric];
   const total = values.reduce((a, b) => a + b, 0);
+  const exportRows = () => s.days.map((day, idx) => Object.fromEntries([["data", day], ...metrics.map((m) => [m, s.series[m][idx]])]));
   return [
-    header("Uso", periods, metric),
+    header("Uso", periods, metric,
+      el("button", { type:"button", onclick:() => downloadData(`followw-uso-${state.days}d`, exportRows(), "csv") }, "Exportar CSV"),
+      el("button", { type:"button", onclick:() => downloadData(`followw-uso-${state.days}d`, exportRows(), "json") }, "Exportar JSON")),
     el("div", { class:"grid g3" },
       tile(`Total no período: ${state.metric}`, fmt(total)),
       tile("Média por dia", (total / values.length).toLocaleString("pt-BR", { maximumFractionDigits:1 })),
@@ -180,8 +194,8 @@ async function usage() {
       el("div", { class:"panel" }, el("h3", {}, "Alunos únicos por semana"), barChart(s.weeks.map((w) => w.period), s.weeks.map((w) => w.users), { height:180 })),
       el("div", { class:"panel" }, el("h3", {}, "Alunos únicos por mês"), barChart(s.months.map((m) => m.period), s.months.map((m) => m.users), { height:180 }))),
     el("div", { class:"panel" }, el("h3", {}, "Totais no período"),
-      el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Métrica"), el("th", { class:"num" }, "Total"))),
-        el("tbody", {}, Object.entries(s.totals).map(([k, n]) => el("tr", {}, el("td", {}, k), el("td", { class:"num" }, fmt(n))))))),
+      tableWrap(el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Métrica"), el("th", { class:"num" }, "Total"))),
+        el("tbody", {}, Object.entries(s.totals).map(([k, n]) => el("tr", {}, el("td", {}, k), el("td", { class:"num" }, fmt(n)))))))),
   ];
 }
 
@@ -219,13 +233,13 @@ async function data() {
     header("Dados", kinds),
     el("form", { class:"toolbar", onsubmit:apply }, q, subject, days, status, el("button", { class:"primary", type:"submit" }, "Filtrar"),
       el("span", { class:"muted grow" }, `${fmt(page.total)} itens`)),
-    el("div", { class:"panel" }, page.items.length ? el("table", {},
+    el("div", { class:"panel" }, page.items.length ? tableWrap(el("table", {},
       el("thead", {}, el("tr", {}, el("th", {}, "Conteúdo"), el("th", {}, "Marcadores"), el("th", {}, "Criado em"), el("th", {}))),
       el("tbody", {}, page.items.map((row) => el("tr", { class:"click", tabindex:0, onkeydown:(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); showDetail(d.kind, row.id); } }, onclick:() => showDetail(d.kind, row.id) },
         el("td", {}, el("strong", {}, row.title), row.detail ? el("div", { class:"muted clip" }, row.detail) : null),
         el("td", {}, row.tags.map((t) => el("span", { class:"badge" }, t))),
         el("td", {}, when(row.created_at)),
-        el("td", {}, el("button", { class:"ghost", onclick:(e) => { e.stopPropagation(); remove(d.kind, row.id); } }, "Apagar"))))))
+        el("td", {}, el("button", { class:"ghost", onclick:(e) => { e.stopPropagation(); remove(d.kind, row.id); } }, "Apagar")))))))
       : el("p", { class:"muted" }, "Nenhum item com estes filtros."),
       el("div", { class:"pager" },
         el("button", { disabled:d.page <= 1, onclick:() => { d.page--; render(); } }, "Anterior"),
@@ -248,7 +262,7 @@ async function showDetail(kind, id) {
     el("p", { class:"muted" }, "Campos decifrados. Chaves anônimas de autoria ficam ocultas."),
     el("dl", {}, Object.entries(item).flatMap(([key, value]) => [el("dt", {}, key), el("dd", {}, value === null ? "—" : typeof value === "object" ? JSON.stringify(value) : String(value))])),
     el("div", { class:"toolbar" },
-      kind === "material" ? el("a", { href:`${base}/materials/${id}/file`, download:"" }, el("button", {}, "Baixar arquivo")) : null,
+      kind === "material" ? el("a", { class:"btn-link", href:`${base}/materials/${id}/file`, download:"" }, "Baixar arquivo") : null,
       el("button", { class:"danger", onclick:() => remove(kind, id) }, "Apagar")));
 }
 
@@ -274,16 +288,19 @@ async function database() {
   const info = await call('/database');
   return [el('div', {class:'panel'},
     el('h2', {}, 'Banco de dados · CloudBeaver Community'),
-    el('p', {}, 'Acesso exclusivo do Owner, com MFA recente e uma senha adicional do CloudBeaver. No primeiro acesso, cadastre essa senha no assistente do gerenciador.'),
+    el('p', {}, 'Acesso exclusivo do Owner, com MFA recente (15 minutos) e uma senha adicional do CloudBeaver. No primeiro acesso, cadastre essa senha no assistente do gerenciador.'),
     el('p', {class:'muted'}, 'O gerenciador usa uma conexão separada e não recebe cookies acadêmicos. Alterações SQL afetam dados reais; use transações e confira o comando antes de confirmar. Dados cifrados aparecem cifrados, sem expor as chaves do Followw.'),
-    info.enabled ? el('a', {href:info.url,target:'_blank',rel:'noopener noreferrer'}, 'Abrir CloudBeaver com autenticação adicional') : el('p', {class:'muted'}, 'Gerenciador não habilitado nesta instância. Execute a instalação local antes de ativá-lo.'))];
+    el('div', {class:'toolbar'},
+      el('button', {type:'button', onclick: () => void promptStepUpMfa()}, 'Renovar MFA (15 min)'),
+      info.enabled ? el('a', {class:'btn-link primary', href:info.url, target:'_blank', rel:'noopener noreferrer'}, 'Abrir CloudBeaver com autenticação adicional') : el('p', {class:'muted'}, 'Gerenciador não habilitado nesta instância. Execute a instalação local antes de ativá-lo.')))];
 }
 
 async function system() {
-  const [o, health, alertInfo] = await Promise.all([
+  const [o, health, alertInfo, maintPreview] = await Promise.all([
     call("/overview"),
     call("/health"),
     hasPermission("configure") ? call("/alert").catch(() => null) : Promise.resolve(null),
+    call("/maintenance/preview").catch(() => null),
   ]);
   const toggle = (key, enabled) => el("input", { type:"checkbox", checked:enabled, "aria-label":key, onchange:async (e) => {
     try { await call(`/flags/${key}`, { method:"PUT", body:JSON.stringify({ enabled:e.target.checked }) }); } catch (error) { notice(error.message, true); e.target.checked = !e.target.checked; }
@@ -312,8 +329,8 @@ async function system() {
       el('p', { class: 'muted' }, Object.keys(health.metrics.origins).length ? Object.entries(health.metrics.origins).map(([name, value]) => `${name}: última tentativa ${value.state === 'failed' ? 'com falha' : 'conectada'} em ${when(value.last_at)}`).join(' · ') : 'Integrações institucionais: nenhuma tentativa observada nesta execução. Não fazemos consultas acadêmicas para medir disponibilidade.'),
       el('p', { class: 'muted' }, `Cardápio do RU: circuito ${{ closed: 'fechado (origem saudável)', open: 'aberto (usando cache)', half_open: 'testando a origem' }[health.origins.ru.circuit]} · ${fmt(health.origins.ru.origin_calls)} consultas à UnB · ${fmt(health.origins.ru.shared_requests)} pedidos atendidos sem nova consulta · ${fmt(health.origins.ru.stale_served)} respostas do cache vencido.`),
       el('p', { class: 'muted' }, health.pool.size === undefined ? 'Pool de conexões: sem dados neste ambiente.' : `Pool do banco: ${health.pool.in_use} em uso, ${health.pool.idle} ociosas, tamanho ${health.pool.size}, excedente ${health.pool.overflow}.`),
-      el('table', {}, el('thead', {}, el('tr', {}, ['Rota', 'Pedidos', 'Erros 5xx', 'p50', 'p95'].map((label) => el('th', {}, label)))),
-        el('tbody', {}, health.metrics.routes.slice(0, 15).map((row) => el('tr', {}, el('td', {}, `${row.method} ${row.route}`), el('td', {}, row.requests), el('td', {}, row.errors), el('td', {}, `${row.p50_ms} ms`), el('td', {}, `${row.p95_ms} ms`)))))) ,
+      tableWrap(el('table', {}, el('thead', {}, el('tr', {}, ['Rota', 'Pedidos', 'Erros 5xx', 'p50', 'p95'].map((label) => el('th', {}, label)))),
+        el('tbody', {}, health.metrics.routes.slice(0, 15).map((row) => el('tr', {}, el('td', {}, `${row.method} ${row.route}`), el('td', {}, row.requests), el('td', {}, row.errors), el('td', {}, `${row.p50_ms} ms`), el('td', {}, `${row.p95_ms} ms`))))))) ,
     el("div", { class:"grid g2" },
       el("div", { class:"panel" }, el("h3", {}, "Funções do app"), el("p", { class:"muted" }, "Desligue uma função durante um ataque de spam ou manutenção; o app mostra o aviso."),
         Object.entries(o.flags).map(([key, enabled]) => el("label", { class:"switch" }, el("span", {}, FLAG_LABELS[key] || key), toggle(key, enabled)))),
@@ -344,28 +361,30 @@ async function system() {
     alertPanel(alertInfo, render),
     el("div", { class:"grid g2" },
       el("div", { class:"panel" }, el("h3", {}, "Armazenamento"),
-        el("table", {}, el("tbody", {},
+        tableWrap(el("table", {}, el("tbody", {},
           el("tr", {}, el("td", {}, "Banco de dados (servidor)"), el("td", { class:"num" }, bytes(o.database_bytes))),
-          el("tr", {}, el("td", {}, "Arquivos de materiais, cifrados (servidor)"), el("td", { class:"num" }, bytes(o.materials_bytes))))),
+          el("tr", {}, el("td", {}, "Arquivos de materiais, cifrados (servidor)"), el("td", { class:"num" }, bytes(o.materials_bytes)))))),
         el("p", { class:"muted" }, "Armazenamento dos aparelhos não é coletado. Consulte Uso de dados no próprio navegador. Backups operacionais dependem da rotina configurada pelo responsável pela instalação."),
-
-        el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Tabela"), el("th", { class:"num" }, "Linhas"), el("th", { class:"num" }, "Tamanho"))),
-          el("tbody", {}, o.tables.map((t) => el("tr", {}, el("td", {}, t.table), el("td", { class:"num" }, fmt(t.rows)), el("td", { class:"num" }, bytes(t.bytes))))))),
-      el("div", { class:"panel" }, el("h3", {}, "Manutenção"),
-        el("p", { class:"muted" }, "Apaga materiais fora dos 6 últimos semestres, registros de uso com mais de 400 dias e denúncias resolvidas há mais de 180 dias."),
-        el("button", { class:"primary", hidden:!hasPermission('maintenance'), onclick:async (e) => {
-          if (!await confirmation('Executar manutenção?', 'Materiais vencidos e contadores antigos serão removidos conforme a política de retenção. A auditoria administrativa é preservada.')) return;
-          e.target.disabled = true;
-          try { const r = await call("/maintenance", { method:"POST" }); notice(Object.entries(r).map(([k, n]) => `${k}: ${n}`).join("\n")); render(); }
-          catch (error) { notice(error.message, true); e.target.disabled = false; }
-        } }, "Rodar limpeza agora"))),
+        tableWrap(el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Tabela"), el("th", { class:"num" }, "Linhas"), el("th", { class:"num" }, "Tamanho"))),
+          el("tbody", {}, o.tables.map((t) => el("tr", {}, el("td", {}, t.table), el("td", { class:"num" }, fmt(t.rows)), el("td", { class:"num" }, bytes(t.bytes)))))))),
+      el("div", { class:"panel" }, el("h3", {}, "Manutenção e limpeza de efêmeros"),
+        el("p", { class:"muted" }, "Apaga materiais fora dos 6 últimos semestres, registros de uso (>400 dias), denúncias resolvidas (>180 dias), sessões administrativas encerradas, janelas de cota vencidas e eventos técnicos fora da retenção. Nunca toca o catálogo nem a auditoria."),
+        maintPreview ? tableWrap(el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Categoria vencida"), el("th", { class:"num" }, "Prontos para remover"))),
+          el("tbody", {}, Object.entries(maintPreview).map(([k, n]) => el("tr", {}, el("td", {}, k), el("td", { class:"num" }, fmt(n))))))) : null,
+        el("div", { class:"toolbar" },
+          el("button", { class:"primary", hidden:!hasPermission('maintenance'), onclick:async (e) => {
+            if (!await confirmation('Executar manutenção?', 'Itens vencidos e encerrados serão removidos conforme a prévia acima. A auditoria administrativa é preservada.')) return;
+            e.target.disabled = true;
+            try { const r = await call("/maintenance", { method:"POST" }); notice(Object.entries(r).map(([k, n]) => `${k}: ${n}`).join("\n")); render(); }
+            catch (error) { notice(error.message, true); e.target.disabled = false; }
+          } }, "Rodar limpeza agora")))),
     statisticsPanel(render),
   ];
 }
 
 initializeAuth(() => {
     const requested = location.hash.slice(1);
-    const permissions = { database:'owner', overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', audit: 'audit', limits: 'configure', accounts: 'accounts', support: 'support', operations: 'operations' };
+    const permissions = { database:'owner', overview: 'operations', usage: 'operations', moderation: 'moderate', data: 'moderate', breakdown: 'operations', system: 'operations', audit: 'audit', logs: 'audit', limits: 'configure', accounts: 'accounts', support: 'support', operations: 'operations', sync: 'operations', demo: 'owner' };
     state.view = requested === 'security' || (requested in permissions && hasPermission(permissions[requested])) ? requested : hasPermission('operations') ? 'overview' : 'moderation';
     void render();
 });

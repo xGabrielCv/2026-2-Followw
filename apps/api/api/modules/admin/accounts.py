@@ -33,13 +33,15 @@ async def password_matches(password: str, digest: str) -> bool:
     )
 
 
-def account_view(account: AdminAccount) -> dict:
+def account_view(account: AdminAccount, *, active_sessions: int = 0) -> dict:
     return {
         "id": str(account.id),
         "username": account.username,
         "role": account.role,
         "enabled": account.enabled,
         "mfa": account.totp_confirmed,
+        "locked": _locked(account),
+        "active_sessions": active_sessions,
         "created_at": account.created_at,
     }
 
@@ -383,11 +385,35 @@ class AdminAccounts:
 
     async def list(self) -> list[dict]:
         async def read(session):
-            return [
-                account_view(account)
-                for account in await session.scalars(
+            now = datetime.now(UTC)
+            accounts = list(
+                await session.scalars(
                     select(AdminAccount).order_by(AdminAccount.created_at)
                 )
+            )
+            versions = {a.id: a.session_version for a in accounts}
+            session_rows = (
+                await session.execute(
+                    select(
+                        AdminSession.account_id,
+                        AdminSession.session_version,
+                        func.count(AdminSession.id),
+                    )
+                    .where(
+                        AdminSession.revoked.is_(False),
+                        AdminSession.expires_at > now,
+                    )
+                    .group_by(AdminSession.account_id, AdminSession.session_version)
+                )
+            ).all()
+            counts = {
+                acc_id: total
+                for acc_id, ver, total in session_rows
+                if versions.get(acc_id) == ver
+            }
+            return [
+                account_view(account, active_sessions=counts.get(account.id, 0))
+                for account in accounts
             ]
 
         return await self.db.read(read)
@@ -470,6 +496,141 @@ class AdminAccounts:
 
             await self.db.write(write)
         auth.logout(response)
+
+    async def reverify_mfa(
+        self, actor: Principal, response: Response, code: str
+    ) -> dict:
+        async def write(session):
+            account = await session.get(AdminAccount, actor.id, with_for_update=True)
+            active = await session.get(
+                AdminSession, actor.session_id, with_for_update=True
+            )
+            if not account or not active or active.revoked or _locked(account):
+                return {"error": 429 if account and _locked(account) else 401}
+            counter = (
+                totp_counter(account.totp_secret, code, account.last_totp_counter)
+                if account.totp_secret
+                else None
+            )
+            recovery = (
+                consume_recovery(account.id, code, account.recovery_hashes)
+                if counter is None
+                else None
+            )
+            if counter is None and recovery is None:
+                await _failed(session, account)
+                return {"error": 401}
+            if counter is not None:
+                account.last_totp_counter = counter
+            if recovery is not None:
+                account.recovery_hashes = recovery
+            account.failed_attempts = 0
+            account.locked_until = None
+            active.revoked = True
+            await issue_session(session, response, account)
+            await log(
+                session,
+                "admin.mfa_step_up",
+                target_type="admin_account",
+                target_id=account.id,
+                actor=actor,
+            )
+            return {"ok": True, "authenticated_at": datetime.now(UTC).isoformat()}
+
+        result = await self.db.write(write)
+        if "error" in result:
+            raise HTTPException(
+                result["error"],
+                "Código incorreto, já utilizado ou bloqueio temporário.",
+            )
+        return result
+
+    async def list_own_sessions(self, actor: Principal) -> list[dict]:
+        async def read(session):
+            account = await session.get(AdminAccount, actor.id)
+            if not account:
+                return []
+            rows = await session.scalars(
+                select(AdminSession)
+                .where(
+                    AdminSession.account_id == actor.id,
+                    AdminSession.revoked.is_(False),
+                    AdminSession.expires_at > datetime.now(UTC),
+                    AdminSession.session_version == account.session_version,
+                )
+                .order_by(AdminSession.created_at.desc())
+            )
+            return [
+                {
+                    "id": str(row.id),
+                    "created_at": row.created_at,
+                    "authenticated_at": row.created_at,
+                    "expires_at": row.expires_at,
+                    "current": row.id == actor.session_id,
+                }
+                for row in rows
+            ]
+
+        return await self.db.read(read)
+
+    async def revoke_own_session(
+        self, actor: Principal, session_id: UUID, response: Response
+    ) -> None:
+        async def write(session):
+            target = await session.get(AdminSession, session_id, with_for_update=True)
+            if not target or target.account_id != actor.id:
+                raise HTTPException(404, "Sessão não encontrada.")
+            target.revoked = True
+            await log(
+                session,
+                "admin.own_session_revoked",
+                target_type="admin_session",
+                target_id=target.id,
+                actor=actor,
+            )
+
+        await self.db.write(write)
+        if session_id == actor.session_id:
+            auth.logout(response)
+
+    async def change_own_password(
+        self,
+        actor: Principal,
+        password: str,
+        new_password: str,
+        code: str,
+        response: Response,
+    ) -> dict:
+        if password == new_password:
+            raise HTTPException(422, "Escolha uma senha diferente da atual.")
+        if not await self.strengthen(actor, password, code):
+            raise HTTPException(401, "Verificação reforçada recusada.")
+        digest = await to_thread.run_sync(
+            hash_password, new_password, limiter=_HASH_LIMIT
+        )
+
+        async def write(session):
+            account = await session.get(AdminAccount, actor.id, with_for_update=True)
+            if not account:
+                raise HTTPException(404, "Conta não encontrada.")
+            account.password_hash = digest
+            account.session_version += 1
+            await session.execute(
+                update(AdminSession)
+                .where(AdminSession.account_id == account.id)
+                .values(revoked=True)
+            )
+            await issue_session(session, response, account)
+            await log(
+                session,
+                "admin.password_changed",
+                target_type="admin_account",
+                target_id=account.id,
+                actor=actor,
+            )
+            return {"ok": True}
+
+        return await self.db.write(write)
 
     async def strengthen(self, actor: Principal, password: str, code: str) -> bool:
         current_hash = await self.db.read(
