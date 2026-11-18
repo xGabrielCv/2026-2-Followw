@@ -1208,6 +1208,7 @@ export interface components {
                 [key: string]: components["schemas"]["SemesterCalendar"];
             };
             alert: components["schemas"]["SemesterAlertConfig"];
+            banner?: components["schemas"]["PublicBanner"] | null;
         };
         /** AppLinks */
         AppLinks: {
@@ -2250,6 +2251,22 @@ export interface components {
             page: number;
             /** Page Size */
             page_size: number;
+        };
+        /** PublicBanner */
+        PublicBanner: {
+            /** Id */
+            id: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "info" | "warning";
+            /** Title */
+            title: string;
+            /** Message */
+            message: string;
+            /** Expires At */
+            expires_at?: string | null;
         };
         /**
          * PublicClassroom

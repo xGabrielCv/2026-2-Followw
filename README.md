@@ -57,11 +57,11 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 ### 🎓 Com a conta do SIGAA
 
 * 📅 **agenda do dia**, com a aula em andamento, a próxima e quanto falta para cada uma;
-* 🏫 turmas, notas e postagens, com **frequência** e aviso quando as faltas chegam perto dos 25%;
-* 🧪 **simulador de grades**: compare várias grades e deixe o app **sugerir combinações sem choque**, com dias e
-  turnos bloqueados, menos janelas, menos dias no campus e explicação de cada escolha;
-* 🎓 **planejar a formatura**: projeção dos semestres que faltam no fluxo obrigatório (pré e correquisitos,
-  carga por semestre, "e se eu reprovar em..."). É estimativa, não confirma integralização;
+* 🏫 turmas, notas, postagens e **plano de ensino** (ementa, cronograma, avaliações e bibliografia), com **frequência** e aviso quando as faltas chegam perto dos 25%;
+* 🧪 **simulador de grades** e **simulador de IRA e MP**: compare várias grades, deixe o app **sugerir combinações sem choque** (com dias e
+  turnos bloqueados, menos janelas, menos dias no campus e explicação de cada escolha) e projete o impacto das menções no semestre;
+* 🎓 **planejar a formatura** e **simular integralização**: projeção dos semestres que faltam no fluxo obrigatório (pré e correquisitos,
+  carga por semestre, "e se eu reprovar em...") e avanço percentual por categoria. São estimativas, não confirmam integralização oficial;
 * 🧠 **recomendações** de matérias pelo seu fluxo;
 * 📊 **estatísticas comparadas**: você, seu curso e a UnB, calculado no seu aparelho;
 * 💼 **estágios** do mural do SIGAA, com filtros por curso e bolsa;
@@ -80,8 +80,7 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 ### 🛠️ Ferramentas e administração
 
 * 🤖 atalhos para ferramentas da matrícula extraordinária, ligados pela administração no período certo;
-* 🖥️ painel do administrador: uso por dia, semana e mês, moderação, dados decifrados, funções que
-  ligam e desligam, cartões do menu e recursos da instância.
+* 🖥️ painel do administrador: uso por dia, semana e mês, operação de pools e circuitos, sincronização de catálogos, moderação, suporte, aviso operacional público, funções que ligam e desligam, cartões do menu e auditoria.
 
 ---
 
@@ -97,8 +96,7 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 | Chamados de suporte | ☁️ texto cifrado; só um verificador da chave (nunca a chave), sem matrícula, nome ou e-mail |
 
 Cada publicação (avaliação, resposta, material, guia, chamado) nasce com uma **chave aleatória própria**, guardada só no seu navegador; o servidor guarda apenas um verificador dela e não associa nome, matrícula, conta ou aparelho às publicações (nem uma publicação à outra). Isso reduz muito, mas não elimina, a chance de alguém ligar publicações: o servidor ainda vê dados de conexão e o texto enviado. O conteúdo compartilhado é público e a moderação
-pode decifrá-lo; não publique informações pessoais no texto ou nos arquivos. Cookies de sessão e perfil são cifrados; cache, preferências e backups locais ainda não têm
-criptografia própria. O app explica tudo isso em **Perfil › Uso de dados**.
+pode decifrá-lo; não publique informações pessoais no texto ou nos arquivos. Cookies de sessão e perfil são cifrados (JWE AES-GCM), e o cache acadêmico e as preferências locais ficam cifrados no navegador com **Web Crypto AES-256-GCM** (chave não exportável no IndexedDB; protege cópias em disco, mas não substitui bloqueio do aparelho nem proteção contra código malicioso). O arquivo de backup exportado manualmente é um JSON em texto aberto, sem senha, foto, bio nem chaves de autoria. O app explica tudo isso em **Perfil › Uso de dados**.
 
 No banco, a API conecta com um papel PostgreSQL restrito (`followw_app`, sem bypass) e **Row-Level Security**
 protege chamados, contas e sessões administrativas e o log de auditoria (que só aceita inserção). Cada
@@ -123,7 +121,7 @@ em `.local/`, gera chaves próprias em `apps/api/.env`, instala as dependências
 <http://localhost:3000>. Requer internet na primeira instalação; o winget pode pedir autorização
 do Windows para instalar ferramentas. Abra <http://localhost:3000/api/admin> para cadastrar
 usuário e senha do administrador local (mínimo 12 caracteres). Se já houver acesso configurado
-e você o perdeu, execute `.\scripts\admin-password.cmd --reset`, reinicie e cadastre novamente.
+e você perdeu os fatores do Owner, execute `.\scripts\admin-password.cmd --recover PSEUDONIMO` no terminal local para redefinir senha e MFA.
 
 ```powershell
 .\scripts\run.ps1 -NoBrowser       # inicia sem abrir o navegador

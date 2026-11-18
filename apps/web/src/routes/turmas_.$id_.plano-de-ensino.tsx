@@ -12,6 +12,7 @@ import {
 } from '#/components/ErrorState';
 import { LoadingText } from '#/components/LoadingText';
 import { OfflineBanner } from '#/components/OfflineBanner';
+import { SystemNoticeBanner } from '#/components/SystemNoticeBanner';
 import { Card, CardContent } from '#/components/ui/card';
 import { allClassroomsQueryOptions, classroomTeachingPlanQueryOptions } from '#/queries/classrooms';
 import { loadPersonal, loadQuery } from '#/queries/load';
@@ -73,6 +74,7 @@ function TeachingPlanPage() {
                 notice={
                     <>
                         <OfflineBanner />
+                        <SystemNoticeBanner />
                         {plan.isError && <StaleDataNotice subject="o plano de ensino" />}
                     </>
                 }

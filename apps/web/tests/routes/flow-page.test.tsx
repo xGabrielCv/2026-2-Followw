@@ -22,6 +22,7 @@ import { AppLayout } from '#/components/AppLayout';
 import { CourseSection } from '#/components/search/CourseSection';
 import { TurmaSection } from '#/components/search/TurmaSection';
 import { validateFlowSearch } from '#/lib/curriculum/navigation';
+import { saveLayoutMode } from '#/lib/layout';
 import { parseRouterSearch, stringifyRouterSearch, validateSearch } from '#/lib/search-params';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { apiClient } from '#/queries/client';
@@ -644,5 +645,17 @@ describe('fluxograma integrado', () => {
         await page.findByRole('heading', { name: 'CURSO TESTE' });
         testing.fireEvent.click(page.getByRole('link', { name: 'Voltar' }));
         await testing.waitFor(() => expect(page.router.state.location.pathname).toBe('/buscar'));
+    });
+    test('modo celular forçado em tela larga usa diagrama mobile e contém a largura', async () => {
+        width = 1440;
+        testing.act(() => saveLayoutMode('mobile'));
+        try {
+            const page = await renderPage('/cursos/42');
+            await page.findByRole('button', { name: /A, Base/ });
+            expect(page.queryByRole('list', { name: 'Legenda dos estados acadêmicos' })).toBeNull();
+            expect(page.getByRole('main').className).toContain('forced-mobile:max-w-md');
+        } finally {
+            testing.act(() => saveLayoutMode('auto'));
+        }
     });
 });

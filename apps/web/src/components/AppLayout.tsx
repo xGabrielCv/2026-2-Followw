@@ -6,6 +6,7 @@ import { HeaderBar } from '#/components/HeaderBar';
 import { LocalStorageWarning } from '#/components/LocalStorageWarning';
 import { OfflineBanner } from '#/components/OfflineBanner';
 import { PageStateProvider } from '#/components/PageState';
+import { SystemNoticeBanner } from '#/components/SystemNoticeBanner';
 import { Toaster } from '#/components/ui/toast';
 import { cn } from '#/lib/shadcn';
 
@@ -36,9 +37,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         return (
             // no mobile a página rola; no desktop, só o conteúdo
             <div className="flex min-h-dvh flex-col bg-background text-foreground desk:h-dvh desk:overflow-hidden">
-                <OfflineBanner />
-                <LocalStorageWarning />
-                <main className="flex flex-1 flex-col desk:min-h-0">{children}</main>
+                <div className="mx-auto w-full px-4 forced-mobile:max-w-md">
+                    <OfflineBanner />
+                    <SystemNoticeBanner />
+                    <LocalStorageWarning />
+                </div>
+                <main className="mx-auto flex w-full flex-1 flex-col desk:min-h-0 forced-mobile:max-w-md">
+                    {children}
+                </main>
                 <Toaster />
             </div>
         );
@@ -54,6 +60,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
                 <PageStateProvider page={pathname}>
                     {createElement(header)}
                     <OfflineBanner />
+                    <SystemNoticeBanner />
                     <LocalStorageWarning />
                     <main className="flex-1 pb-24">{children}</main>
                 </PageStateProvider>

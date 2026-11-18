@@ -1,6 +1,7 @@
 import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, createFileRoute, notFound, rootRouteId } from '@tanstack/react-router';
 import { ChartColumn, ChevronRight } from 'lucide-react';
+import { useSyncExternalStore } from 'react';
 
 import { CourseSummary } from '#/components/curriculum/CourseSummary';
 import { CurriculumView } from '#/components/curriculum/CurriculumView';
@@ -10,6 +11,7 @@ import { BackHeader } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { useFlowSearch, validateFlowSearch } from '#/lib/curriculum/navigation';
 import { flowTarget, parseCourseId } from '#/lib/curriculum/target';
+import { readLayoutMode, subscribeLayoutMode } from '#/lib/layout';
 import { titleCase } from '#/lib/profile';
 import { useWidth } from '#/lib/width';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
@@ -97,7 +99,14 @@ function StatisticsShortcut({ courseId }: { courseId: number }) {
 
 function FlowPage() {
     const { ref, width } = useWidth<HTMLDivElement>();
-    const desktop = width ? width >= DESKTOP_MIN_WIDTH : null;
+    const layoutMode = useSyncExternalStore(subscribeLayoutMode, readLayoutMode, () => 'auto');
+    const desktop = !width
+        ? null
+        : layoutMode === 'mobile'
+          ? false
+          : layoutMode === 'desktop'
+            ? true
+            : width >= DESKTOP_MIN_WIDTH;
     const [{ subject }] = useFlowSearch();
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const { id: courseId } = Route.useParams();

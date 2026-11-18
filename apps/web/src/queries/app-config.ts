@@ -7,6 +7,7 @@ import { setCustomSemesters } from '#/calendar';
 import { api } from '#/queries/api';
 
 export type AppConfig = components['schemas']['AppConfig'];
+export type PublicBanner = components['schemas']['PublicBanner'];
 export type SemesterAlertConfig = components['schemas']['SemesterAlertConfig'];
 export type MenuKey = keyof AppConfig['menu'];
 
@@ -28,7 +29,8 @@ export function useAppConfig() {
         config: query.data,
         calendar,
         allowCurrentSchedule: Boolean(query.data?.flags?.current_plan),
-        alert: query.data?.alert
+        alert: query.data?.alert,
+        banner: query.data?.banner ?? null
     };
 }
 
