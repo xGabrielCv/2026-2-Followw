@@ -10,8 +10,8 @@ export const Route = createFileRoute('/privacidade')({
 
 function PrivacyPage() {
     return (
-        <main className="min-h-dvh bg-background px-6 py-10 text-foreground">
-            <div className="mx-auto flex max-w-2xl flex-col gap-10">
+        <main className="min-h-dvh bg-background px-4 py-8 text-foreground desk:px-6 desk:py-10">
+            <div className="mx-auto flex w-full max-w-2xl flex-col gap-10 forced-mobile:max-w-md">
                 <header className="flex flex-col gap-6">
                     <Link
                         to="/login"
@@ -49,7 +49,7 @@ function PrivacyPage() {
                 <article>
                     <section
                         aria-labelledby="politica-de-privacidade"
-                        className="flex flex-col gap-4 text-sm leading-6 text-muted-foreground"
+                        className="article flex flex-col gap-4"
                     >
                         <h2
                             id="politica-de-privacidade"
@@ -159,7 +159,7 @@ function PrivacyPage() {
                     </section>
                     <section
                         aria-labelledby="termos-de-servico"
-                        className="flex flex-col gap-4 border-border pt-8 text-sm leading-6 text-muted-foreground"
+                        className="article flex flex-col gap-4 border-border pt-8"
                     >
                         <h2
                             id="termos-de-servico"

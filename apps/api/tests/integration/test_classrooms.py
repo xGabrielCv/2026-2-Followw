@@ -17,13 +17,18 @@ from sigaa_client import (
     ClassroomPost,
     ClassroomProgress,
     ClassroomRole,
+    ClassroomTeachingPlan,
     Credentials,
     Grade,
     News,
     PostType,
+    SigaaParseError,
     StatisticsShare,
     StudentSituation,
     Subject,
+    TeachingPlanAssessment,
+    TeachingPlanReference,
+    TeachingPlanScheduleEntry,
 )
 from sqlalchemy import func, inspect, select
 from sqlalchemy.dialects import postgresql
@@ -476,7 +481,15 @@ def test_turma_desconhecida_consulta_a_lista_e_a_de_outro_aluno_e_404(
 
 
 @pytest.mark.parametrize(
-    "resource", ["members", "frequency", "posts", "statistics", "posts/news:1"]
+    "resource",
+    [
+        "members",
+        "frequency",
+        "posts",
+        "statistics",
+        "teaching-plan",
+        "posts/news:1",
+    ],
 )
 @pytest.mark.parametrize("identifier", ["AAA111", "1614141"])
 def test_catalogo_de_outro_aluno_nao_autoriza_dados_privados(
@@ -503,6 +516,7 @@ def test_catalogo_de_outro_aluno_nao_autoriza_dados_privados(
     stub_sigaa.classrooms.get_classroom_frequency.assert_not_awaited()
     stub_sigaa.classrooms.list_classroom_posts.assert_not_awaited()
     stub_sigaa.classrooms.get_classroom_statistics.assert_not_awaited()
+    stub_sigaa.classrooms.get_classroom_teaching_plan.assert_not_awaited()
 
 
 def test_participantes_vem_do_sigaa_e_so_os_docentes_ficam_no_banco(
@@ -785,3 +799,74 @@ async def test_docente_nao_completa_email_pessoal_da_turma(async_database):
             session, [SeenProfessor(name="JOSE ARAUJO", email="j@unb.br")]
         )
         assert institucional.email == "j@unb.br"
+
+
+PLANO_DE_ENSINO = ClassroomTeachingPlan(
+    methodology="Aulas **práticas**.",
+    assessment_procedures="Média das provas.",
+    office_hours=None,
+    schedule=(
+        TeachingPlanScheduleEntry(
+            start_date=date(2026, 8, 11),
+            end_date=date(2026, 9, 17),
+            description="Material A1",
+        ),
+    ),
+    assessments=(
+        TeachingPlanAssessment(date=date(2026, 10, 29), description="Avaliação A2"),
+    ),
+    basic_references=(
+        TeachingPlanReference(material_type="Outros", description="Álgebra."),
+    ),
+    complementary_references=(),
+)
+
+
+@pytest.mark.parametrize("classroom_id", ["AAA111", "1614141"])
+def test_consulta_plano_de_ensino_pelos_dois_identificadores_sem_gravar_no_banco(
+    aluno, database, stub_sigaa, classroom_id
+):
+    stub_sigaa.classrooms.get_classroom_teaching_plan.return_value = PLANO_DE_ENSINO
+    resposta = aluno.get(f"/classrooms/{classroom_id}/teaching-plan")
+    assert resposta.status_code == 200
+    assert resposta.json() == PLANO_DE_ENSINO.model_dump(mode="json")
+    assert resposta.json()["schedule"][0]["start_date"] == "2026-08-11"
+    stub_sigaa.classrooms.get_classroom_teaching_plan.assert_awaited_once_with("AAA111")
+    with database() as session:
+        colunas = set(ClassroomRow.__table__.columns.keys())
+        assert "teaching_plan" not in colunas
+        despejo = " ".join(
+            str(row) for row in session.execute(select(ClassroomRow.__table__)).all()
+        )
+    assert "Material A1" not in despejo
+
+
+def test_plano_de_ensino_ausente_retorna_200_com_null(aluno, stub_sigaa):
+    stub_sigaa.classrooms.get_classroom_teaching_plan.return_value = None
+    resposta = aluno.get("/classrooms/AAA111/teaching-plan")
+    assert resposta.status_code == 200
+    assert resposta.json() is None
+
+
+def test_plano_de_ensino_exige_login_e_documenta_openapi(client):
+    assert client.get("/classrooms/AAA111/teaching-plan").status_code == 401
+
+    spec = client.get("/openapi.json").json()
+    responses = spec["paths"]["/classrooms/{classroom_id}/teaching-plan"]["get"][
+        "responses"
+    ]
+    assert responses["200"]["content"]["application/json"]["schema"]["anyOf"] == [
+        {"$ref": "#/components/schemas/ClassroomTeachingPlan"},
+        {"type": "null"},
+    ]
+    assert {"401", "404", "502"} <= responses.keys()
+
+
+def test_plano_de_ensino_valida_turma_e_propaga_erro_de_parsing(aluno, stub_sigaa):
+    assert aluno.get("/classrooms/CCC333/teaching-plan").status_code == 404
+    stub_sigaa.classrooms.get_classroom_teaching_plan.assert_not_awaited()
+
+    stub_sigaa.classrooms.get_classroom_teaching_plan.side_effect = SigaaParseError(
+        "Layout mudou"
+    )
+    assert aluno.get("/classrooms/AAA111/teaching-plan").status_code == 502

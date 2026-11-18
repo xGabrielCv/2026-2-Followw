@@ -6,6 +6,7 @@ import {
     classroomMembersQueryOptions,
     classroomPostsQueryOptions,
     classroomStatisticsQueryOptions,
+    classroomTeachingPlanQueryOptions,
     classroomsQueryOptions
 } from '#/queries/classrooms';
 import { ApiError } from '#/queries/errors';
@@ -141,6 +142,12 @@ export async function runBackgroundSync(
     await runner.step('notícias', latestNewsQueryOptions);
     await runner.each(current, (classroom) =>
         runner.step(`pessoas ${classroom.subject.code}`, classroomMembersQueryOptions(classroom.id))
+    );
+    await runner.each(current, (classroom) =>
+        runner.step(
+            `plano ${classroom.subject.code}`,
+            classroomTeachingPlanQueryOptions(classroom.id)
+        )
     );
     // 4. os índices do último semestre encerrado (não mudam mais: só na primeira vez)
     const last = all

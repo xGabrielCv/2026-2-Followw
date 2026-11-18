@@ -5,7 +5,8 @@ import {
     classroomFrequencyQueryOptions,
     classroomMembersQueryOptions,
     classroomPostDetailQueryOptions,
-    classroomPostsQueryOptions
+    classroomPostsQueryOptions,
+    classroomTeachingPlanQueryOptions
 } from '#/queries/classrooms';
 
 describe('queries de turma', () => {
@@ -15,12 +16,13 @@ describe('queries de turma', () => {
         });
     });
 
-    test('isola postagens, frequência e participantes pelo ID da turma', () => {
+    test('isola postagens, plano, frequência e participantes pelo ID da turma', () => {
         const first = 'TURMA-1';
         const second = 'TURMA-2';
 
         for (const query of [
             classroomPostsQueryOptions,
+            classroomTeachingPlanQueryOptions,
             classroomFrequencyQueryOptions,
             classroomMembersQueryOptions
         ]) {

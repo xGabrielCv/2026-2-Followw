@@ -65,9 +65,36 @@ def home() -> str:
             ("news", "Notícias"),
             ("topics", "Principal"),
             ("assessments", "Avaliações"),
+            ("teaching_plan", "Plano de Ensino"),
         ]
     )
     return form(links, "formMenu", "/sigaa/ava/index.jsf")
+
+
+TEACHING_PLAN = """<table class="listagem"><caption>Metodologia de Ensino e Avaliação</caption>
+<tbody>
+<tr><th>Metodologia:</th><td><p>Aulas expositivas e <strong>laboratórios práticos</strong>.</p></td></tr>
+<tr><th>Procedimentos de Avaliação da Aprendizagem:</th><td><p>Média ponderada das provas e projetos.</p></td></tr>
+<tr><th>Horário de atendimento:</th><td>Quintas-feiras, das 14h às 16h, na sala de atendimento.</td></tr>
+</tbody></table>
+<table id="listaTopicosAula"><caption>Cronograma de Aulas</caption>
+<thead><tr><th>Início</th><th>Fim</th><th>Descrição</th></tr></thead><tbody>
+<tr><td>10/08/2026</td><td>17/09/2026</td><td>Unidade 1 — Estruturas lineares, pilhas e filas</td></tr>
+<tr><td>22/09/2026</td><td>05/11/2026</td><td>Unidade 2 — Árvores balanceadas e tabelas de dispersão</td></tr>
+</tbody></table>
+<table id="listaAvaliacoes"><caption>Avaliações</caption>
+<thead><tr><th>Data</th><th>Descrição</th></tr></thead><tbody>
+<tr><td>24/09/2026</td><td>Prova 1</td></tr>
+<tr><td>19/11/2026</td><td>Prova 2 e entrega do projeto final</td></tr>
+</tbody></table>
+<table><caption>Referências Básicas</caption><tbody>
+<tr><td>Livro</td><td>CORMEN, T. H. et al. Algoritmos: teoria e prática.</td></tr>
+</tbody></table>
+<table><caption>Referências Complementares</caption><tbody>
+<tr><td>Livro</td><td>SEDGEWICK, R.; WAYNE, K. Algorithms. 4. ed.</td></tr>
+</tbody></table>"""
+
+MISSING_TEACHING_PLAN = '<div id="painel-erros"><ul><li>Esta turma ainda não possui um plano cadastrado.</li></ul></div>'
 
 
 FREQUENCY = """<div class="rich-stglpanel-header">Andamento das Aulas</div>
@@ -261,6 +288,9 @@ class SimulatedSigaa:
                 "news": NEWS,
                 "assessments": "<fieldset><legend>Datas de Avaliações</legend></fieldset>",
                 "topics": '<form id="formAva"><div class="topico-aula"><h3 class="titulo">Aula simulada (10/08/2026 - 12/08/2026)</h3><div class="conteudotopico">Material de estudo.</div></div></form>',
+                "teaching_plan": TEACHING_PLAN
+                if selected == "AAA"
+                else MISSING_TEACHING_PLAN,
             }.get(screen, home())
             return httpx.Response(
                 200, text='<div id="conteudo">' + body + "</div>" + context(selected)

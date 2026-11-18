@@ -23,6 +23,7 @@ function respond(url: URL) {
                 : [turma('T1', true)]
         );
     if (url.pathname.endsWith('/news')) return Response.json({ items: [] });
+    if (url.pathname.endsWith('/teaching-plan')) return Response.json(null);
     return Response.json([]);
 }
 
@@ -69,6 +70,7 @@ describe('carregamento em segundo plano', () => {
                 // as notícias saem das postagens já salvas: nada de /posts/news
                 '/classrooms/T1/posts',
                 '/classrooms/T1/members',
+                '/classrooms/T1/teaching-plan',
                 '/classrooms/OLD/statistics'
             ]);
             expect(maxActive).toBe(1);

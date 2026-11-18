@@ -10,6 +10,7 @@ import { meQueryOptions } from '#/queries/me.ts';
 
 export type Classroom = components['schemas']['ParticipantClassroom'];
 export type ClassroomPost = components['schemas']['ClassroomPost'];
+export type TeachingPlan = components['schemas']['ClassroomTeachingPlan'];
 export type PostType = components['schemas']['PostType'];
 
 /** A menção vale nas turmas encerradas; nas atuais, quem ocupa o lugar dela é o local. */
@@ -90,6 +91,14 @@ export const classroomMembersQueryOptions = (id: string) =>
     api.queryOptions(
         'get',
         '/classrooms/{classroom_id}/members',
+        { params: { path: { classroom_id: id } } },
+        { staleTime: 6 * 60 * MINUTE }
+    );
+
+export const classroomTeachingPlanQueryOptions = (id: string) =>
+    api.queryOptions(
+        'get',
+        '/classrooms/{classroom_id}/teaching-plan',
         { params: { path: { classroom_id: id } } },
         { staleTime: 6 * 60 * MINUTE }
     );

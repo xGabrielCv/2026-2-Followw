@@ -40,6 +40,7 @@ import { Route as AppPerfilSimuladorRouteImport } from './routes/_app/perfil_.si
 import { Route as AppProfessoresSiapeRouteImport } from './routes/_app/professores_.$siape'
 import { Route as AppSuporteIdRouteImport } from './routes/_app/suporte_.$id'
 import { Route as AppTurmasIdRouteImport } from './routes/_app/turmas_.$id'
+import { Route as TurmasIdPlanoDeEnsinoRouteImport } from './routes/turmas_.$id_.plano-de-ensino'
 import { Route as AppCursosIdEstatisticasRouteImport } from './routes/_app/cursos.$id_.estatisticas'
 
 const SplatRoute = SplatRouteImport.update({
@@ -196,6 +197,11 @@ const AppTurmasIdRoute = AppTurmasIdRouteImport.update({
   path: '/turmas/$id',
   getParentRoute: () => AppRoute,
 } as any)
+const TurmasIdPlanoDeEnsinoRoute = TurmasIdPlanoDeEnsinoRouteImport.update({
+  id: '/turmas_/$id_/plano-de-ensino',
+  path: '/turmas/$id/plano-de-ensino',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppCursosIdEstatisticasRoute = AppCursosIdEstatisticasRouteImport.update({
   id: '/cursos/$id_/estatisticas',
   path: '/cursos/$id/estatisticas',
@@ -233,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/professores/$siape': typeof AppProfessoresSiapeRoute
   '/suporte/$id': typeof AppSuporteIdRoute
   '/turmas/$id': typeof AppTurmasIdRoute
+  '/turmas/$id/plano-de-ensino': typeof TurmasIdPlanoDeEnsinoRoute
   '/cursos/$id/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
 export interface FileRoutesByTo {
@@ -266,6 +273,7 @@ export interface FileRoutesByTo {
   '/professores/$siape': typeof AppProfessoresSiapeRoute
   '/suporte/$id': typeof AppSuporteIdRoute
   '/turmas/$id': typeof AppTurmasIdRoute
+  '/turmas/$id/plano-de-ensino': typeof TurmasIdPlanoDeEnsinoRoute
   '/cursos/$id/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
 export interface FileRoutesById {
@@ -301,6 +309,7 @@ export interface FileRoutesById {
   '/_app/professores_/$siape': typeof AppProfessoresSiapeRoute
   '/_app/suporte_/$id': typeof AppSuporteIdRoute
   '/_app/turmas_/$id': typeof AppTurmasIdRoute
+  '/turmas_/$id_/plano-de-ensino': typeof TurmasIdPlanoDeEnsinoRoute
   '/_app/cursos/$id_/estatisticas': typeof AppCursosIdEstatisticasRoute
 }
 export interface FileRouteTypes {
@@ -336,6 +345,7 @@ export interface FileRouteTypes {
     | '/professores/$siape'
     | '/suporte/$id'
     | '/turmas/$id'
+    | '/turmas/$id/plano-de-ensino'
     | '/cursos/$id/estatisticas'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -369,6 +379,7 @@ export interface FileRouteTypes {
     | '/professores/$siape'
     | '/suporte/$id'
     | '/turmas/$id'
+    | '/turmas/$id/plano-de-ensino'
     | '/cursos/$id/estatisticas'
   id:
     | '__root__'
@@ -403,6 +414,7 @@ export interface FileRouteTypes {
     | '/_app/professores_/$siape'
     | '/_app/suporte_/$id'
     | '/_app/turmas_/$id'
+    | '/turmas_/$id_/plano-de-ensino'
     | '/_app/cursos/$id_/estatisticas'
   fileRoutesById: FileRoutesById
 }
@@ -412,6 +424,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PrivacidadeRoute: typeof PrivacidadeRoute
   ShareRuDotpngRoute: typeof ShareRuDotpngRoute
+  TurmasIdPlanoDeEnsinoRoute: typeof TurmasIdPlanoDeEnsinoRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -633,6 +646,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppTurmasIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/turmas_/$id_/plano-de-ensino': {
+      id: '/turmas_/$id_/plano-de-ensino'
+      path: '/turmas/$id/plano-de-ensino'
+      fullPath: '/turmas/$id/plano-de-ensino'
+      preLoaderRoute: typeof TurmasIdPlanoDeEnsinoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app/cursos/$id_/estatisticas': {
       id: '/_app/cursos/$id_/estatisticas'
       path: '/cursos/$id/estatisticas'
@@ -711,17 +731,8 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PrivacidadeRoute: PrivacidadeRoute,
   ShareRuDotpngRoute: ShareRuDotpngRoute,
+  TurmasIdPlanoDeEnsinoRoute: TurmasIdPlanoDeEnsinoRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

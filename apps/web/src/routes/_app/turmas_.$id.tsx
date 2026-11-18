@@ -10,6 +10,7 @@ import { ClassroomStatistics } from '#/components/classroom/ClassroomStatistics'
 import { ClassroomSummary } from '#/components/classroom/ClassroomSummary';
 import { FrequencyContent } from '#/components/classroom/FrequencyContent';
 import { SubjectColorPicker } from '#/components/classroom/SubjectColorPicker';
+import { TeachingPlanLink } from '#/components/classroom/TeachingPlanLink';
 import { ClassroomCommunity } from '#/components/community/ClassroomCommunity';
 import { RatingBadge, useProfessorRatings } from '#/components/community/RatingBadge';
 import {
@@ -45,6 +46,7 @@ import {
     classroomMembersQueryOptions,
     classroomPostsQueryOptions,
     classroomStatisticsQueryOptions,
+    classroomTeachingPlanQueryOptions,
     useLessonMarks
 } from '#/queries/classrooms';
 import { loadPersonal, loadQuery } from '#/queries/load';
@@ -109,6 +111,7 @@ function ClassroomPage() {
     const { id } = Route.useParams();
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const classrooms = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
+    const teachingPlan = useQuery({ ...classroomTeachingPlanQueryOptions(id), enabled: false });
     const [{ tab }, setSearch] = useQueryStates(classroomSearchParsers, {
         history: 'replace',
         scroll: false
@@ -160,6 +163,8 @@ function ClassroomPage() {
                         onValueChange={(value: ClassroomTab) => void setSearch({ tab: value })}
                         className="mt-5 gap-4"
                     >
+                        {/* Sem leitura do plano ainda, a página dele consulta o SIGAA. */}
+                        {teachingPlan.data !== null && <TeachingPlanLink id={id} />}
                         <TabsList
                             variant="line"
                             className="grid w-full grid-cols-4 border-b border-border group-data-horizontal/tabs:h-auto"

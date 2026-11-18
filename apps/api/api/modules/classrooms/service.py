@@ -11,7 +11,12 @@ from typing import Annotated, Literal
 import sigaa_client
 from fastapi import Depends
 from pydantic import BaseModel, ConfigDict
-from sigaa_client import ClassroomNotFound, Grade, StatisticsShare
+from sigaa_client import (
+    ClassroomNotFound,
+    ClassroomTeachingPlan,
+    Grade,
+    StatisticsShare,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api import academic_calendar
@@ -161,6 +166,13 @@ class ClassroomService:
             )
         )
         return list(shares)
+
+    async def get_teaching_plan(
+        self, classroom_id: str
+    ) -> ClassroomTeachingPlan | None:
+        turma = await self.get_turma(classroom_id)
+        client = await self._account.client()
+        return await client.classrooms.get_classroom_teaching_plan(turma.front_end_id)
 
 
 def _in_semester(item: sigaa_client.Classroom, semester: str | None) -> bool:

@@ -1,7 +1,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query
-from sigaa_client import ClassroomPost, PostType, StatisticsShare
+from sigaa_client import (
+    ClassroomPost,
+    ClassroomTeachingPlan,
+    PostType,
+    StatisticsShare,
+)
 
 from api.errors import SIGAA_ERRORS
 from api.modules.classrooms.frequency import (
@@ -29,6 +34,19 @@ ClassroomId = Annotated[
         description="frontEndIdTurma (o id da lista) ou sigaa_id da turma.",
     ),
 ]
+
+
+@router.get(
+    "/{classroom_id}/teaching-plan",
+    response_model=ClassroomTeachingPlan | None,
+    summary="Consultar plano de ensino da turma",
+    description="Metodologia, avaliação, atendimento, cronograma e referências, lidos do SIGAA na hora e sem gravação; o navegador guarda a resposta.",
+    responses=CLASSROOM_ERRORS,
+)
+async def get_classroom_teaching_plan(
+    service: ClassroomServiceDep, classroom_id: ClassroomId
+) -> ClassroomTeachingPlan | None:
+    return await service.get_teaching_plan(classroom_id)
 
 
 @router.get(
