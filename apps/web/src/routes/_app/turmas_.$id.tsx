@@ -1,5 +1,5 @@
 import { type QueryClient, noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, Link } from '@tanstack/react-router';
+import { createFileRoute, Link, useHydrated } from '@tanstack/react-router';
 import { useQueryStates } from 'nuqs';
 
 import type { Rating } from '#/queries/reviews';
@@ -109,6 +109,7 @@ export const Route = createFileRoute('/_app/turmas_/$id')({
 
 function ClassroomPage() {
     const { id } = Route.useParams();
+    const hydrated = useHydrated();
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const classrooms = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
     const teachingPlan = useQuery({ ...classroomTeachingPlanQueryOptions(id), enabled: false });
@@ -122,12 +123,14 @@ function ClassroomPage() {
         <>
             {!user ? (
                 <LoginPromptCard />
-            ) : classrooms.isLoadingError ? (
+            ) : hydrated && classrooms.isLoadingError ? (
                 <ErrorCard message={SIGAA_DOWN_MESSAGE} onRetry={() => classrooms.refetch()} />
-            ) : classrooms.isPending ? (
-                <InformationCard>
-                    <LoadingText>Carregando turma...</LoadingText>
-                </InformationCard>
+            ) : !hydrated || classrooms.isPending ? (
+                <output className="flex flex-col gap-3 motion-safe:animate-pulse">
+                    <span className="sr-only">Carregando turma...</span>
+                    <span aria-hidden="true" className="h-20 rounded-2xl bg-muted" />
+                    <span aria-hidden="true" className="h-10 rounded-lg bg-muted" />
+                </output>
             ) : !classroom ? (
                 <InformationCard>Turma não encontrada.</InformationCard>
             ) : (

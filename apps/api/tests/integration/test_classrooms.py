@@ -1,5 +1,6 @@
 """Turmas do aluno: lidas do SIGAA a cada pedido, sem nada do aluno no banco."""
 
+from contextlib import asynccontextmanager
 from datetime import date, datetime, time
 from uuid import uuid4
 
@@ -20,6 +21,7 @@ from sigaa_client import (
     ClassroomTeachingPlan,
     Credentials,
     Grade,
+    MaterialFile,
     News,
     PostType,
     SigaaParseError,
@@ -870,3 +872,50 @@ def test_plano_de_ensino_valida_turma_e_propaga_erro_de_parsing(aluno, stub_siga
         "Layout mudou"
     )
     assert aluno.get("/classrooms/AAA111/teaching-plan").status_code == 502
+
+
+@pytest.mark.parametrize("size, status", [(4, 200), (9, 413)])
+def test_baixa_apenas_da_propria_turma_com_limite_e_sem_cache(
+    aluno, stub_sigaa, monkeypatch, size, status
+):
+    monkeypatch.setattr("api.modules.classrooms.router._MAX_MATERIAL_BYTES", 8)
+    post_id = f"material:{'a' * 64}"
+    closed = []
+
+    async def chunks():
+        yield b"x" * size
+
+    @asynccontextmanager
+    async def download(classroom_id, material_id):
+        assert (classroom_id, material_id) == ("AAA111", post_id)
+        try:
+            yield MaterialFile(
+                content=chunks(), filename="Aula ç.pdf", content_type="application/pdf"
+            )
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(
+        stub_sigaa.classrooms, "download_classroom_material", download, raising=False
+    )
+    assert aluno.post(f"/classrooms/CCC333/posts/{post_id}/download").status_code == 404
+    response = aluno.post(f"/classrooms/AAA111/posts/{post_id}/download")
+    assert response.status_code == status
+    assert response.headers["cache-control"] == "no-store"
+    assert closed == [True]
+    if status == 200:
+        assert response.content == b"xxxx"
+        assert response.headers["content-type"] == "application/octet-stream"
+        assert (
+            response.headers["content-disposition"]
+            == "attachment; filename*=UTF-8''Aula%20%C3%A7.pdf"
+        )
+
+
+def test_download_do_topico_exige_login(client):
+    assert (
+        client.post(
+            f"/classrooms/AAA111/posts/material:{'a' * 64}/download"
+        ).status_code
+        == 401
+    )

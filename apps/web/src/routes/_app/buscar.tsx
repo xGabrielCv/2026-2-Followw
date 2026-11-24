@@ -102,6 +102,7 @@ export const Route = createFileRoute('/_app/buscar')({
             offerSemestersQueryOptions.queryKey
         );
         const apiSemester = offerSemester(offer ?? [], semester).param;
+        const savedSettings = user ? settingsStore(user.registration).getSnapshot() : undefined;
         const pending = Promise.all([
             showsSubjects(category) && user && loadPersonal(queryClient, allClassroomsQueryOptions),
             view?.kind === 'recommendations' &&
@@ -110,7 +111,12 @@ export const Route = createFileRoute('/_app/buscar')({
                 loadPersonal(
                     queryClient,
                     recommendationsQueryOptions(
-                        settingsStore(user.registration).getSnapshot().completedSubjects,
+                        [
+                            ...new Set([
+                                ...(savedSettings?.completedSubjects ?? []),
+                                ...(savedSettings?.transcriptSubjects ?? [])
+                            ])
+                        ].toSorted(),
                         classroomHistory(
                             queryClient.getQueryData(allClassroomsQueryOptions.queryKey)
                         ),

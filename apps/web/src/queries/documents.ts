@@ -1,8 +1,11 @@
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { saveFile } from '#/lib/download';
+import { flushLocalStorage } from '#/lib/local-storage';
 import { apiClient } from '#/queries/client';
 import { ApiError } from '#/queries/errors';
+import { meQueryOptions } from '#/queries/me';
+import { settingsStore } from '#/queries/settings';
 
 export const studentDocuments = {
     'student-card': { label: 'Carteirinha estudantil', filename: 'carteirinha.pdf' },
@@ -32,6 +35,29 @@ export function useDownloadDocument() {
         mutationFn: async (document: StudentDocument) => {
             const { blob, filename } = await getDocumentDownload(document);
             saveFile(blob, filename);
+        }
+    });
+}
+
+/** Recolhe só os códigos aproveitados e salva na conta cifrada deste aparelho. */
+export function useImportTranscriptSubjects() {
+    const client = useQueryClient();
+    return useMutation({
+        retry: false,
+        gcTime: 0,
+        mutationFn: async () => {
+            const registration = client.getQueryData(meQueryOptions.queryKey)?.registration;
+            if (!registration) throw new Error('Entre na conta para atualizar o histórico.');
+            const { data } = await apiClient.POST('/me/transcript/completed-subjects');
+            if (
+                !data ||
+                client.getQueryData(meQueryOptions.queryKey)?.registration !== registration
+            )
+                throw new Error('Não foi possível atualizar o histórico desta conta.');
+            const store = settingsStore(registration);
+            store.set({ ...store.getSnapshot(), transcriptSubjects: data });
+            await flushLocalStorage();
+            return data.length;
         }
     });
 }

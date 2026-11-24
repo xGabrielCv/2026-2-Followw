@@ -1,8 +1,9 @@
-import { Link, type LinkProps, useCanGoBack, useRouter } from '@tanstack/react-router';
+import { Link, type LinkProps } from '@tanstack/react-router';
 import { ArrowLeft, ChevronDown } from 'lucide-react';
 
 import { FollowwLogo } from '#/components/FollowwLogo';
 import { Button, buttonVariants } from '#/components/ui/button';
+import { useGoBack } from '#/components/useGoBack';
 import { cn } from '#/lib/shadcn';
 
 interface HeaderBarProps {
@@ -62,19 +63,14 @@ interface BackHeaderProps {
 }
 
 export function BackHeader({ to, title, ariaLabel = 'Voltar', actions }: BackHeaderProps) {
-    const router = useRouter();
-    const canGoBack = useCanGoBack();
+    const goBack = useGoBack();
 
     return (
         <HeaderBar showLogo={false} actions={actions}>
             <Link
                 to={to}
                 aria-label={ariaLabel}
-                onClick={(event) => {
-                    if (!canGoBack) return;
-                    event.preventDefault();
-                    router.history.back();
-                }}
+                onClick={goBack}
                 className={buttonVariants({ variant: 'ghost', className: 'size-10' })}
             >
                 <ArrowLeft className="size-5" />

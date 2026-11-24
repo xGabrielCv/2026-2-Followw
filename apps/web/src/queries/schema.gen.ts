@@ -119,6 +119,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/classrooms/{classroom_id}/posts/{post_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Baixar um arquivo dos tópicos da turma */
+        post: operations["download_classroom_material_classrooms__classroom_id__posts__post_id__download_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/classrooms": {
         parameters: {
             query?: never;
@@ -683,6 +700,23 @@ export interface paths {
         put?: never;
         /** Baixar o histórico acadêmico em PDF */
         post: operations["get_transcript_me_transcript_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/transcript/completed-subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consultar componentes aproveitados no histórico */
+        post: operations["get_completed_subjects_me_transcript_completed_subjects_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1395,6 +1429,7 @@ export interface components {
             time_label?: string | null;
             /** Url */
             url?: string | null;
+            material_kind?: components["schemas"]["MaterialKind"] | null;
             /**
              * Attachments
              * @default []
@@ -1853,6 +1888,11 @@ export interface components {
             /** Mine */
             mine: boolean;
         };
+        /**
+         * MaterialKind
+         * @enum {string}
+         */
+        MaterialKind: "file" | "link" | "action";
         /** MenuSection */
         MenuSection: {
             key?: components["schemas"]["MenuSectionKey"] | null;
@@ -3382,6 +3422,77 @@ export interface operations {
             };
         };
     };
+    download_classroom_material_classrooms__classroom_id__posts__post_id__download_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description `no-cache` (ou `max-age=0`) busca na origem antes de responder; `max-age=N` aceita cache de até N s; `stale-if-error[=N]` devolve o cache se a origem falhar; `only-if-cached` nunca busca (504 sem cache). */
+                "Cache-Control"?: string | null;
+            };
+            path: {
+                /** @description frontEndIdTurma (o id da lista) ou sigaa_id da turma. */
+                classroom_id: string;
+                post_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Turma não encontrada entre as turmas do usuário. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Arquivo maior que 20 MB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Downloads ocupados. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_classrooms_classrooms_get: {
         parameters: {
             query?: {
@@ -4570,6 +4681,47 @@ export interface operations {
                 };
                 content: {
                     "application/pdf": string;
+                };
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description O SIGAA recusou emitir o documento (ex.: perfil sem foto). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_completed_subjects_me_transcript_completed_subjects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
                 };
             };
             /** @description Credenciais ausentes ou inválidas. */

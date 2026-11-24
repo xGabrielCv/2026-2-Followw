@@ -154,3 +154,60 @@ test('buscar posiciona seletor no cabeçalho e modal de alerta respeita limites 
     await assertDialogFits(390);
     await assertDialogFits(1280);
 });
+
+test('atualiza aproveitamentos na própria conta e baixa um arquivo da turma', async ({ page }) => {
+    await login(page);
+    let imported = 0;
+    await page.route('**/api/me/transcript/completed-subjects', async (route) => {
+        expect(route.request().method()).toBe('POST');
+        imported += 1;
+        await route.fulfill({ json: ['MAT0025'] });
+    });
+    await page.goto('/cursos/1');
+    await ready(page);
+    const sync = page.getByRole('button', { name: 'Atualizar aproveitamentos' });
+    await expect(sync).toBeEnabled();
+    expect(imported).toBe(0);
+    await sync.click();
+    await expect(page.getByText('1 componente localizado.')).toBeVisible();
+    expect(imported).toBe(1);
+    await expect(page.getByRole('button', { name: /MAT0025,.*Concluída/i })).toBeVisible();
+    await page.reload();
+    await ready(page);
+    await expect(page.getByRole('button', { name: /MAT0025,.*Concluída/i })).toBeVisible();
+    expect(imported).toBe(1);
+
+    const postId = `material:${'a'.repeat(64)}`;
+    await page.route('**/api/classrooms/*/posts', async (route) => {
+        await route.fulfill({
+            json: [
+                {
+                    id: postId,
+                    type: 'material',
+                    material_kind: 'file',
+                    title: 'Aula de teste',
+                    attachments: []
+                }
+            ]
+        });
+    });
+    await page.route('**/api/classrooms/*/posts/*/download', async (route) => {
+        expect(route.request().method()).toBe('POST');
+        expect(decodeURIComponent(new URL(route.request().url()).pathname)).toContain(postId);
+        await route.fulfill({
+            body: 'Arquivo sintético',
+            headers: {
+                'content-type': 'application/octet-stream',
+                'content-disposition': "attachment; filename*=UTF-8''Aula%20%C3%A7.txt"
+            }
+        });
+    });
+    await page.goto('/turmas');
+    await ready(page);
+    await page.getByRole('button', { name: 'ESTRUTURAS DE DADOS 1', exact: true }).click();
+    await page.getByRole('tab', { name: 'Postagens', exact: true }).click();
+    await page.getByRole('button', { name: /Aula de teste/ }).click();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Baixar', exact: true }).click();
+    expect((await download).suggestedFilename()).toBe('Aula ç.txt');
+});

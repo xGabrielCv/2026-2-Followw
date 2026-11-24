@@ -5,6 +5,7 @@ import type { Classroom, TeachingPlan } from '#/queries/classrooms';
 
 import { ClassroomTeachingPlan } from '#/components/classroom/ClassroomTeachingPlan';
 import { FollowwLogo } from '#/components/FollowwLogo';
+import { useGoBack } from '#/components/useGoBack';
 
 export function ClassroomTeachingPlanPage({
     classroom,
@@ -15,6 +16,7 @@ export function ClassroomTeachingPlanPage({
     plan: TeachingPlan;
     notice?: React.ReactNode;
 }) {
+    const goBack = useGoBack();
     return (
         <main className="min-h-dvh bg-background px-4 py-8 text-foreground desk:px-6 desk:py-10">
             <div className="mx-auto flex w-full max-w-2xl flex-col gap-12 forced-mobile:max-w-md">
@@ -22,6 +24,7 @@ export function ClassroomTeachingPlanPage({
                     <Link
                         to="/turmas/$id"
                         params={{ id: classroom.id }}
+                        onClick={goBack}
                         className="flex w-fit items-center gap-2 text-sm text-primary underline-offset-4 hover:underline"
                     >
                         <ArrowLeft className="size-4" aria-hidden />

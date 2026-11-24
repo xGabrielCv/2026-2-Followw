@@ -184,6 +184,22 @@ describe('marcação das aulas', () => {
         return { page, calls };
     }
 
+    test('marca no calendário só as aulas do dia sem chamada registrada', () => {
+        const editable = lesson('2026-10-08', { start_time: '08:00' });
+        const recorded = lesson('2026-10-08', { start_time: '09:00', status: 'presente' });
+        const other = lesson('2026-10-09');
+        const { page, calls } = renderMarking({ ...data, lessons: [editable, recorded, other] });
+
+        dom.testing.fireEvent.click(page.getByRole('button', { name: 'Calendário de frequência' }));
+        dom.testing.fireEvent.click(page.getByRole('button', { name: /^08\/10\/2026:/ }));
+        const actions = dom.testing.within(
+            page.getByRole('group', { name: 'Marcar aulas do dia' })
+        );
+        dom.testing.fireEvent.click(actions.getByRole('button', { name: /^Falta$/ }));
+
+        expect(calls).toEqual([[[editable], 'falta']]);
+    });
+
     test('a barra também marca as selecionadas como aula cancelada', () => {
         const { fireEvent } = dom.testing;
         const { page, calls } = renderMarking();

@@ -378,7 +378,7 @@ def test_openapi_so_tem_os_filtros_do_banco(client):
     assert set(operation["responses"]) == {"200", "401", "422", "502"}
 
 
-def test_desbloqueia_lista_dependentes_diretos_sem_duplicar_nem_exigir_oferta(
+def test_desbloqueia_apenas_dependentes_diretos_da_oferta_selecionada(
     catalog, database
 ):
     with database.begin() as session:
@@ -396,11 +396,23 @@ def test_desbloqueia_lista_dependentes_diretos_sem_duplicar_nem_exigir_oferta(
                 Subject(code="CORREQ", name="Correquisito", corequisites=[["FGA0003"]]),
             ]
         )
-    (item,) = _search(catalog, code="FGA0003")
-    assert item["unlocks"] == [
-        {"code": "DEP2", "name": "Dependente dois"},
-        {"code": "DEP1", "name": "Dependente um"},
-    ]
+        session.flush()
+        session.add_all(
+            [
+                Classroom(subject_code="DEP1", number="01", semester="2026.2"),
+                Classroom(subject_code="DEP2", number="01", semester="2027.1"),
+                Classroom(
+                    subject_code="DEP2",
+                    number="01",
+                    semester="2026.2",
+                    offer_active=False,
+                ),
+            ]
+        )
+    (item,) = _search(catalog, code="FGA0003", semester="2026.2")
+    assert item["unlocks"] == [{"code": "DEP1", "name": "Dependente um"}]
+    (next_item,) = _search(catalog, code="FGA0003", semester="2027.1")
+    assert next_item["unlocks"] == [{"code": "DEP2", "name": "Dependente dois"}]
     assert _search(catalog, code="XYZ0001")[0]["unlocks"] == []
 
 

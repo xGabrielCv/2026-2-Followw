@@ -65,10 +65,16 @@ function SimuladorPage() {
     const { maxHours, toggle } = usePlannedSchedule();
     const { data: user } = useQuery(meQueryOptions);
     const history = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
-    const { completedSubjects } = useUserSettings();
+    const { completedSubjects, transcriptSubjects } = useUserSettings();
     const completedCodes = useMemo(
-        () => [...new Set([...approvedCodes(history.data ?? []), ...(completedSubjects ?? [])])],
-        [history.data, completedSubjects]
+        () => [
+            ...new Set([
+                ...approvedCodes(history.data ?? []),
+                ...(completedSubjects ?? []),
+                ...(transcriptSubjects ?? [])
+            ])
+        ],
+        [history.data, completedSubjects, transcriptSubjects]
     );
     const [{ semester: picked }, setSearch] = useQueryStates(simuladorParsers, {
         history: 'replace',

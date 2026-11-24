@@ -1,4 +1,4 @@
-import { noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { environmentManager, noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { ChevronLeft, ChevronRight, Coffee, Egg, Leaf, Soup, UtensilsCrossed } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
@@ -90,7 +90,7 @@ export const Route = createFileRoute('/_app/ru')({
         const search = loadRestaurantSearch(location.searchStr);
         const opening = currentOrNextMeal(now);
         const user = await loadQuery(queryClient, meQueryOptions);
-        await loadQuery(
+        const menu = loadQuery(
             queryClient,
             menuQueryOptions({
                 date: search.date ?? opening.date,
@@ -98,6 +98,7 @@ export const Route = createFileRoute('/_app/ru')({
                 user
             })
         ).catch(noop);
+        if (!user || environmentManager.isServer()) await menu;
         // Só os padrões: a URL guarda apenas o que difere deles.
         return {
             today: now.date,

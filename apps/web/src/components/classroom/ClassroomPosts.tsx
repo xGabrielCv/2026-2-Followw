@@ -4,6 +4,7 @@ import { useState, useSyncExternalStore } from 'react';
 
 import type { ClassroomPost, PostType } from '#/queries/classrooms';
 
+import { MaterialDownload } from '#/components/classroom/MaterialDownload';
 import { ErrorCard, SIGAA_DOWN_MESSAGE, StaleDataNotice } from '#/components/ErrorState';
 import { ListCard } from '#/components/ListCard';
 import { LoadingText } from '#/components/LoadingText';
@@ -181,6 +182,7 @@ export function ClassroomPosts({ id, registration }: { id: string; registration?
                                             />
                                         ) : (
                                             <PostContent
+                                                classroomId={id}
                                                 post={post}
                                                 reading={readingAction(post)}
                                             />
@@ -221,12 +223,20 @@ function PostDetail({
     return (
         <>
             {detail.isError && <StaleDataNotice subject="esta postagem" className="mb-3" />}
-            <PostContent post={detail.data} reading={reading} />
+            <PostContent classroomId={classroomId} post={detail.data} reading={reading} />
         </>
     );
 }
 
-function PostContent({ post, reading }: { post: ClassroomPost; reading?: ReadingAction }) {
+function PostContent({
+    classroomId,
+    post,
+    reading
+}: {
+    classroomId: string;
+    post: ClassroomPost;
+    reading?: ReadingAction;
+}) {
     const url = postLink(post.url);
     const attachments = post.attachments.flatMap((attachment) => {
         const href = postLink(attachment.url);
@@ -261,7 +271,10 @@ function PostContent({ post, reading }: { post: ClassroomPost; reading?: Reading
                     {post.type === 'material' ? 'Acessar material' : 'Abrir link'}
                 </a>
             )}
-            {post.type === 'material' && !url && (
+            {post.material_kind === 'file' && (
+                <MaterialDownload classroomId={classroomId} postId={post.id} />
+            )}
+            {post.type === 'material' && !url && post.material_kind !== 'file' && (
                 <div className="flex flex-col gap-2">
                     <p className="text-sm text-muted-foreground">
                         Este material está disponível na página da turma no SIGAA.

@@ -432,7 +432,7 @@ def test_download_documento_preserva_conteudo_cookies_e_nao_usa_cache(
         assert response.headers["content-type"] == "application/pdf"
         assert (
             response.headers["content-disposition"]
-            == f'attachment; filename="{filename}"'
+            == f"attachment; filename*=UTF-8''{filename}"
         )
         assert response.headers["cache-control"] == "no-store"
         assert int(response.headers["content-length"]) == len(response.content)
@@ -830,3 +830,22 @@ def test_me_traz_codigos_normalizados_unicos_e_ordenados_so_da_matriz_publica(
     assert response.status_code == 200
     assert response.json()["curriculum_subject_codes"] == ["AAA0001", "ZZZ0001"]
     assert sigaa.profile_requests == requests_before
+
+
+def test_aproveitamentos_vem_do_historico_da_conta_sem_persistencia(
+    client, cookies, documents
+):
+    path = "/me/transcript/completed-subjects"
+    assert client.post(path).status_code == 401
+    client.cookies.update(cookies(refresh=CREDENCIAIS))
+    documents.get_completed_subjects = AsyncMock(return_value={"FGA0002", "FGA0001"})
+
+    def banco_proibido():
+        pytest.fail("Aproveitamentos não devem usar o banco")
+
+    client.app.dependency_overrides[get_sessionmaker] = banco_proibido
+    response = client.post(path)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == ["FGA0001", "FGA0002"]
+    documents.get_completed_subjects.assert_awaited_once_with(CREDENCIAIS.registration)

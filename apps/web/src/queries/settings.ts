@@ -15,6 +15,7 @@ export interface UserSettings {
     profile?: { bio?: string; photo?: string | null };
     // matérias marcadas como concluídas à mão no fluxo
     completedSubjects?: string[];
+    transcriptSubjects?: string[];
     // índice da paleta escolhido para cada matéria na agenda
     subjectColors?: Record<string, number>;
     shareStatistics?: boolean;
@@ -72,7 +73,7 @@ export function useUpdateSettings() {
         },
         onSuccess: (_, { body }) => {
             // matérias concluídas mudam as recomendações; o compartilhamento, os índices
-            if (body.completedSubjects)
+            if (body.completedSubjects || body.transcriptSubjects)
                 void queryClient.invalidateQueries({ queryKey: ['get', '/public/subjects'] });
             if (body.shareStatistics !== undefined)
                 void queryClient.invalidateQueries({
@@ -84,15 +85,19 @@ export function useUpdateSettings() {
 
 /** Matérias marcadas como concluídas à mão no fluxo. */
 export function useCompletedSubjects() {
-    const { completedSubjects } = useUserSettings();
+    const { completedSubjects, transcriptSubjects } = useUserSettings();
     const update = useUpdateSettings();
-    const codes = useMemo(() => new Set(completedSubjects ?? []), [completedSubjects]);
+    const manualCodes = useMemo(() => new Set(completedSubjects ?? []), [completedSubjects]);
+    const codes = useMemo(
+        () => new Set([...manualCodes, ...(transcriptSubjects ?? [])]),
+        [manualCodes, transcriptSubjects]
+    );
     const toggle = async (code: string) => {
-        const next = new Set(codes);
+        const next = new Set(manualCodes);
         if (!next.delete(code)) next.add(code);
         await update.mutateAsync({ body: { completedSubjects: [...next].toSorted() } });
     };
-    return { codes, toggle, pending: update.isPending, failed: update.isError };
+    return { codes, manualCodes, toggle, pending: update.isPending, failed: update.isError };
 }
 
 /** Cor que o aluno escolheu para cada matéria na agenda (índice da paleta); sem ela, a automática. */

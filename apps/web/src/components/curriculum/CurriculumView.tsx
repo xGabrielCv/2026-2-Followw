@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
+import { useHydrated } from '@tanstack/react-router';
 import { useMemo } from 'react';
 
 import { DesktopDiagram, MobileDiagram } from '#/components/curriculum/Diagram';
 import { ManualCompletionContext } from '#/components/curriculum/ManualCompletion';
 import { LoadingText } from '#/components/LoadingText';
 import { QueryState } from '#/components/QueryState';
+import { Button } from '#/components/ui/button';
 import { academicState, initialMobilePeriod, normalizeCurriculum } from '#/lib/curriculum/model';
+import { useOnline } from '#/lib/online';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { curriculumQueryOptions } from '#/queries/curriculum';
+import { useImportTranscriptSubjects } from '#/queries/documents';
 import { ApiError } from '#/queries/errors';
 import { useCompletedSubjects } from '#/queries/settings';
 
@@ -32,6 +36,9 @@ export function CurriculumView({
     const matrix = useQuery(curriculumQueryOptions(courseId, entrySemester));
     const history = useQuery({ ...allClassroomsQueryOptions, enabled: loggedIn });
     const completion = useCompletedSubjects();
+    const imported = useImportTranscriptSubjects();
+    const online = useOnline();
+    const hydrated = useHydrated();
     const manual = ownCourse && loggedIn ? completion : null;
     const manualCodes = manual?.codes;
     const state = useMemo(
@@ -46,7 +53,7 @@ export function CurriculumView({
         ? initialMobilePeriod(model.periods, ownCourse, currentPeriod)
         : null;
     return (
-        <ManualCompletionContext value={manual}>
+        <ManualCompletionContext value={manual && { ...manual, codes: manual.manualCodes }}>
             <div className="flex min-h-0 flex-1 flex-col">
                 <div className="flex max-h-64 shrink-0 flex-col gap-2 overflow-y-auto px-4 pb-3 text-sm empty:hidden desk:px-6">
                     <QueryState
@@ -59,13 +66,37 @@ export function CurriculumView({
                         }
                         stale="Não foi possível atualizar a matriz. Exibindo os dados salvos."
                     />
-                    {model && loggedIn && (
+                    {hydrated && model && loggedIn && (
                         <QueryState
                             query={history}
                             loading="Carregando histórico; estados acadêmicos ainda indisponíveis..."
                             error="Histórico indisponível. Os estados acadêmicos não puderam ser determinados."
                             stale="Não foi possível atualizar o histórico. Exibindo os estados salvos."
                         />
+                    )}
+                    {hydrated && model && manual && (
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={!online || imported.isPending}
+                                onClick={() => imported.mutate()}
+                            >
+                                {imported.isPending
+                                    ? 'Consultando histórico...'
+                                    : 'Atualizar aproveitamentos'}
+                            </Button>
+                            {imported.isSuccess && (
+                                <output className="text-muted-foreground">
+                                    {imported.data === 1
+                                        ? '1 componente localizado.'
+                                        : `${imported.data} componentes localizados.`}
+                                </output>
+                            )}
+                            {imported.isError && (
+                                <p role="alert">Não foi possível atualizar os aproveitamentos.</p>
+                            )}
+                        </div>
                     )}
                     {model && ownCourse && currentPeriod === null && (
                         <output>Período atual indisponível; atrasos não foram calculados.</output>

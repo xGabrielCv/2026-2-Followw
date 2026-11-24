@@ -1,6 +1,8 @@
+from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from anyio import CapacityLimiter, WouldBlock
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sigaa_client import (
     ClassroomPost,
     ClassroomTeachingPlan,
@@ -8,6 +10,8 @@ from sigaa_client import (
     StatisticsShare,
 )
 
+from api.cache import NoStore
+from api.downloads import attachment
 from api.errors import SIGAA_ERRORS
 from api.modules.classrooms.frequency import (
     ClassroomFrequencyResult,
@@ -90,6 +94,64 @@ async def get_classroom_post(
     ],
 ) -> ClassroomPost:
     return await service.get_post(classroom_id, post_id)
+
+
+_MAX_MATERIAL_BYTES = 20 * 1024 * 1024
+_MATERIAL_DOWNLOAD_SLOTS = CapacityLimiter(4)
+
+
+async def _reserve_download_slot() -> AsyncIterator[None]:
+    try:
+        _MATERIAL_DOWNLOAD_SLOTS.acquire_nowait()
+    except WouldBlock:
+        raise HTTPException(
+            503,
+            "Downloads ocupados. Tente novamente em instantes.",
+            headers={"Retry-After": "5"},
+        ) from None
+    try:
+        yield
+    finally:
+        _MATERIAL_DOWNLOAD_SLOTS.release()
+
+
+@router.post(
+    "/{classroom_id}/posts/{post_id}/download",
+    response_class=Response,
+    summary="Baixar um arquivo dos tópicos da turma",
+    dependencies=[NoStore, Depends(_reserve_download_slot)],
+    responses={
+        **CLASSROOM_ERRORS,
+        413: {"description": "Arquivo maior que 20 MB."},
+        503: {"description": "Downloads ocupados."},
+        200: {
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"}
+                }
+            }
+        },
+    },
+)
+async def download_classroom_material(
+    service: ClassroomServiceDep,
+    response: Response,
+    classroom_id: ClassroomId,
+    post_id: Annotated[str, Path(pattern=r"^material:[a-f0-9]{64}$")],
+) -> Response:
+    turma = await service.get_turma(classroom_id)
+    client = await service.account.client()
+    content = bytearray()
+    async with client.classrooms.download_classroom_material(
+        turma.front_end_id, post_id
+    ) as file:
+        async for chunk in file.content:
+            if len(content) + len(chunk) > _MAX_MATERIAL_BYTES:
+                raise HTTPException(413, "Arquivo maior que 20 MB.")
+            content.extend(chunk)
+        return attachment(
+            bytes(content), file.filename, "application/octet-stream", response
+        )
 
 
 @router.get(

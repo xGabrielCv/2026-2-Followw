@@ -51,6 +51,26 @@ def _current_pool() -> _LoopPool:
     return pool
 
 
+class _ReservedStream(httpx.AsyncByteStream):
+    def __init__(self, stream: httpx.AsyncByteStream, slot: asyncio.Semaphore) -> None:
+        self._stream = stream
+        self._slot = slot
+        self._closed = False
+
+    async def __aiter__(self):
+        async for chunk in self._stream:
+            yield chunk
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._stream.aclose()
+        finally:
+            self._slot.release()
+
+
 class BorrowedAsyncTransport(httpx.AsyncBaseTransport):
     """Empresta o pool do loop atual sem fechá-lo ao encerrar o `AsyncClient` da requisição."""
 
@@ -69,9 +89,12 @@ class BorrowedAsyncTransport(httpx.AsyncBaseTransport):
                 headers={"Retry-After": "5", "Cache-Control": "no-store"},
             ) from None
         try:
-            return await pool.transport.handle_async_request(request)
-        finally:
+            response = await pool.transport.handle_async_request(request)
+        except BaseException:
             pool.semaphore.release()
+            raise
+        response.stream = _ReservedStream(response.stream, pool.semaphore)
+        return response
 
     async def aclose(self) -> None:
         return None

@@ -228,9 +228,8 @@ test('painel admin, banner operacional, plano de ensino e modos forçados em mú
     await page.goto('/turmas/BBB');
     await ready(page);
     const missingPlanLink = page.getByRole('link', { name: /Plano de ensino/i });
-    if (await missingPlanLink.isVisible()) {
-        await missingPlanLink.click();
-    }
+    await expect(missingPlanLink).toBeVisible();
+    await missingPlanLink.click();
     await expect(page).toHaveURL(/\/turmas\/BBB$/);
     await expect(page.getByRole('link', { name: /Plano de ensino/i })).toHaveCount(0);
     expect(failures).toEqual([]);

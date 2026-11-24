@@ -160,6 +160,7 @@ async def _search(
 ) -> list[CatalogSubject]:
     repository = SubjectCatalogRepository(session)
     unit_id = await find_unit_id(session, unit)
+    semester = semester or await repository.latest_semester()
     subjects = await repository.list_subjects(
         q=q,
         code=code,
@@ -183,9 +184,8 @@ async def _recommended(session: AsyncSession, ranking: Ranking) -> list[CatalogS
         return []
     repository = SubjectCatalogRepository(session)
     order = {item.code: index for index, item in enumerate(ranking.items)}
-    subjects = await repository.list_subjects(
-        codes=set(order), semester=ranking.semester
-    )
+    semester = ranking.semester or await repository.latest_semester()
+    subjects = await repository.list_subjects(codes=set(order), semester=semester)
     subjects.sort(key=lambda subject: order[normalize(subject.code)])
     return [
         subject.model_copy(
@@ -195,9 +195,7 @@ async def _recommended(session: AsyncSession, ranking: Ranking) -> list[CatalogS
                 )
             }
         )
-        for subject in await _catalog(
-            session, ranking.curriculum, subjects, ranking.semester
-        )
+        for subject in await _catalog(session, ranking.curriculum, subjects, semester)
     ]
 
 
@@ -208,7 +206,9 @@ async def _catalog(
     semester: str | None = None,
 ) -> list[CatalogSubject]:
     repository = SubjectCatalogRepository(session)
-    unlocks = await repository.unlocked_subjects({subject.code for subject in subjects})
+    unlocks = await repository.unlocked_subjects(
+        {subject.code for subject in subjects}, semester
+    )
     codes = requirement_codes(subjects)
     names = await repository.subject_names(codes)
     offered = {

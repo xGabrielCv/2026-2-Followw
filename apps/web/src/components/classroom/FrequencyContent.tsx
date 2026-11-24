@@ -77,6 +77,7 @@ export function FrequencyContent({
     const selected = lessons.filter((lesson) => selectable(lesson) && selectedIds.has(lesson.id));
 
     const marked = lessons.filter((lesson) => lesson.marked);
+    const editableDay = day ? lessons.filter(selectable) : [];
 
     const toggle = (lesson: Lesson, checked: boolean) =>
         setSelectedIds((ids) => {
@@ -111,6 +112,24 @@ export function FrequencyContent({
                     selected={day}
                     onSelect={setDay}
                 />
+            )}
+            {calendar && editableDay.length > 0 && (
+                <fieldset
+                    aria-label="Marcar aulas do dia"
+                    className="flex flex-wrap items-center gap-2"
+                >
+                    {MARKS.map((mark) => (
+                        <Button
+                            key={mark}
+                            variant="outline"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => onMark(editableDay, mark)}
+                        >
+                            {LESSON_VIEW[mark].name}
+                        </Button>
+                    ))}
+                </fieldset>
             )}
             {totals?.estimated && (
                 <p className="px-1 text-xs text-muted-foreground">
