@@ -1,13 +1,12 @@
 import { ChevronDown } from 'lucide-react';
-import { type ComponentProps, useSyncExternalStore } from 'react';
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
+import { lazy, Suspense, useSyncExternalStore } from 'react';
 
-import type { EvolutionChartPoint, Grade } from '#/lib/academic-simulation';
+import type { Grade } from '#/lib/academic-simulation';
 import type { Classroom } from '#/queries/classrooms';
 
+import { LoadingText } from '#/components/LoadingText';
 import { Button } from '#/components/ui/button';
 import { Card } from '#/components/ui/card';
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from '#/components/ui/chart';
 import {
     evolutionChartPoints,
     gradeWeights,
@@ -23,6 +22,12 @@ import { groupBySemester } from '#/lib/classroom-details';
 import { formatAcademicIndex, titleCase } from '#/lib/profile';
 import { cn } from '#/lib/shadcn';
 
+const AcademicSimulatorChart = lazy(() =>
+    import('#/components/profile/AcademicSimulatorChart').then((module) => ({
+        default: module.AcademicSimulatorChart
+    }))
+);
+
 const displayIndex = (value: number | null) => (value === null ? '—' : formatAcademicIndex(value));
 
 function futureTone(baseline: number | null, simulated: number | null) {
@@ -37,54 +42,6 @@ function changeGrade(classroom: Classroom, grade: Grade | null) {
     if (grade === (classroom.grade ?? null)) delete next[key];
     else next[key] = grade;
     simulatedGrades.set(next);
-}
-
-function projectedDot({
-    cx,
-    cy,
-    payload
-}: {
-    cx?: number;
-    cy?: number;
-    payload?: EvolutionChartPoint;
-}) {
-    if (payload?.projected && cx != null && cy != null) {
-        return (
-            <circle
-                key={payload.semester}
-                cx={cx}
-                cy={cy}
-                r={3}
-                fill="var(--color-projectedIra)"
-                stroke="var(--color-projectedIra)"
-            />
-        );
-    }
-    return <g key={payload?.semester} />;
-}
-
-function SimulatorTooltip({
-    payload,
-    current,
-    projected,
-    ...props
-}: ComponentProps<typeof ChartTooltipContent> & {
-    current: string | undefined;
-    projected: boolean;
-}) {
-    return (
-        <ChartTooltipContent
-            {...props}
-            payload={payload?.filter((item) => item.value != null).slice(0, 1)}
-            indicator="dot"
-            labelFormatter={(semester) =>
-                projected && typeof semester === 'string' && semester === current
-                    ? `${semester} · Projeção`
-                    : semester
-            }
-            formatter={(value) => `IRA ${formatAcademicIndex(Number(value))}`}
-        />
-    );
 }
 
 export function AcademicSimulator({
@@ -122,14 +79,6 @@ export function AcademicSimulator({
         projectedPoint !== undefined &&
         comparisonIra !== null &&
         projectedPoint.ira < comparisonIra - 1e-9;
-    const chartConfig = {
-        ira: { label: 'IRA', color: 'var(--info)' },
-        projectedIra: {
-            label: 'Projeção',
-            color: projectedDropped ? 'var(--destructive)' : 'var(--success)'
-        }
-    };
-
     function rows(items: Classroom[]) {
         return (
             <ul className="divide-y divide-border">
@@ -281,51 +230,14 @@ export function AcademicSimulator({
                             A evolução aparece quando houver menções para calcular o IRA.
                         </p>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <ChartContainer
-                                config={chartConfig}
-                                className="h-56 w-full"
-                                style={{ minWidth: evolution.length * 42 + 44 }}
-                            >
-                                <LineChart data={chartData} margin={{ left: 0, right: 20, top: 8 }}>
-                                    <CartesianGrid vertical={false} />
-                                    <XAxis
-                                        dataKey="semester"
-                                        tickFormatter={(semester: string) =>
-                                            semester.slice(2) +
-                                            (projected && semester === current ? '*' : '')
-                                        }
-                                        tickMargin={8}
-                                        interval={0}
-                                    />
-                                    <YAxis domain={[0, 5]} allowDecimals={false} width={24} />
-                                    <ChartTooltip
-                                        content={
-                                            <SimulatorTooltip
-                                                current={current}
-                                                projected={projected}
-                                            />
-                                        }
-                                    />
-                                    <Line
-                                        dataKey="ira"
-                                        stroke="var(--color-ira)"
-                                        strokeWidth={2}
-                                        dot={{ r: 3, fill: 'var(--color-ira)' }}
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                    />
-                                    <Line
-                                        dataKey="projectedIra"
-                                        stroke="var(--color-projectedIra)"
-                                        strokeWidth={2}
-                                        dot={projectedDot}
-                                        connectNulls={false}
-                                        isAnimationActive={false}
-                                    />
-                                </LineChart>
-                            </ChartContainer>
-                        </div>
+                        <Suspense fallback={<LoadingText>Carregando gráfico...</LoadingText>}>
+                            <AcademicSimulatorChart
+                                chartData={chartData}
+                                current={current}
+                                projected={projected}
+                                projectedDropped={projectedDropped}
+                            />
+                        </Suspense>
                     )}
                     {projected && (
                         <p

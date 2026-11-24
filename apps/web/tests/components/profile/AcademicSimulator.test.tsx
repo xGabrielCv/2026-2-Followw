@@ -125,7 +125,7 @@ test('separa menções simuladas entre contas no armazenamento existente', () =>
     expect(simulatedGrades.getSnapshot()).toEqual({ '2026.2:A': 'SS' });
 });
 
-test('aplica azul ao atual e verde ou vermelho dinâmico ao futuro e à projeção', () => {
+test('aplica azul ao atual e verde ou vermelho dinâmico ao futuro e à projeção', async () => {
     const withBaselineMp: Classroom[] = [
         {
             id: 'atual',
@@ -157,6 +157,9 @@ test('aplica azul ao atual e verde ou vermelho dinâmico ao futuro e à projeç�
     expect(indexNode(container, 'MP atual')?.className).toContain('text-info');
 
     const chartCss = () => container.querySelector('style')?.textContent ?? '';
+    await dom.testing.act(async () => {
+        await import('#/components/profile/AcademicSimulatorChart');
+    });
     expect(chartCss()).toContain('--color-ira: var(--info)');
 
     const select = getByRole('combobox', { name: currentLabel });

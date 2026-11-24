@@ -425,18 +425,21 @@ function SelectableLesson({
                     cancel();
                     if (!pending) openMenu();
                 }}
-                onClickCapture={(event) => {
-                    if (!pressed.current) return;
-                    pressed.current = false;
-                    event.preventDefault();
-                    event.stopPropagation();
-                }}
             >
                 <Checkbox
                     aria-label={`Selecionar aula de ${formatClassroomDate(lesson.occurred_on)}`}
                     checked={selected}
                     disabled={pending}
                     onCheckedChange={onSelect}
+                    onKeyDown={(event) => {
+                        if (event.key === ' ') pressed.current = false;
+                    }}
+                    onClickCapture={(event) => {
+                        if (!pressed.current) return;
+                        pressed.current = false;
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }}
                     className="rounded-full"
                 />
             </span>

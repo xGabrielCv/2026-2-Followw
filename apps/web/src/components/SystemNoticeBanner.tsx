@@ -1,7 +1,8 @@
 import { useHydrated } from '@tanstack/react-router';
 import { Info, TriangleAlert, X } from 'lucide-react';
-import { useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 
+import { longTimer } from '#/lib/query-timers';
 import { cn } from '#/lib/shadcn';
 import { useAppConfig } from '#/queries/app-config';
 
@@ -27,8 +28,22 @@ export const SystemNoticeBanner: React.FC = () => {
     const { banner } = useAppConfig();
     const dismissedId = useSyncExternalStore(subscribe, snapshot, () => null);
     const hydrated = useHydrated();
+    const expiresAt = Date.parse(banner?.expires_at ?? '');
+    const subscribeExpiry = useCallback(
+        (notify: () => void) => {
+            if (!Number.isFinite(expiresAt)) return () => {};
+            const timer = longTimer(notify, expiresAt - Date.now());
+            return () => timer.cancel();
+        },
+        [expiresAt]
+    );
+    const expired = useSyncExternalStore(
+        subscribeExpiry,
+        () => expiresAt <= Date.now(),
+        () => false
+    );
 
-    if (!hydrated || !banner || dismissedId === banner.id) return null;
+    if (!hydrated || !banner || expired || dismissedId === banner.id) return null;
 
     const warning = banner.level === 'warning';
     const Icon = warning ? TriangleAlert : Info;

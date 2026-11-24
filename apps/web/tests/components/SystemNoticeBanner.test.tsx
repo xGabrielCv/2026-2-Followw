@@ -54,7 +54,40 @@ describe('SystemNoticeBanner', () => {
 
     test('omite o bloco quando não há aviso ativo', () => {
         const view = renderBanner(null);
-        expect(view.queryByRole('complementary', { name: 'Aviso operacional' })).toBeNull();
+        expect(Boolean(view.queryByRole('complementary', { name: 'Aviso operacional' }))).toBe(
+            false
+        );
+    });
+
+    test('ignora aviso vencido mesmo quando a configuração ainda está no cache', () => {
+        const view = renderBanner({
+            id: 'aviso-vencido',
+            level: 'info',
+            title: 'Manutenção',
+            message: 'Pausa temporária.',
+            expires_at: new Date(Date.now() - 60_000).toISOString()
+        });
+
+        expect(Boolean(view.queryByRole('complementary', { name: 'Aviso operacional' }))).toBe(
+            false
+        );
+    });
+
+    test('remove o aviso ao vencer com a tela aberta', async () => {
+        const view = renderBanner({
+            id: 'aviso-a-vencer',
+            level: 'info',
+            title: 'Manutenção',
+            message: 'Pausa temporária.',
+            expires_at: new Date(Date.now() + 300).toISOString()
+        });
+
+        expect(Boolean(view.queryByRole('complementary', { name: 'Aviso operacional' }))).toBe(
+            true
+        );
+        await dom.testing.waitForElementToBeRemoved(() =>
+            view.queryByRole('complementary', { name: 'Aviso operacional' })
+        );
     });
 
     test('exibe aviso operacional, permite dispensar na sessão e reexibe quando o id muda', () => {

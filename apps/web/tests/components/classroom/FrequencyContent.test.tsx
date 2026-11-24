@@ -241,6 +241,22 @@ describe('marcação das aulas', () => {
         expect(page.queryByRole('toolbar')).toBeNull();
     });
 
+    test('ignora o clique do menu de situação, mas aceita o acionamento por teclado', () => {
+        const { fireEvent } = dom.testing;
+        const { page } = renderMarking();
+        const checkbox = page.getByRole('checkbox', { name: 'Selecionar aula de 08/10/2026' });
+
+        fireEvent.contextMenu(checkbox);
+        fireEvent.click(checkbox);
+        expect(checkbox.getAttribute('aria-checked')).toBe('false');
+
+        fireEvent.contextMenu(checkbox);
+        fireEvent.keyDown(checkbox, { key: ' ' });
+        fireEvent.click(checkbox);
+
+        expect(checkbox.getAttribute('aria-checked')).toBe('true');
+    });
+
     test('desmarcar e limpar a seleção escondem a barra sem marcar', () => {
         const { fireEvent } = dom.testing;
         const { page, calls } = renderMarking();
