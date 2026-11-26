@@ -104,3 +104,45 @@ export function alertPanel(info, refresh) {
       } }, "Disparar campanha")));
   return form;
 }
+
+export function sharingPolicyPanel(info, refresh) {
+  if (!info) return null;
+  const cfg = info.config;
+  const percentInput = el("input", { type:"number", min:50, max:100, step:1, value: cfg.semester_percent ?? 98, required:true });
+  const daysInput = el("input", { type:"number", min:30, max:365, step:1, value: cfg.interval_days ?? 180, required:true });
+  const form = el("form", { class:"panel alert-settings", onsubmit:(event) => event.preventDefault() },
+    el("h3", {}, "Compartilhamento automático dos índices de turmas"),
+    el("p", { class:"muted" }, "Controla quando o navegador de estudantes que ativaram o compartilhamento reenvia automaticamente as estatísticas anônimas. O servidor nunca guarda quem compartilhou e ignora turmas já salvas."),
+    el("div", { class:"alert-status" },
+      el("strong", {}, `Semestre: ${info.current_semester}`),
+      el("span", {}, info.progress_percent != null ? `${info.progress_percent}% do período de aulas` : "Progresso indisponível sem calendário"),
+      el("span", { class:"muted" }, cfg.triggered_at ? `Último disparo global: ${when(cfg.triggered_at)}` : "Nenhum disparo global manual")),
+    el("div", { class:"grid g2" },
+      el("label", { class:"form-field" }, "Porcentagem de conclusão do semestre (50–100%)", percentInput),
+      el("label", { class:"form-field" }, "Intervalo periódico de segurança (30–365 dias)", daysInput)),
+    el("p", { class:"muted" }, "Além da porcentagem configurada, o app também detecta automaticamente qualquer semestre encerrado que o estudante não sincronizou (mesmo se não abriu o app no fim do semestre) e aplica o intervalo periódico como garantia extra."),
+    el("div", { class:"toolbar" },
+      el("button", { class:"primary", type:"button", onclick:async () => {
+        if (!form.reportValidity()) return;
+        try {
+          await call("/sharing-policy", {
+            method:"PUT",
+            body:JSON.stringify({
+              semester_percent: Number(percentInput.value),
+              interval_days: Number(daysInput.value),
+            }),
+          });
+          notice("Política de compartilhamento salva.");
+          void refresh();
+        } catch (error) { notice(error.message, true); }
+      } }, "Salvar política"),
+      el("button", { type:"button", onclick:async () => {
+        if (!await confirmation("Disparar compartilhamento global agora?", "Todos os estudantes com compartilhamento ativado reenviarão as estatísticas pendentes na próxima abertura do app. Turmas já salvas são descartadas sem custo extra e sem identificar o aluno.")) return;
+        try {
+          await call("/sharing-policy/trigger", { method:"POST" });
+          notice("Disparo global agendado para a próxima abertura dos estudantes com compartilhamento ativo.");
+          void refresh();
+        } catch (error) { notice(error.message, true); }
+      } }, "Disparar compartilhamento global agora")));
+  return form;
+}

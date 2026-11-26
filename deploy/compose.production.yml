@@ -65,6 +65,12 @@ services:
       RATE_LIMIT_SECRET_KEY: ${RATE_LIMIT_SECRET_KEY:-}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
+      SIGAA_HTTP_MAX_CONNECTIONS: ${SIGAA_HTTP_MAX_CONNECTIONS:-64}
+      SIGAA_HTTP_KEEPALIVE_CONNECTIONS: ${SIGAA_HTTP_KEEPALIVE_CONNECTIONS:-32}
+      SIGAA_MAX_CONCURRENT_REQUESTS: ${SIGAA_MAX_CONCURRENT_REQUESTS:-32}
+      TAMBURETEI_DATA_DIR: /data/tamburetei
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
       # vários workers: cotas sensíveis e bloqueio da sessão SIGAA compartilhados pelo PostgreSQL
       RATE_LIMIT_BACKEND: postgres
       SESSION_LOCK_BACKEND: postgres
@@ -86,6 +92,7 @@ services:
     user: "10001"
     volumes:
       - materials:/data/materials
+      - tamburetei:/data/tamburetei
     tmpfs: ["/tmp"]
     networks: [internal, egress]
     depends_on:
@@ -129,6 +136,25 @@ services:
     mem_limit: 256m
     cpus: 0.5
 
+  # Antivírus opcional (profiles: antivirus). Ative com `--profile antivirus` e `CLAMAV_HOST=clamav`.
+  # Sem ele, a API já aplica YARA-X, inspeção profunda de PDF, Office/OLE2 e reencodificação de imagens.
+  clamav:
+    profiles: ["antivirus"]
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - clamav_db:/var/lib/clamav
+    networks: [internal, egress]
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    mem_limit: 1536m
+    cpus: 1.0
+
 networks:
   internal:
     internal: true # sem rota para fora: banco, API e front não falam com a internet
@@ -138,5 +164,7 @@ networks:
 volumes:
   pgdata:
   materials:
+  tamburetei:
+  clamav_db:
   caddy_data:
   caddy_config:

@@ -49,8 +49,11 @@ _FIELDS = re.compile(
 _FIELD_ELEMENT = re.compile(
     rb"<w:instrText[^>]*>([^<]*)</w:instrText>|w:instr=\"([^\"]*)\""
 )
-# Fórmula do Excel no estilo DDE (`=cmd|'/c ...'!A1`).
+# Fórmula do Excel no estilo DDE (`=cmd|'/c ...'!A1`) ou que busca recurso externo (`WEBSERVICE`/`RTD`).
 _DDE_FORMULA = re.compile(rb"<f[^>]*>[^<]*\|[^<]*!")
+_EXTERNAL_FORMULA = re.compile(
+    rb"<f[^>]*>[^<]*\b(?:webservice|filterxml|rtd)\s*\(", re.IGNORECASE
+)
 _DOCTYPE = re.compile(rb"<!(doctype|entity)", re.IGNORECASE)
 _EXTERNAL = re.compile(rb'TargetMode\s*=\s*"External"', re.IGNORECASE)
 _REL_TYPE = re.compile(rb'Type\s*=\s*"([^"]+)"')
@@ -306,8 +309,10 @@ def _check_xml(name: str, content: bytes) -> None:
             raise InvalidOffice(
                 "O documento usa campos que executam ou buscam conteúdo."
             )
-    if _DDE_FORMULA.search(content):
-        raise InvalidOffice("O documento usa fórmulas que executam comandos.")
+    if _DDE_FORMULA.search(content) or _EXTERNAL_FORMULA.search(content):
+        raise InvalidOffice(
+            "O documento usa fórmulas que executam comandos ou buscam conteúdo externo."
+        )
 
 
 def sniff_text(data: bytes, filename: str) -> bool:

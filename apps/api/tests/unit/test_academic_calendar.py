@@ -147,3 +147,21 @@ def test_calendario_padrao_reaproveita_leitura_em_memoria_ate_mudar_arquivo(
     for _ in range(25):
         assert academic_calendar.default_calendar().list_semesters()
     assert leituras <= 1
+
+
+def test_operacao_multi_ano_dinamica_em_2028_e_2029_sem_semestre_fixo(hoje):
+    from api.academic_calendar import (
+        current_regular_semester,
+        shift_regular_semester,
+    )
+    from api.modules.materials.service import oldest_semester
+
+    hoje(date(2028, 4, 15))
+    assert current_regular_semester() == "2028.1"
+    assert shift_regular_semester("2028.1", 1) == "2028.2"
+    assert oldest_semester() == "2025.2"
+
+    hoje(date(2029, 10, 10))
+    assert current_regular_semester() == "2029.2"
+    assert shift_regular_semester("2029.2", 1) == "2030.1"
+    assert oldest_semester() == "2027.1"

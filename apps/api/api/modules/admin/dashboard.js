@@ -1,4 +1,4 @@
-import { alertPanel } from './dashboard-alert.js';
+import { alertPanel, sharingPolicyPanel } from './dashboard-alert.js';
 import { $, base, call, closeDrawer, confirmation, downloadData, el, hasPermission, notice, openDrawer, promptStepUpMfa, setReadSignal, when } from './dashboard-core.js';
 import { initializeAuth } from './dashboard-auth.js';
 import { accountsView, securityView } from './dashboard-accounts.js';
@@ -296,10 +296,11 @@ async function database() {
 }
 
 async function system() {
-  const [o, health, alertInfo, maintPreview] = await Promise.all([
+  const [o, health, alertInfo, sharingPolicyInfo, maintPreview] = await Promise.all([
     call("/overview"),
     call("/health"),
     hasPermission("configure") ? call("/alert").catch(() => null) : Promise.resolve(null),
+    hasPermission("configure") ? call("/sharing-policy").catch(() => null) : Promise.resolve(null),
     call("/maintenance/preview").catch(() => null),
   ]);
   const toggle = (key, enabled) => el("input", { type:"checkbox", checked:enabled, "aria-label":key, onchange:async (e) => {
@@ -329,6 +330,7 @@ async function system() {
       el('p', { class: 'muted' }, Object.keys(health.metrics.origins).length ? Object.entries(health.metrics.origins).map(([name, value]) => `${name}: última tentativa ${value.state === 'failed' ? 'com falha' : 'conectada'} em ${when(value.last_at)}`).join(' · ') : 'Integrações institucionais: nenhuma tentativa observada nesta execução. Não fazemos consultas acadêmicas para medir disponibilidade.'),
       el('p', { class: 'muted' }, `Cardápio do RU: circuito ${{ closed: 'fechado (origem saudável)', open: 'aberto (usando cache)', half_open: 'testando a origem' }[health.origins.ru.circuit]} · ${fmt(health.origins.ru.origin_calls)} consultas à UnB · ${fmt(health.origins.ru.shared_requests)} pedidos atendidos sem nova consulta · ${fmt(health.origins.ru.stale_served)} respostas do cache vencido.`),
       el('p', { class: 'muted' }, health.pool.size === undefined ? 'Pool de conexões: sem dados neste ambiente.' : `Pool do banco: ${health.pool.in_use} em uso, ${health.pool.idle} ociosas, tamanho ${health.pool.size}, excedente ${health.pool.overflow}.`),
+      health.materials_security ? el('p', { class: 'muted' }, `Proteção de materiais: ${(health.materials_security.engines || []).join(', ')} · ClamAV opcional: ${{ disabled: 'não configurado (varredura offline ativa)', healthy: 'conectado e saudável', unreachable: 'indisponível (envios bloqueados por segurança)', unexpected: 'resposta inesperada' }[health.materials_security.clamav?.state] || 'desconhecido'}.`) : null,
       tableWrap(el('table', {}, el('thead', {}, el('tr', {}, ['Rota', 'Pedidos', 'Erros 5xx', 'p50', 'p95'].map((label) => el('th', {}, label)))),
         el('tbody', {}, health.metrics.routes.slice(0, 15).map((row) => el('tr', {}, el('td', {}, `${row.method} ${row.route}`), el('td', {}, row.requests), el('td', {}, row.errors), el('td', {}, `${row.p50_ms} ms`), el('td', {}, `${row.p95_ms} ms`))))))) ,
     el("div", { class:"grid g2" },
@@ -359,6 +361,7 @@ async function system() {
             } }, "Salvar"), status)));
         }))),
     alertPanel(alertInfo, render),
+    sharingPolicyPanel(sharingPolicyInfo, render),
     el("div", { class:"grid g2" },
       el("div", { class:"panel" }, el("h3", {}, "Armazenamento"),
         tableWrap(el("table", {}, el("tbody", {},

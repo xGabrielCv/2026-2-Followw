@@ -23,6 +23,10 @@ export interface UserSettings {
     sharePromptDismissed?: boolean;
     // marco do último reenvio automático das estatísticas (ex.: "2026.2:98" ou "2026.1:closed")
     lastStatisticsShareKey?: string;
+    // data ISO da última sincronização concluída (só neste navegador)
+    lastStatisticsShareAt?: string;
+    // identificador do último disparo global manual do admin já atendido
+    lastStatisticsShareTriggerId?: string;
 }
 
 export type UserSettingsPatch = Partial<UserSettings>;
@@ -68,7 +72,14 @@ export function useUpdateSettings() {
             if (body.shareStatistics !== undefined)
                 await syncStatisticsSharing(body.shareStatistics);
             const store = settingsStore(user.registration);
-            const next = { ...store.getSnapshot(), ...body };
+            const next: UserSettings = { ...store.getSnapshot(), ...body };
+            if (body.shareStatistics === true && !body.lastStatisticsShareAt) {
+                next.lastStatisticsShareAt = new Date().toISOString();
+            } else if (body.shareStatistics === false) {
+                delete next.lastStatisticsShareKey;
+                delete next.lastStatisticsShareAt;
+                delete next.lastStatisticsShareTriggerId;
+            }
             store.set(next);
             await flushLocalStorage();
             return next;

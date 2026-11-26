@@ -22,6 +22,11 @@ from api.semester_alert import (
     read_alert,
     save_alert,
 )
+from api.sharing_policy import (
+    StatisticsSharingPolicy,
+    read_sharing_policy,
+    save_sharing_policy,
+)
 
 router = APIRouter(dependencies=[auth.require_permission("configure")])
 _SEMESTER_RE = re.compile(r"^\d{4}\.\d$")
@@ -174,6 +179,85 @@ async def trigger_alert_now(
         await log(
             session,
             "community.alert.trigger",
+            detail=updated.trigger_id,
+            actor=request.state.admin,
+        )
+        return updated
+
+    return await db.write(write)
+
+
+class SharingPolicyInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    semester_percent: int = Field(ge=50, le=100)
+    interval_days: int = Field(ge=30, le=365)
+
+
+@router.get("/sharing-policy")
+async def get_sharing_policy_admin(db: DatabaseDep) -> dict:
+    async def read(session: AsyncSession) -> dict:
+        cal = await academic_calendar.read_calendar(session)
+        return {
+            "config": await read_sharing_policy(session),
+            "current_semester": academic_calendar.current_regular_semester(
+                calendar=cal
+            ),
+            "progress_percent": academic_calendar.semester_progress_percent(
+                calendar=cal
+            ),
+        }
+
+    return await db.read(read)
+
+
+@router.put("/sharing-policy")
+async def update_sharing_policy_admin(
+    body: SharingPolicyInput, request: Request, db: DatabaseDep
+) -> StatisticsSharingPolicy:
+    async def write(session: AsyncSession) -> StatisticsSharingPolicy:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('config:sharing-policy'))")
+        )
+        current = await read_sharing_policy(session)
+        saved = await save_sharing_policy(
+            session,
+            current.model_copy(
+                update={
+                    "semester_percent": body.semester_percent,
+                    "interval_days": body.interval_days,
+                }
+            ),
+        )
+        await log(
+            session,
+            "community.sharing_policy",
+            detail=f"semester_percent={saved.semester_percent} interval_days={saved.interval_days}",
+            actor=request.state.admin,
+        )
+        return saved
+
+    return await db.write(write)
+
+
+@router.post("/sharing-policy/trigger")
+async def trigger_sharing_policy_now(
+    request: Request, db: DatabaseDep
+) -> StatisticsSharingPolicy:
+    async def write(session: AsyncSession) -> StatisticsSharingPolicy:
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext('config:sharing-policy'))")
+        )
+        current = await read_sharing_policy(session)
+        updated = current.model_copy(
+            update={
+                "trigger_id": uuid.uuid4().hex[:12],
+                "triggered_at": datetime.now(UTC),
+            }
+        )
+        await save_sharing_policy(session, updated)
+        await log(
+            session,
+            "community.sharing_policy.trigger",
             detail=updated.trigger_id,
             actor=request.state.admin,
         )

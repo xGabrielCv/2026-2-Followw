@@ -30,7 +30,8 @@ DATA = ROOT / "packages" / "sigaa-client" / "data"
 PROFESSORS = ROOT / ".local" / "data" / "professors.csv"
 # Marca deixada pelo script de atualização; evita refazer na subida o que acabou de ser feito.
 MARKER = ROOT / ".local" / "update.json"
-TAMBURETEI_META = ROOT / ".local" / "data" / "tamburetei" / "meta.json"
+_DEFAULT_TAMBURETEI_META = ROOT / ".local" / "data" / "tamburetei" / "meta.json"
+TAMBURETEI_META = _DEFAULT_TAMBURETEI_META
 _SECRET = re.compile(r"(://[^/\s:@]+:)[^@\s]+@")
 _WINDOWS = sys.platform == "win32"
 # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
@@ -53,8 +54,13 @@ def legacy_last_update() -> datetime | None:
 
 
 def tamburetei_last_update() -> datetime | None:
+    meta_path = TAMBURETEI_META
+    if meta_path == _DEFAULT_TAMBURETEI_META:
+        override = os.environ.get("TAMBURETEI_DATA_DIR", "").strip()
+        if override:
+            meta_path = Path(override) / "meta.json"
     try:
-        value = json.loads(TAMBURETEI_META.read_text(encoding="utf-8"))["checked_at"]
+        value = json.loads(meta_path.read_text(encoding="utf-8"))["checked_at"]
         moment = datetime.fromisoformat(value)
     except OSError, ValueError, KeyError, TypeError:
         return None

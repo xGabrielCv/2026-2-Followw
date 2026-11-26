@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -16,10 +17,31 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 ROOT = Path(__file__).resolve().parents[3]
-SNAPSHOT_PATH = ROOT / ".local" / "data" / "tamburetei" / "snapshot.json"
+_DEFAULT_SNAPSHOT_PATH = ROOT / ".local" / "data" / "tamburetei" / "snapshot.json"
+SNAPSHOT_PATH = _DEFAULT_SNAPSHOT_PATH
 
 _CACHE_KEY: tuple[Path, int, int] | None = None
 _CACHE_DATA: dict[str, Any] | None = None
+
+
+def resolve_snapshot_path() -> Path:
+    if SNAPSHOT_PATH != _DEFAULT_SNAPSHOT_PATH:
+        return SNAPSHOT_PATH
+    override = os.environ.get("TAMBURETEI_DATA_DIR", "").strip()
+    if override:
+        return Path(override) / "snapshot.json"
+    return SNAPSHOT_PATH
+
+
+def snapshot_version() -> str:
+    """Identificador barato (mtime+tamanho) para invalidar caches quando o snapshot muda."""
+    path = resolve_snapshot_path()
+    try:
+        stat = path.stat()
+    except OSError:
+        return "missing"
+    return f"{path}:{stat.st_mtime_ns}:{stat.st_size}"
+
 
 _ENGENHARIAS_FCTE = frozenset(
     {
@@ -226,7 +248,7 @@ class ExternalSubjectRate(BaseModel):
 
 def _load_snapshot() -> dict[str, Any]:
     global _CACHE_KEY, _CACHE_DATA
-    path = SNAPSHOT_PATH
+    path = resolve_snapshot_path()
     try:
         stat = path.stat()
     except OSError:

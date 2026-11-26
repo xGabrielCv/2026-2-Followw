@@ -1279,6 +1279,7 @@ export interface components {
                 [key: string]: components["schemas"]["SemesterCalendar"];
             };
             alert: components["schemas"]["SemesterAlertConfig"];
+            sharing_policy?: components["schemas"]["StatisticsSharingPolicy"];
             banner?: components["schemas"]["PublicBanner"] | null;
         };
         /** AppLinks */
@@ -2945,6 +2946,26 @@ export interface components {
             situation: components["schemas"]["StudentSituation"];
             /** Percentage */
             percentage: number;
+        };
+        /**
+         * StatisticsSharingPolicy
+         * @description Regras globais (sem dados pessoais) que orientam quando o app reenvia estatísticas.
+         */
+        StatisticsSharingPolicy: {
+            /**
+             * Semester Percent
+             * @default 98
+             */
+            semester_percent: number;
+            /**
+             * Interval Days
+             * @default 180
+             */
+            interval_days: number;
+            /** Trigger Id */
+            trigger_id?: string | null;
+            /** Triggered At */
+            triggered_at?: string | null;
         };
         /**
          * StudentSituation

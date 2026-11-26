@@ -370,3 +370,26 @@ def test_taxa_sucesso_acima_de_100_em_ingresso_conjunto_e_descartada():
     assert parsed is not None
     assert parsed.taxa_sucesso is None
     assert parsed.taxa_evasao == 4.1
+
+
+def test_tamburetei_respeita_env_data_dir_e_muda_versao_quando_snapshot_atualiza(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("TAMBURETEI_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(tamburetei, "SNAPSHOT_PATH", tamburetei._DEFAULT_SNAPSHOT_PATH)
+    monkeypatch.setattr(tamburetei, "_CACHE_KEY", None)
+    monkeypatch.setattr(tamburetei, "_CACHE_DATA", None)
+
+    assert tamburetei.resolve_snapshot_path() == tmp_path / "snapshot.json"
+    assert tamburetei.snapshot_version() == "missing"
+
+    snap = tmp_path / "snapshot.json"
+    snap.write_text('{"updated_at":"2028-01-01T00:00:00Z"}', encoding="utf-8")
+    v1 = tamburetei.snapshot_version()
+    assert v1 != "missing"
+    assert tamburetei.snapshot_updated_at() == "2028-01-01T00:00:00Z"
+
+    snap.write_text(
+        '{"updated_at":"2028-06-01T00:00:00Z","courses":[]}', encoding="utf-8"
+    )
+    assert tamburetei.snapshot_version() != v1

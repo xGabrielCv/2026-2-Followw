@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query, Response
 from pydantic import StringConstraints, TypeAdapter
 from sigaa_client import Grade
 
+from api import tamburetei
 from api.account import OptionalAccountDep
 from api.cache import no_store
 from api.db.enums import ClassroomStatus
@@ -21,7 +22,7 @@ from api.modules.public_subjects.statistics import (
     SubjectStatisticsServiceDep,
 )
 from api.modules.recommendations.service import HistoryItem
-from api.resilience import TTLCache
+from api.resilience import SingleFlight, TTLCache
 from api.schemas import SearchText, UnitFilter
 
 router = APIRouter()
@@ -29,7 +30,10 @@ router = APIRouter()
 # Busca sem login é igual para todos e o catálogo muda em dias: guarda o JSON pronto por 60 s (a
 # serialização de dezenas de KB era o maior custo) e, se o banco falhar, serve a cópia por até 10 min.
 _CATALOG_JSON = TypeAdapter(list[CatalogSubject])
+_COMPARISON_JSON = TypeAdapter(Comparison)
+_COMPARISON_FLIGHT = SingleFlight()
 SEARCH_RESPONSES = TTLCache(ttl=60, stale_ttl=600, max_entries=512)
+COMPARISON_RESPONSES = TTLCache(ttl=60, stale_ttl=600, max_entries=256)
 
 _GRADES = "|".join(grade.value for grade in Grade)
 _STATUSES = "|".join(status.value for status in ClassroomStatus)
@@ -54,11 +58,22 @@ def _history_item(value: str) -> HistoryItem:
 )
 async def get_comparison(
     db: DatabaseDep,
-    response: Response,
     course: Annotated[int | None, Query(gt=0, le=2**31 - 1)] = None,
-) -> Comparison:
-    response.headers["Cache-Control"] = "public, max-age=300"
-    return await db.read(lambda session: comparison(session, course))
+) -> Response:
+    key = f"comparison|{tamburetei.snapshot_version()}|{course}"
+
+    async def render() -> bytes:
+        data = await db.read(lambda session: comparison(session, course))
+        return _COMPARISON_JSON.dump_json(data)
+
+    body = await COMPARISON_RESPONSES.get(
+        key, lambda: _COMPARISON_FLIGHT.run(key, render)
+    )
+    return Response(
+        body,
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @router.get(

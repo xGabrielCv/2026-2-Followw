@@ -197,6 +197,64 @@ def test_admin_configura_horario_e_dispara_tamburetei_e_oculta_notas_pas(
     assert publico["menu"]["notas_pas"] is False
 
 
+def test_admin_configura_e_dispara_politica_de_compartilhamento_e_reflete_no_config_publico(
+    roles, agendador
+):
+    client, cookies, _ = roles
+    como(client, cookies["moderator"])
+    assert client.get("/admin/api/sharing-policy", headers=HEADERS).status_code == 403
+
+    como(client, cookies["owner"])
+    inicial = client.get("/admin/api/sharing-policy", headers=HEADERS)
+    assert inicial.status_code == 200
+    assert inicial.json()["config"]["semester_percent"] == 98
+    assert inicial.json()["config"]["interval_days"] == 180
+    assert inicial.json()["config"]["trigger_id"] is None
+
+    for invalido in (
+        {"semester_percent": 49, "interval_days": 180},
+        {"semester_percent": 101, "interval_days": 180},
+        {"semester_percent": 95, "interval_days": 15},
+        {"semester_percent": 95, "interval_days": 400},
+    ):
+        assert (
+            client.put(
+                "/admin/api/sharing-policy", json=invalido, headers=HEADERS
+            ).status_code
+            == 422
+        )
+
+    salvo = client.put(
+        "/admin/api/sharing-policy",
+        json={"semester_percent": 92, "interval_days": 120},
+        headers=HEADERS,
+    )
+    assert salvo.status_code == 200, salvo.text
+    assert salvo.json()["semester_percent"] == 92
+    assert salvo.json()["interval_days"] == 120
+
+    disparo = client.post("/admin/api/sharing-policy/trigger", headers=HEADERS)
+    assert disparo.status_code == 200, disparo.text
+    trigger_id = disparo.json()["trigger_id"]
+    assert trigger_id and disparo.json()["triggered_at"]
+
+    publico = client.get("/public/config").json()["sharing_policy"]
+    assert publico["semester_percent"] == 92
+    assert publico["interval_days"] == 120
+    assert publico["trigger_id"] == trigger_id
+
+    health = client.get("/admin/api/health", headers=HEADERS).json()
+    assert "yara-x" in health["materials_security"]["engines"]
+    assert health["materials_security"]["clamav"]["state"] == "disabled"
+
+    acoes = [
+        a["action"]
+        for a in client.get("/admin/api/log", headers=HEADERS).json()["items"]
+    ]
+    assert "community.sharing_policy" in acoes
+    assert "community.sharing_policy.trigger" in acoes
+
+
 @pytest.mark.parametrize(
     "corpo",
     [

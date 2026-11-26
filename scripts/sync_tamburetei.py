@@ -21,7 +21,10 @@ from urllib.parse import urlparse
 import httpx
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = ROOT / ".local" / "data" / "tamburetei"
+_ENV_DATA_DIR = os.environ.get("TAMBURETEI_DATA_DIR", "").strip()
+DEFAULT_OUTPUT_DIR = (
+    Path(_ENV_DATA_DIR) if _ENV_DATA_DIR else ROOT / ".local" / "data" / "tamburetei"
+)
 ALLOWED_HOSTS = frozenset({"api.tambureteiunb.com.br", "raw.githubusercontent.com"})
 MAX_RESPONSE_BYTES = 15 * 1024 * 1024
 

@@ -1,7 +1,9 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Path, Query, Response
+from pydantic import TypeAdapter
 
+from api import tamburetei
 from api.cache import NoStore
 from api.modules.public_courses.service import (
     COURSES_PAGE_SIZE,
@@ -10,10 +12,16 @@ from api.modules.public_courses.service import (
     PublicCourse,
     PublicCourseServiceDep,
 )
+from api.resilience import SingleFlight, TTLCache
 from api.schemas import SearchText, UnitFilter
 from api.tamburetei import CourseIndicatorsCatalog, CourseIndicatorsDetail
 
 router = APIRouter()
+_CATALOG_ADAPTER = TypeAdapter(CourseIndicatorsCatalog)
+_DETAIL_ADAPTER = TypeAdapter(CourseIndicatorsDetail)
+_INDICATORS_FLIGHT = SingleFlight()
+INDICATORS_CATALOG_CACHE = TTLCache(ttl=300, stale_ttl=3600, max_entries=8)
+COURSE_INDICATORS_CACHE = TTLCache(ttl=300, stale_ttl=3600, max_entries=512)
 
 
 @router.get(
@@ -57,10 +65,22 @@ async def list_courses(
     ),
 )
 async def list_course_indicators(
-    service: PublicCourseServiceDep, response: Response
-) -> CourseIndicatorsCatalog:
-    response.headers["Cache-Control"] = "public, max-age=300"
-    return await service.get_indicators_catalog()
+    service: PublicCourseServiceDep,
+) -> Response:
+    key = f"catalog|{tamburetei.snapshot_version()}"
+
+    async def render() -> bytes:
+        data = await service.get_indicators_catalog()
+        return _CATALOG_ADAPTER.dump_json(data)
+
+    body = await INDICATORS_CATALOG_CACHE.get(
+        key, lambda: _INDICATORS_FLIGHT.run(key, render)
+    )
+    return Response(
+        body,
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 @router.get(
@@ -90,7 +110,6 @@ async def get_course(
 )
 async def get_course_indicators(
     service: PublicCourseServiceDep,
-    response: Response,
     course_id: Annotated[
         int,
         Path(
@@ -99,10 +118,22 @@ async def get_course_indicators(
     ],
     degree: Annotated[str | None, Query(max_length=80)] = None,
     modality: Annotated[str | None, Query(max_length=80)] = None,
-) -> CourseIndicatorsDetail:
-    response.headers["Cache-Control"] = "public, max-age=300"
-    return await service.get_course_indicators(
-        course_id, degree=degree, modality=modality
+) -> Response:
+    key = f"detail|{tamburetei.snapshot_version()}|{course_id}|{degree}|{modality}"
+
+    async def render() -> bytes:
+        data = await service.get_course_indicators(
+            course_id, degree=degree, modality=modality
+        )
+        return _DETAIL_ADAPTER.dump_json(data)
+
+    body = await COURSE_INDICATORS_CACHE.get(
+        key, lambda: _INDICATORS_FLIGHT.run(key, render)
+    )
+    return Response(
+        body,
+        media_type="application/json",
+        headers={"Cache-Control": "public, max-age=300"},
     )
 
 

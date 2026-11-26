@@ -2,7 +2,7 @@ import hashlib
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, literal, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from unb_browser import SemesterCalendar
@@ -27,6 +27,7 @@ from api.metrics import observe_client_event
 from api.rate_limit import publish_quota
 from api.resilience import SingleFlight
 from api.semester_alert import SemesterAlertConfig, read_alert
+from api.sharing_policy import StatisticsSharingPolicy, read_sharing_policy
 from api.system_banner import PublicBanner, public_banner
 
 router = APIRouter()
@@ -71,6 +72,9 @@ class AppConfig(BaseModel):
     flags: dict[str, bool]
     calendar: dict[str, SemesterCalendar]
     alert: SemesterAlertConfig
+    sharing_policy: StatisticsSharingPolicy = Field(
+        default_factory=StatisticsSharingPolicy
+    )
     banner: PublicBanner | None = None
 
 
@@ -96,6 +100,7 @@ async def get_config(db: DatabaseDep, response: Response) -> AppConfig:
                 for key, value in (await read_custom_calendar(session)).items()
             },
             alert=await read_alert(session),
+            sharing_policy=await read_sharing_policy(session),
             banner=await public_banner(session),
         )
 

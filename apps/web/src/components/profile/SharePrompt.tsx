@@ -68,29 +68,57 @@ export function SharePrompt() {
         localStorageRepository.set(SEEN_KEY, true);
     }, [open]);
 
-    // Quem ativou o compartilhamento reenvia automaticamente ao atingir >= 98% do semestre ou fechar novo período.
+    // Quem ativou o compartilhamento reenvia automaticamente seguindo a política pública configurada no admin.
     const registration = user?.registration;
     const lastKey = settings.lastStatisticsShareKey;
+    const lastAt = settings.lastStatisticsShareAt;
+    const lastTriggerId = settings.lastStatisticsShareTriggerId;
     useEffect(() => {
-        if (!sharing || !registration || readSession(SHARED_KEY)) return;
+        if (
+            !sharing ||
+            !registration ||
+            readSession(SHARED_KEY) ||
+            classrooms.data === undefined ||
+            config.isPending
+        )
+            return;
         const decision = evaluateAutoReshare({
             enabled: sharing,
             classrooms: classrooms.data,
             today: nowInBrasilia().date,
             customCalendar: config.data?.calendar,
-            lastSyncedKey: lastKey
+            policy: config.data?.sharing_policy,
+            lastSyncedKey: lastKey,
+            lastSyncedAt: lastAt,
+            lastTriggerId
         });
         if (!decision.shouldSync || !decision.syncKey) return;
         markSession(SHARED_KEY);
         const targetKey = decision.syncKey;
+        const targetTriggerId = decision.triggerId ?? config.data?.sharing_policy?.trigger_id;
         void syncStatisticsSharing(true, decision.includeClosing)
             .then(() => {
                 const store = settingsStore(registration);
-                store.set({ ...store.getSnapshot(), lastStatisticsShareKey: targetKey });
+                store.set({
+                    ...store.getSnapshot(),
+                    lastStatisticsShareKey: targetKey,
+                    lastStatisticsShareAt: new Date().toISOString(),
+                    ...(targetTriggerId ? { lastStatisticsShareTriggerId: targetTriggerId } : {})
+                });
                 return flushLocalStorage();
             })
             .catch(() => {});
-    }, [sharing, registration, classrooms.data, config.data?.calendar, lastKey]);
+    }, [
+        sharing,
+        registration,
+        classrooms.data,
+        config.isPending,
+        config.data?.calendar,
+        config.data?.sharing_policy,
+        lastKey,
+        lastAt,
+        lastTriggerId
+    ]);
 
     if (!undecided) return null;
     const close = () => setClosed(true);

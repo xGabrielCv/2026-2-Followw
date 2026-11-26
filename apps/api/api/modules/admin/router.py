@@ -502,6 +502,8 @@ async def revoke_self(
 
 @api.get("/health", dependencies=[auth.require_permission("operations")])
 async def health(accounts: AdminAccountsDep) -> dict:
+    from api.modules.materials import av, scanner
+
     started = perf_counter()
     await accounts.db.read(lambda session: session.scalar(text("SELECT 1")))
     return {
@@ -512,6 +514,10 @@ async def health(accounts: AdminAccountsDep) -> dict:
         "metrics": metrics.snapshot(),
         "origins": resilience_status(),
         "pool": pool_status(),
+        "materials_security": {
+            "engines": scanner.active_engines(),
+            "clamav": await av.health(),
+        },
         "backups": {"state": "operator_managed", "last_verified": None},
     }
 
