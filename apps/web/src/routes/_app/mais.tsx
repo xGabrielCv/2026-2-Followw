@@ -1,6 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, type LinkProps } from '@tanstack/react-router';
 import {
+    Award,
     BellRing,
     BookOpenText,
     Bot,
@@ -92,6 +93,15 @@ function MaisPage() {
                                 ? 'Simule suas menções e veja o impacto no IRA e no MP.'
                                 : 'Entre com o SIGAA para simular seu IRA e MP.'
                         }
+                    />
+                )}
+                {show('notas_pas') && (
+                    <MenuCard
+                        link={{ to: '/buscar', search: { category: 'courses' } }}
+                        icon={<Award className="size-5" aria-hidden="true" />}
+                        tone="bg-flow-5/15 text-flow-5"
+                        title="Notas de corte e indicadores"
+                        description="PAS, evasão e dados públicos dos cursos."
                     />
                 )}
             </MenuGroup>

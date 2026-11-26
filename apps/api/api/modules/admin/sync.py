@@ -28,7 +28,7 @@ from api.modules.sync.schedule import BRASILIA, SOURCES, SyncSettings
 from api.modules.sync.scheduler import get_scheduler
 
 router = APIRouter()
-Source = Literal["catalog", "restaurant"]
+Source = Literal["catalog", "restaurant", "tamburetei"]
 Resource = Literal["all", "professors", "offers", "subjects", "curricula", "units"]
 
 
@@ -202,7 +202,7 @@ async def run_now(
     if source not in SOURCES:
         raise HTTPException(404, "Fonte desconhecida.")
     if source != "catalog" and resource != "all":
-        raise HTTPException(422, "O RU não possui esse recurso de catálogo.")
+        raise HTTPException(422, "Esta fonte não possui esse recurso de catálogo.")
     outcome = await get_scheduler().trigger(source, resource, actor=request.state.admin)
     if outcome == "busy":
         raise HTTPException(409, "Esta fonte já está sincronizando.")

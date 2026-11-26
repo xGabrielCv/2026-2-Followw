@@ -51,6 +51,9 @@ class SyncScheduler:
             "restaurant": lambda settings: sources.run_restaurant(
                 self._sessionmaker, settings.timeout_seconds
             ),
+            "tamburetei": lambda settings: sources.run_tamburetei(
+                settings.timeout_seconds
+            ),
         }
 
     async def start(self, tick_seconds: float | None = None) -> None:
@@ -124,12 +127,17 @@ class SyncScheduler:
         lease = timedelta(seconds=settings.timeout_seconds) + LEASE_MARGIN
 
         async def operation(session: AsyncSession) -> bool:
+            legacy = None
+            if source == "catalog":
+                legacy = sources.legacy_last_update()
+            elif source == "tamburetei":
+                legacy = sources.tamburetei_last_update()
             await service.ensure_state(
                 session,
                 source,
                 now,
                 settings,
-                sources.legacy_last_update() if source == "catalog" else None,
+                legacy,
             )
             claimed = await service.claim(
                 session, source, self.owner, now, lease, force=force, resource=resource

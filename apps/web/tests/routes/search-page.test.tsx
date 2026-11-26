@@ -29,6 +29,7 @@ import {
 import { appConfigQueryOptions } from '#/queries/app-config';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { apiClient } from '#/queries/client';
+import { coursesIndicatorsSummaryQueryOptions } from '#/queries/indicators';
 import { internshipsQueryOptions } from '#/queries/internships';
 import { meQueryOptions } from '#/queries/me';
 import { type SearchResult, searchQueryOptions } from '#/queries/search';
@@ -238,6 +239,11 @@ describe('página de busca com estado na URL', () => {
             menu: {},
             links: { automatricula: null, monitor: null },
             flags: { current_plan: true }
+        });
+        client.setQueryData(coursesIndicatorsSummaryQueryOptions.queryKey, {
+            updated_at: null,
+            dashboard: null,
+            courses: {}
         });
         const subjects = [
             {

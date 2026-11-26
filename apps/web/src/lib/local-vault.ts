@@ -11,6 +11,7 @@ const DAY = 86400_000;
 const PUBLIC_KEYS = new Set([
     'followw:theme',
     'followw:layout',
+    'followw:stats-source',
     'followw:install-dismissed',
     'followw:analytics-consent',
     'followw:cache-epoch',

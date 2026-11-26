@@ -354,6 +354,16 @@ Step 'Dados públicos'
 $dataDir = Join-Path $Root 'packages\sigaa-client\data'
 if (-not $Offline) {
     Invoke-Checked uv @('run', '--no-sync', 'python', 'scripts/bootstrap_data.py')
+    if (-not $SkipDataUpdate) {
+        # Atualiza localmente os dados públicos do Tamburetei UnB (PAS e DPO) no máximo 1x/dia.
+        try {
+            & uv run --no-sync python scripts/sync_tamburetei.py --if-stale-hours 24 | Out-Null
+            if ($LASTEXITCODE -eq 0) { Ok 'dados públicos Tamburetei (PAS e DPO) verificados' }
+            else { Warn 'não foi possível atualizar os dados públicos do Tamburetei agora; último snapshot local mantido' }
+        } catch {
+            Warn 'não foi possível atualizar os dados públicos do Tamburetei agora; último snapshot local mantido'
+        }
+    }
 }
 if (-not (Test-Path (Join-Path $dataDir 'units.csv'))) { Fail 'Catálogo ausente. Execute uma vez com internet para importar os dados públicos de referência.' }
 # Os modelos entram no hash: tabela nova no código também roda o db-init, que só cria o que falta.

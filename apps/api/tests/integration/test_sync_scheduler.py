@@ -27,6 +27,7 @@ def sem_marca_do_script(tmp_path, monkeypatch):
     from api.modules.sync import sources
 
     monkeypatch.setattr(sources, "MARKER", tmp_path / "update.json")
+    monkeypatch.setattr(sources, "TAMBURETEI_META", tmp_path / "tamburetei-meta.json")
 
 
 class Fonte:
@@ -46,12 +47,13 @@ class Fonte:
         )
 
 
-def agendador(sessionmaker, catalogo, restaurante=None):
+def agendador(sessionmaker, catalogo, restaurante=None, tamburetei=None):
     return SyncScheduler(
         sessionmaker,
         executors={
             "catalog": catalogo,
             "restaurant": restaurante or Fonte(Outcome("success", 1, "r")),
+            "tamburetei": tamburetei or Fonte(Outcome("success", 1, "t")),
         },
     )
 
@@ -395,7 +397,12 @@ async def test_cancelamento_coordenado_entre_workers(async_database):
     fonte.espera = asyncio.Event()
     s = agendador(async_database, fonte)
     outro = agendador(async_database, fonte)
-    await configurar(async_database, catalog_enabled=False, restaurant_enabled=False)
+    await configurar(
+        async_database,
+        catalog_enabled=False,
+        restaurant_enabled=False,
+        tamburetei_enabled=False,
+    )
     assert await s.trigger("catalog") == "started"
     assert await outro.cancel("catalog")
     await s.tick()

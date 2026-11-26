@@ -1,6 +1,6 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Download, Info, ShieldCheck } from 'lucide-react';
+import { BarChart3, Download, Info, ShieldCheck } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { createStandardSchemaV1, parseAsStringLiteral } from 'nuqs/server';
 
@@ -21,8 +21,21 @@ import { Card } from '#/components/ui/card';
 import { difference, insights } from '#/lib/comparison';
 import { downloadOpenData } from '#/lib/open-data';
 import { cn } from '#/lib/shadcn';
+import {
+    ORIGIN_LABELS,
+    type ResolvedOrigin,
+    STATISTICS_SOURCE_LABELS,
+    resolveComparisonData,
+    useStatisticsSource
+} from '#/lib/statistics-source';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { comparisonQueryOptions } from '#/queries/comparison';
+import {
+    type CourseYearMetrics,
+    type UnbDashboardSummary,
+    formatIndicatorNumber,
+    formatIndicatorPercent
+} from '#/queries/indicators';
 import { meQueryOptions } from '#/queries/me';
 import { useUserSettings } from '#/queries/settings';
 
@@ -53,6 +66,7 @@ function Compare({ courseId }: { courseId?: number }) {
     const history = useQuery(allClassroomsQueryOptions);
     const data = useQuery(comparisonQueryOptions(scope === 'course' ? courseId : undefined));
     const settings = useUserSettings();
+    const sourceMode = useStatisticsSource();
 
     if (data.isPending || history.isPending)
         return <LoadingText>Juntando seus dados e as médias gerais...</LoadingText>;
@@ -66,8 +80,9 @@ function Compare({ courseId }: { courseId?: number }) {
             />
         );
 
-    const result = insights(history.data ?? [], data.data, scope);
-    const reference = scope === 'course' ? data.data.course : data.data.unb;
+    const { comparison: effective, originByCode } = resolveComparisonData(data.data, sourceMode);
+    const result = insights(history.data ?? [], effective, scope);
+    const reference = scope === 'course' ? effective.course : effective.unb;
     const label = scope === 'course' ? 'do seu curso' : 'da UnB';
 
     return (
@@ -78,10 +93,18 @@ function Compare({ courseId }: { courseId?: number }) {
                 <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden />
                 <p className="text-muted-foreground">
                     A comparação é feita <strong>neste aparelho</strong>: seu histórico não é
-                    enviado. As médias vêm só das turmas de quem liberou os índices
+                    enviado. Fonte ativa:{' '}
+                    <strong className="text-foreground">
+                        {STATISTICS_SOURCE_LABELS[sourceMode]}
+                    </strong>{' '}
+                    (
+                    <Link to="/perfil" className="text-primary underline underline-offset-4">
+                        alterar em Perfil › Conta
+                    </Link>
+                    ).{' '}
                     {settings.shareStatistics
-                        ? ', como você.'
-                        : '. Você não libera os seus, então suas turmas ficam de fora delas.'}
+                        ? 'Suas turmas contribuem de forma anônima.'
+                        : 'Você não libera os seus índices, então suas turmas ficam de fora.'}
                 </p>
             </Card>
             {courseId && (
@@ -118,6 +141,11 @@ function Compare({ courseId }: { courseId?: number }) {
                 />
             </div>
             <Summary result={result} label={label} />
+            <InstitutionalPanorama
+                scope={scope}
+                courseIndicators={data.data.course_indicators}
+                dashboard={data.data.dashboard}
+            />
             <SubjectList
                 title="Mais difíceis que você já passou"
                 empty="Nenhuma matéria aprovada com índices ainda."
@@ -128,8 +156,12 @@ function Compare({ courseId }: { courseId?: number }) {
                 empty="Sem índices das matérias que faltam."
                 items={result.hardestAhead}
             />
-            {data.data.subjects.length > 0 && (
-                <OpenDataCard scope={scope} subjects={data.data.subjects} />
+            {effective.subjects.length > 0 && (
+                <OpenDataCard
+                    scope={scope}
+                    subjects={effective.subjects}
+                    originByCode={originByCode}
+                />
             )}
             <p className="flex gap-2 px-1 text-xs text-muted-foreground">
                 <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -144,17 +176,134 @@ function Compare({ courseId }: { courseId?: number }) {
     );
 }
 
-function OpenDataCard({ scope, subjects }: { scope: string; subjects: SubjectRate[] }) {
+function InstitutionalPanorama({
+    scope,
+    courseIndicators,
+    dashboard
+}: {
+    scope: 'course' | 'unb';
+    courseIndicators?: CourseYearMetrics | null;
+    dashboard?: UnbDashboardSummary | null;
+}) {
+    if (scope === 'course' && courseIndicators) {
+        return (
+            <Card className="flex flex-col gap-3 p-4 text-xs">
+                <div className="flex items-center gap-2">
+                    <BarChart3 className="size-4 text-primary" aria-hidden="true" />
+                    <h2 className="text-sm font-semibold text-foreground">
+                        Panorama institucional do curso (DPO/UnB · {courseIndicators.ano})
+                    </h2>
+                </div>
+                <dl className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Matriculados</dt>
+                        <dd className="text-base font-bold tabular-nums">
+                            {formatIndicatorNumber(courseIndicators.matriculados)}
+                        </dd>
+                    </div>
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Concluintes</dt>
+                        <dd className="text-base font-bold tabular-nums">
+                            {formatIndicatorNumber(courseIndicators.concluintes)}
+                        </dd>
+                    </div>
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Taxa de formação</dt>
+                        <dd className="text-base font-bold text-primary tabular-nums">
+                            {formatIndicatorPercent(courseIndicators.taxa_sucesso)}
+                        </dd>
+                    </div>
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Taxa de evasão</dt>
+                        <dd className="text-base font-bold text-destructive tabular-nums">
+                            {formatIndicatorPercent(courseIndicators.taxa_evasao)}
+                        </dd>
+                    </div>
+                </dl>
+            </Card>
+        );
+    }
+
+    if (scope === 'unb' && dashboard) {
+        return (
+            <Card className="flex flex-col gap-3 p-4 text-xs">
+                <div className="flex items-center gap-2">
+                    <BarChart3 className="size-4 text-primary" aria-hidden="true" />
+                    <h2 className="text-sm font-semibold text-foreground">
+                        Panorama institucional da UnB (DPO/Tamburetei · {dashboard.total_cursos}{' '}
+                        cursos)
+                    </h2>
+                </div>
+                <dl className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Matrículas acumuladas</dt>
+                        <dd className="text-base font-bold tabular-nums">
+                            {formatIndicatorNumber(dashboard.matriculados)}
+                        </dd>
+                    </div>
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Concluintes</dt>
+                        <dd className="text-base font-bold tabular-nums">
+                            {formatIndicatorNumber(dashboard.concluintes)}
+                        </dd>
+                    </div>
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Formação média</dt>
+                        <dd className="text-base font-bold text-primary tabular-nums">
+                            {formatIndicatorPercent(dashboard.taxa_media_formacao)}
+                        </dd>
+                    </div>
+                    <div className="rounded-lg border border-border p-2.5">
+                        <dt className="text-muted-foreground">Evasão média</dt>
+                        <dd className="text-base font-bold text-destructive tabular-nums">
+                            {formatIndicatorPercent(dashboard.taxa_media_evasao)}
+                        </dd>
+                    </div>
+                </dl>
+                {dashboard.resumo_campi && dashboard.resumo_campi.length > 0 && (
+                    <ul className="divide-y divide-border rounded-lg border border-border">
+                        {dashboard.resumo_campi.map((campus) => (
+                            <li
+                                key={campus.campus}
+                                className="flex items-center justify-between gap-2 px-3 py-2"
+                            >
+                                <span className="font-medium text-foreground">{campus.campus}</span>
+                                <span className="shrink-0 text-muted-foreground tabular-nums">
+                                    Evasão {formatIndicatorPercent(campus.taxa_evasao)}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </Card>
+        );
+    }
+
+    return null;
+}
+
+function OpenDataCard({
+    scope,
+    subjects,
+    originByCode
+}: {
+    scope: string;
+    subjects: SubjectRate[];
+    originByCode: Map<string, ResolvedOrigin>;
+}) {
     const rows = () =>
-        subjects.map((item) => ({
-            codigo: item.code,
-            disciplina: item.name,
-            aprovacao_pct: item.rates.approved,
-            reprovacao_pct: item.rates.failed,
-            trancamento_pct: item.rates.dropped,
-            turmas: item.rates.classrooms,
-            fonte: 'Followw UnB (médias públicas compartilhadas)'
-        }));
+        subjects.map((item) => {
+            const origin = originByCode.get(item.code) ?? 'followw';
+            return {
+                codigo: item.code,
+                disciplina: item.name,
+                aprovacao_pct: item.rates.approved,
+                reprovacao_pct: item.rates.failed,
+                trancamento_pct: item.rates.dropped,
+                turmas: item.rates.classrooms,
+                fonte: ORIGIN_LABELS[origin]
+            };
+        });
     return (
         <Card className="flex flex-col gap-3 p-4 text-xs">
             <div className="min-w-0">

@@ -29,6 +29,7 @@ MENU: dict[str, tuple[str, bool]] = {
     "fluxo": ("Fluxo acadêmico", True),
     "estatisticas": ("Estatísticas comparadas", True),
     "simulador_ira": ("Simular IRA e MP", True),
+    "notas_pas": ("Notas de corte e indicadores", True),
     "grupos": ("Grupos das turmas", True),
     "avaliacoes": ("Avaliações de professores", True),
     "materiais": ("Material das matérias", True),

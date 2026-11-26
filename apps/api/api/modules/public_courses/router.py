@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query
+from fastapi import APIRouter, Path, Query, Response
 
 from api.cache import NoStore
 from api.modules.public_courses.service import (
@@ -11,6 +11,7 @@ from api.modules.public_courses.service import (
     PublicCourseServiceDep,
 )
 from api.schemas import SearchText, UnitFilter
+from api.tamburetei import CourseIndicatorsCatalog, CourseIndicatorsDetail
 
 router = APIRouter()
 
@@ -47,6 +48,22 @@ async def list_courses(
 
 
 @router.get(
+    "/indicators",
+    response_model=CourseIndicatorsCatalog,
+    summary="Resumo público das notas de corte do PAS e indicadores DPO/UnB por curso",
+    description=(
+        "Lê apenas o snapshot local sincronizado de dados públicos (PAS Cebraspe e DPO/UnB via Tamburetei), "
+        "sem consultar serviços externos na requisição nem guardar dados de alunos."
+    ),
+)
+async def list_course_indicators(
+    service: PublicCourseServiceDep, response: Response
+) -> CourseIndicatorsCatalog:
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return await service.get_indicators_catalog()
+
+
+@router.get(
     "/{course_id}",
     response_model=PublicCourse,
     summary="Consultar curso cadastrado",
@@ -63,6 +80,30 @@ async def get_course(
     ],
 ) -> PublicCourse:
     return await service.get_course(course_id)
+
+
+@router.get(
+    "/{course_id}/indicators",
+    response_model=CourseIndicatorsDetail,
+    summary="Histórico do PAS e métricas institucionais DPO/UnB de um curso",
+    responses={404: {"description": "Curso inexistente."}},
+)
+async def get_course_indicators(
+    service: PublicCourseServiceDep,
+    response: Response,
+    course_id: Annotated[
+        int,
+        Path(
+            gt=0, le=2**31 - 1, description="ID local do curso no Followw (courses.id)."
+        ),
+    ],
+    degree: Annotated[str | None, Query(max_length=80)] = None,
+    modality: Annotated[str | None, Query(max_length=80)] = None,
+) -> CourseIndicatorsDetail:
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return await service.get_course_indicators(
+        course_id, degree=degree, modality=modality
+    )
 
 
 @router.get(

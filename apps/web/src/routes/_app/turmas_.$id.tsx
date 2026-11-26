@@ -112,12 +112,15 @@ function ClassroomPage() {
     const hydrated = useHydrated();
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const classrooms = useQuery({ ...allClassroomsQueryOptions, enabled: Boolean(user) });
-    const teachingPlan = useQuery({ ...classroomTeachingPlanQueryOptions(id), enabled: false });
     const [{ tab }, setSearch] = useQueryStates(classroomSearchParsers, {
         history: 'replace',
         scroll: false
     });
     const classroom = classrooms.data?.find((item) => item.id === id);
+    const teachingPlan = useQuery({
+        ...classroomTeachingPlanQueryOptions(id),
+        enabled: Boolean(user && classroom)
+    });
 
     return (
         <>
@@ -166,8 +169,8 @@ function ClassroomPage() {
                         onValueChange={(value: ClassroomTab) => void setSearch({ tab: value })}
                         className="mt-5 gap-4"
                     >
-                        {/* Sem leitura do plano ainda, a página dele consulta o SIGAA. */}
-                        {teachingPlan.data !== null && <TeachingPlanLink id={id} />}
+                        {/* Exibe o atalho somente quando a turma possui plano de ensino cadastrado. */}
+                        {Boolean(teachingPlan.data) && <TeachingPlanLink id={id} />}
                         <TabsList
                             variant="line"
                             className="grid w-full grid-cols-4 border-b border-border group-data-horizontal/tabs:h-auto"

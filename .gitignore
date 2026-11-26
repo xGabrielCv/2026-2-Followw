@@ -22,6 +22,7 @@ scripts/
 /scripts/*
 !/scripts/bootstrap_data.py
 !/scripts/update_data.py
+!/scripts/sync_tamburetei.py
 !/scripts/configure_cloudbeaver.py
 !/scripts/cloudbeaver/
 *.ps1

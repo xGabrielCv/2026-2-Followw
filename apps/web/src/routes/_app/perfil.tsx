@@ -18,6 +18,7 @@ import {
     ProgressSection
 } from '#/components/profile/ProfileOverview';
 import { ShareStatisticsSetting } from '#/components/profile/ShareStatisticsSetting';
+import { StatisticsSourceSetting } from '#/components/profile/StatisticsSourceSetting';
 import { ThemeToggle } from '#/components/ThemeToggle';
 import {
     AlertDialog,
@@ -148,6 +149,7 @@ function AccountSection({
                 )}
                 <DocumentDownloads />
                 <ShareStatisticsSetting />
+                <StatisticsSourceSetting />
                 <LayoutModeSetting />
                 <BackupSetting registration={registration} />
                 <div className="-mx-3">

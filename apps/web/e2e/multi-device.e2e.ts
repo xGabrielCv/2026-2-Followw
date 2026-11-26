@@ -196,6 +196,28 @@ test('painel admin, banner operacional, plano de ensino e modos forçados em mú
         .locator('main')
         .evaluate((el) => el.getBoundingClientRect().width);
     expect(forcedFlowMainWidth).toBeLessThanOrEqual(460);
+    // Abre o drawer de PAS/DPO no modo celular forçado e confirma centralização (não colado à esquerda) + exportação
+    const indicatorsTrigger = page.getByRole('button', {
+        name: /Nota de corte PAS|Indicadores públicos/
+    });
+    await expect(indicatorsTrigger).toBeVisible();
+    await indicatorsTrigger.click();
+    const drawerPopup = page.locator('[data-slot="drawer-popup"]').first();
+    await expect(drawerPopup).toBeVisible();
+    await expect(drawerPopup.getByRole('button', { name: 'Exportar CSV' })).toBeVisible();
+    await expect(drawerPopup.getByRole('button', { name: 'Exportar JSON' })).toBeVisible();
+    const drawerBox = await drawerPopup.boundingBox();
+    expect(drawerBox).not.toBeNull();
+    if (drawerBox) {
+        expect(drawerBox.width).toBeLessThanOrEqual(430);
+        expect(Math.abs(drawerBox.x + drawerBox.width / 2 - 720)).toBeLessThan(30);
+    }
+    await page.screenshot({
+        path: `${artifacts}/drawer-forced-mobile-1440.png`,
+        animations: 'disabled'
+    });
+    await drawerPopup.getByRole('button', { name: 'Fechar' }).click();
+    await expect(drawerPopup).toBeHidden();
     await page.screenshot({
         path: `${artifacts}/flow-forced-mobile-1440.png`,
         animations: 'disabled'
@@ -220,17 +242,15 @@ test('painel admin, banner operacional, plano de ensino e modos forçados em mú
         fullPage: true
     });
 
-    // 5. Volta para automático e confere turma sem plano cadastrado (BBB): consulta, redireciona de volta e oculta o atalho
+    // 5. Volta para automático e confere turma sem plano cadastrado (BBB): o atalho não aparece e acesso direto volta à turma
     await page.evaluate(() => {
         localStorage.removeItem('followw:layout');
         delete document.documentElement.dataset.layout;
     });
     await page.goto('/turmas/BBB');
     await ready(page);
-    const missingPlanLink = page.getByRole('link', { name: /Plano de ensino/i });
-    await expect(missingPlanLink).toBeVisible();
-    await missingPlanLink.click();
-    await expect(page).toHaveURL(/\/turmas\/BBB$/);
     await expect(page.getByRole('link', { name: /Plano de ensino/i })).toHaveCount(0);
+    await page.goto('/turmas/BBB/plano-de-ensino');
+    await expect(page).toHaveURL(/\/turmas\/BBB$/);
     expect(failures).toEqual([]);
 });

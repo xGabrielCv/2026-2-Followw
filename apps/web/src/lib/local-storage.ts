@@ -14,7 +14,8 @@ export const STORAGE_KEYS = {
     // credenciais aleatórias de cada publicação (e o segredo antigo, até migrar)
     AUTHOR: 'author',
     ALERT_DISMISSED: 'semester-alert-dismissed',
-    STUDENT_CARD: 'student-card'
+    STUDENT_CARD: 'student-card',
+    STATS_SOURCE: 'stats-source'
 } as const;
 
 function getStorage(): Storage | null {

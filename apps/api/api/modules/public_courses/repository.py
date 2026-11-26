@@ -27,6 +27,11 @@ class PublicCourseRepository:
             page_size,
         )
 
+    async def list_all_courses(self) -> list[Course]:
+        return list(
+            await self._session.scalars(select(Course).order_by(Course.name, Course.id))
+        )
+
     async def get_course(self, course_id: int) -> Course | None:
         return await self._session.get(Course, course_id)
 

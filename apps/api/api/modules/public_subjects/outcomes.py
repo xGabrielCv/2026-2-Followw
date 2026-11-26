@@ -18,9 +18,19 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.db.main import DatabaseDep
-from api.db.models import Classroom, ClassroomProfessor, Professor, Subject
+from api.db.models import Classroom, ClassroomProfessor, Course, Professor, Subject
 from api.db.search import lookup_sql
 from api.modules.public_subjects.sharing import shared_statistics
+from api.tamburetei import (
+    CourseYearMetrics,
+    ExternalOutcomeRates,
+    ExternalSubjectRate,
+    UnbDashboardSummary,
+    all_external_subject_rates,
+    course_indicator_summary,
+    dashboard_summary,
+    subject_external_outcomes,
+)
 
 _APPROVED = {"aprovado", "aprovado_por_nota"}
 _FAILED = {
@@ -53,6 +63,7 @@ class ProfessorOutcome(BaseModel):
 class SubjectOutcomes(BaseModel):
     subject: OutcomeRates | None
     professors: list[ProfessorOutcome]
+    external: ExternalOutcomeRates | None = None
 
 
 class SubjectRate(BaseModel):
@@ -175,7 +186,9 @@ class OutcomeService:
                 for key, name in sorted(shown.items())
             ]
             return SubjectOutcomes(
-                subject=outcome_rates(subject), professors=professors
+                subject=outcome_rates(subject),
+                professors=professors,
+                external=subject_external_outcomes(code),
             )
 
         return await self._db.read(load)
@@ -222,6 +235,9 @@ class Comparison(BaseModel):
     course: OutcomeRates | None
     # Matérias com dados: as do curso pedido, ou as da UnB inteira sem curso.
     subjects: list[SubjectRate]
+    external_subjects: list[ExternalSubjectRate] = []
+    course_indicators: CourseYearMetrics | None = None
+    dashboard: UnbDashboardSummary | None = None
 
 
 async def comparison(session: AsyncSession, course_id: int | None) -> Comparison:
@@ -257,9 +273,23 @@ async def comparison(session: AsyncSession, course_id: int | None) -> Comparison
         for code, group in by_code.items()
         if (rates := outcome_rates(group)) is not None
     ]
+    course_metrics: CourseYearMetrics | None = None
+    if course_id is not None:
+        course = await session.get(Course, course_id)
+        if course is not None:
+            course_metrics = course_indicator_summary(
+                course_id=course.id,
+                name=course.name,
+                shift=course.shift,
+                unit_code=course.unit.code if course.unit else None,
+                unit_name=course.unit.name if course.unit else None,
+            ).latest_metrics
     subjects.sort(key=lambda item: (-item.rates.failed, item.code))
     return Comparison(
         unb=outcome_rates(samples),
         course=outcome_rates(in_scope) if course_codes is not None else None,
         subjects=subjects[:300],
+        external_subjects=all_external_subject_rates(course_codes)[:300],
+        course_indicators=course_metrics,
+        dashboard=dashboard_summary(),
     )

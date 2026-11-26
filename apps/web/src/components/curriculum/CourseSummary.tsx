@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 
 import type { PublicCourse } from '#/queries/courses';
 
-import { PasAdmissionDrawer } from '#/components/curriculum/PasAdmissionDrawer';
+import { CourseIndicatorsDrawer } from '#/components/curriculum/CourseIndicatorsDrawer';
 import { normalizeCurriculum } from '#/lib/curriculum/model';
 import { titleCase, unitLabel } from '#/lib/profile';
 import { courseQueryOptions } from '#/queries/courses';
@@ -75,15 +75,11 @@ export function CourseSummary({
                     </SummaryItem>
                 )}
             </ul>
-            <PasAdmissionDrawer
-                course={{
-                    name: course.name,
-                    shift,
-                    degree: curriculum?.degree,
-                    modality: curriculum?.modality,
-                    unitCode: unit?.code,
-                    unitName: unit?.name
-                }}
+            <CourseIndicatorsDrawer
+                courseId={course.id}
+                courseName={course.name}
+                degree={curriculum?.degree}
+                modality={curriculum?.modality}
             />
         </section>
     );

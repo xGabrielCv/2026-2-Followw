@@ -41,7 +41,8 @@ describe('estatísticas comparadas, no aparelho', () => {
     const data: Comparison = {
         unb: { classrooms: 10, approved: 70, failed: 25, dropped: 5 },
         course: { classrooms: 4, approved: 60, failed: 35, dropped: 5 },
-        subjects: [rate('A', 40), rate('B', 10), rate('D', 50), rate('C', 30)]
+        subjects: [rate('A', 40), rate('B', 10), rate('D', 50), rate('C', 30)],
+        external_subjects: []
     };
 
     test('a última tentativa vale e cada tentativa conta na aprovação', () => {

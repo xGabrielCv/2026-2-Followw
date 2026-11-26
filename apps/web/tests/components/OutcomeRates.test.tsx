@@ -10,6 +10,7 @@ import { afterEach, expect, test } from 'bun:test';
 import type { ProfessorOutcomes, SubjectOutcomes } from '#/queries/outcomes';
 
 import { ProfessorOutcomesSection, SubjectOutcomesSection } from '#/components/OutcomeRates';
+import { saveStatisticsSource } from '#/lib/statistics-source';
 import {
     nameKey,
     professorOutcomesQueryOptions,
@@ -19,7 +20,10 @@ import {
 import { useDom } from '../helpers/dom';
 
 const dom = useDom();
-afterEach(() => dom.testing.cleanup());
+afterEach(() => {
+    saveStatisticsSource('hybrid');
+    dom.testing.cleanup();
+});
 
 const rates = (failed: number, classrooms = 2) => ({
     classrooms,
@@ -80,10 +84,40 @@ test('sem dados da matéria, avisa', async () => {
     const page = await render(<SubjectOutcomesSection code="FGA0099" />, (client) =>
         client.setQueryData(subjectOutcomesQueryOptions('FGA0099').queryKey, {
             subject: null,
-            professors: []
+            professors: [],
+            external: null
         })
     );
     expect(await page.findByText('Ainda não há dados desta matéria.')).toBeDefined();
+});
+
+test('usa base auxiliar Tamburetei quando Followw ainda não tem turmas e respeita modo escolhido', async () => {
+    const data: SubjectOutcomes = {
+        subject: null,
+        professors: [],
+        external: {
+            classrooms: 2,
+            approved: 70,
+            failed: 20,
+            dropped: 10,
+            enrolled: 140,
+            source: 'tamburetei',
+            semesters: ['2024.2']
+        }
+    };
+    const page = await render(<SubjectOutcomesSection code="CIC0004" />, (client) =>
+        client.setQueryData(subjectOutcomesQueryOptions('CIC0004').queryKey, data)
+    );
+    const section = await page.findByRole('region', { name: 'Índices de reprovação' });
+    expect(section.textContent).toContain('20% reprovação');
+    expect(section.textContent).toContain('Tamburetei / DPO');
+
+    dom.testing.act(() => {
+        saveStatisticsSource('followw');
+    });
+    await dom.testing.waitFor(() =>
+        expect(page.getByText('Ainda não há dados desta matéria.')).toBeDefined()
+    );
 });
 
 test('no perfil, o índice geral do docente e o de cada matéria', async () => {

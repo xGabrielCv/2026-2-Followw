@@ -38,6 +38,9 @@
 }
 
 :root[data-layout='mobile'] [data-slot='drawer-popup'] {
+    left: 0;
+    right: 0;
+    margin-inline: auto;
     max-width: min(26rem, calc(var(--app-viewport-width, 100vw) - 2rem));
 }
 

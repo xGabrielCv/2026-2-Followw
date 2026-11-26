@@ -39,10 +39,12 @@ def agendador(client, monkeypatch, tmp_path):
     from api.modules.sync import sources
 
     monkeypatch.setattr(sources, "MARKER", tmp_path / "update.json")
+    monkeypatch.setattr(sources, "TAMBURETEI_META", tmp_path / "tamburetei-meta.json")
     fonte = Fonte()
     sessionmaker = app.dependency_overrides[get_sessionmaker]()
     instancia = modulo.SyncScheduler(
-        sessionmaker, executors={"catalog": fonte, "restaurant": fonte}
+        sessionmaker,
+        executors={"catalog": fonte, "restaurant": fonte, "tamburetei": fonte},
     )
     monkeypatch.setattr(modulo, "_scheduler", instancia)
     return fonte
@@ -89,7 +91,12 @@ def test_visao_mostra_padroes_e_so_as_fontes_conhecidas(roles, agendador):
     assert dados["timezone"] == "America/Sao_Paulo"
     assert dados["settings"]["catalog_times"] == ["00:00", "08:00", "16:00"]
     assert dados["settings"]["restaurant_time"] == "06:00"
-    assert [s["key"] for s in dados["sources"]] == ["catalog", "restaurant"]
+    assert dados["settings"]["tamburetei_time"] == "00:00"
+    assert [s["key"] for s in dados["sources"]] == [
+        "catalog",
+        "restaurant",
+        "tamburetei",
+    ]
     assert dados["history"] == []
 
 

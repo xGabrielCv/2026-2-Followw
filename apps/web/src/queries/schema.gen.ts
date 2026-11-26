@@ -293,6 +293,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/public/courses/indicators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resumo público das notas de corte do PAS e indicadores DPO/UnB por curso
+         * @description Lê apenas o snapshot local sincronizado de dados públicos (PAS Cebraspe e DPO/UnB via Tamburetei), sem consultar serviços externos na requisição nem guardar dados de alunos.
+         */
+        get: operations["list_course_indicators_public_courses_indicators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/courses/{course_id}": {
         parameters: {
             query?: never;
@@ -302,6 +322,23 @@ export interface paths {
         };
         /** Consultar curso cadastrado */
         get: operations["get_course_public_courses__course_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/public/courses/{course_id}/indicators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Histórico do PAS e métricas institucionais DPO/UnB de um curso */
+        get: operations["get_course_indicators_public_courses__course_id__indicators_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1303,6 +1340,19 @@ export interface components {
              */
             end: string;
         };
+        /** CampusDashboardSummary */
+        CampusDashboardSummary: {
+            /** Campus */
+            campus: string;
+            /** Matriculados */
+            matriculados: number;
+            /** Desvinculados */
+            desvinculados: number;
+            /** Taxa Evasao */
+            taxa_evasao: number;
+            /** Taxa Media Anual */
+            taxa_media_anual?: number | null;
+        };
         CatalogRequirements: components["schemas"]["SubjectRequirement"][][];
         /**
          * CatalogSubject
@@ -1490,6 +1540,13 @@ export interface components {
             course: components["schemas"]["OutcomeRates"] | null;
             /** Subjects */
             subjects: components["schemas"]["SubjectRate"][];
+            /**
+             * External Subjects
+             * @default []
+             */
+            external_subjects: components["schemas"]["ExternalSubjectRate"][];
+            course_indicators?: components["schemas"]["CourseYearMetrics"] | null;
+            dashboard?: components["schemas"]["UnbDashboardSummary"] | null;
         };
         /**
          * ContentVersion
@@ -1526,6 +1583,60 @@ export interface components {
             /** Modality */
             readonly modality: string | null;
         };
+        /** CourseIndicatorSummary */
+        CourseIndicatorSummary: {
+            /** Pas Latest */
+            pas_latest?: number | null;
+            /** Pas Average */
+            pas_average?: number | null;
+            /** Pas Cycle */
+            pas_cycle?: string | null;
+            /**
+             * Pas Cycles Count
+             * @default 0
+             */
+            pas_cycles_count: number;
+            latest_metrics?: components["schemas"]["CourseYearMetrics"] | null;
+        };
+        /** CourseIndicatorsCatalog */
+        CourseIndicatorsCatalog: {
+            /** Updated At */
+            updated_at?: string | null;
+            dashboard?: components["schemas"]["UnbDashboardSummary"] | null;
+            /**
+             * Courses
+             * @default {}
+             */
+            courses: {
+                [key: string]: components["schemas"]["CourseIndicatorSummary"];
+            };
+        };
+        /** CourseIndicatorsDetail */
+        CourseIndicatorsDetail: {
+            /** Course Id */
+            course_id: number;
+            /** Pas Latest */
+            pas_latest?: number | null;
+            /** Pas Average */
+            pas_average?: number | null;
+            /** Pas Cycle */
+            pas_cycle?: string | null;
+            /**
+             * Pas History
+             * @default []
+             */
+            pas_history: components["schemas"]["PasCycleEntry"][];
+            latest_metrics?: components["schemas"]["CourseYearMetrics"] | null;
+            /**
+             * Historical Metrics
+             * @default []
+             */
+            historical_metrics: components["schemas"]["CourseYearMetrics"][];
+            /** Tamburetei Slug */
+            tamburetei_slug?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** CoursePage */
         CoursePage: {
             /** Items */
@@ -1552,6 +1663,29 @@ export interface components {
             id: number;
             /** Name */
             name: string;
+        };
+        /** CourseYearMetrics */
+        CourseYearMetrics: {
+            /** Ano */
+            ano: number;
+            /** Vagas Totais */
+            vagas_totais?: number | null;
+            /** Inscritos Total */
+            inscritos_total?: number | null;
+            /** Ingressantes */
+            ingressantes?: number | null;
+            /** Matriculados */
+            matriculados?: number | null;
+            /** Concluintes */
+            concluintes?: number | null;
+            /** Trancados */
+            trancados?: number | null;
+            /** Desvinculados */
+            desvinculados?: number | null;
+            /** Taxa Sucesso */
+            taxa_sucesso?: number | null;
+            /** Taxa Evasao */
+            taxa_evasao?: number | null;
         };
         /** CreatedReview */
         CreatedReview: {
@@ -1616,6 +1750,41 @@ export interface components {
             published_on?: string | null;
             /** Starts On */
             starts_on?: string | null;
+        };
+        /**
+         * ExternalOutcomeRates
+         * @description Taxas históricas públicas vindas do Tamburetei/DPO (fora dos compartilhamentos do Followw).
+         */
+        ExternalOutcomeRates: {
+            /** Classrooms */
+            classrooms: number;
+            /** Approved */
+            approved: number;
+            /** Failed */
+            failed: number;
+            /** Dropped */
+            dropped: number;
+            /** Enrolled */
+            enrolled: number;
+            /**
+             * Source
+             * @default tamburetei
+             * @constant
+             */
+            source: "tamburetei";
+            /**
+             * Semesters
+             * @default []
+             */
+            semesters: string[];
+        };
+        /** ExternalSubjectRate */
+        ExternalSubjectRate: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+            rates: components["schemas"]["ExternalOutcomeRates"];
         };
         /**
          * FrequencyStatus
@@ -2049,6 +2218,73 @@ export interface components {
             unit?: components["schemas"]["UnitRef"] | null;
             /** Kind */
             kind?: ("mandatory" | "optional" | "complementary" | "free") | null;
+        };
+        /** PasCycleEntry */
+        PasCycleEntry: {
+            /** Ciclo */
+            ciclo: string;
+            /** Sistema */
+            sistema: string;
+            /** Url */
+            url: string;
+            /** Observacao */
+            observacao?: string | null;
+            /**
+             * Modalidades
+             * @default []
+             */
+            modalidades: components["schemas"]["PasModality"][];
+            /** Nome */
+            nome: string;
+            /** Campus */
+            campus: string;
+            /** Grau */
+            grau: string;
+            /**
+             * Graus
+             * @default []
+             */
+            graus: string[];
+            /** Turno */
+            turno: string;
+            /** Minimo */
+            minimo?: string | null;
+            /** Maximo */
+            maximo?: string | null;
+            /** Pagina */
+            pagina: number;
+            /**
+             * Ingresso Conjunto
+             * @default false
+             */
+            ingresso_conjunto: boolean;
+            /** Oferta Original */
+            oferta_original?: string | null;
+            /**
+             * Cotas
+             * @default {}
+             */
+            cotas: {
+                [key: string]: components["schemas"]["PasQuotaScore"];
+            };
+        };
+        /** PasModality */
+        PasModality: {
+            /** Id */
+            id: string;
+            /** Sistema */
+            sistema: string;
+            /** Descricao */
+            descricao: string;
+        };
+        /** PasQuotaScore */
+        PasQuotaScore: {
+            /** Minimo */
+            minimo?: string | null;
+            /** Maximo */
+            maximo?: string | null;
+            /** Observacao */
+            observacao?: string | null;
         };
         /** PermissionRequest */
         PermissionRequest: {
@@ -2773,6 +3009,7 @@ export interface components {
             subject: components["schemas"]["OutcomeRates"] | null;
             /** Professors */
             professors: components["schemas"]["ProfessorOutcome"][];
+            external?: components["schemas"]["ExternalOutcomeRates"] | null;
         };
         /** SubjectRate */
         SubjectRate: {
@@ -3024,6 +3261,34 @@ export interface components {
              * @constant
              */
             status: "pending";
+        };
+        /** UnbDashboardSummary */
+        UnbDashboardSummary: {
+            /** Total Cursos */
+            total_cursos: number;
+            /** Total Campi */
+            total_campi: number;
+            /** Ingressantes */
+            ingressantes: number;
+            /** Matriculados */
+            matriculados: number;
+            /** Concluintes */
+            concluintes: number;
+            /** Trancados */
+            trancados: number;
+            /** Evadidos */
+            evadidos: number;
+            /** Taxa Media Formacao */
+            taxa_media_formacao?: number | null;
+            /** Taxa Media Evasao */
+            taxa_media_evasao?: number | null;
+            /**
+             * Resumo Campi
+             * @default []
+             */
+            resumo_campi: components["schemas"]["CampusDashboardSummary"][];
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * UnitRef
@@ -3890,6 +4155,26 @@ export interface operations {
             };
         };
     };
+    list_course_indicators_public_courses_indicators_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseIndicatorsCatalog"];
+                };
+            };
+        };
+    };
     get_course_public_courses__course_id__get: {
         parameters: {
             query?: never;
@@ -3909,6 +4194,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublicCourse"];
+                };
+            };
+            /** @description Curso inexistente. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_course_indicators_public_courses__course_id__indicators_get: {
+        parameters: {
+            query?: {
+                degree?: string | null;
+                modality?: string | null;
+            };
+            header?: never;
+            path: {
+                /** @description ID local do curso no Followw (courses.id). */
+                course_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseIndicatorsDetail"];
                 };
             };
             /** @description Curso inexistente. */

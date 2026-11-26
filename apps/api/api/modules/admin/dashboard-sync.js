@@ -41,8 +41,10 @@ function settingsForm(settings, render) {
         const body = {
             catalog_enabled: data.get('catalog_enabled') === 'on',
             restaurant_enabled: data.get('restaurant_enabled') === 'on',
+            tamburetei_enabled: data.get('tamburetei_enabled') === 'on',
             catalog_times: String(data.get('catalog_times')).split(',').map((value) => value.trim()).filter(Boolean),
             restaurant_time: String(data.get('restaurant_time')).trim(),
+            tamburetei_time: String(data.get('tamburetei_time')).trim(),
         };
         for (const [key] of NUMBERS) body[key] = Number(data.get(key));
         if (!await confirmation('Salvar a configuração?', 'Os próximos horários são recalculados agora. Exige MFA recente.')) return;
@@ -56,6 +58,8 @@ function settingsForm(settings, render) {
         field('catalog_times', 'Horários do catálogo (HH:MM separados por vírgula, 1 a 6, 1 h de distância)', { value: settings.catalog_times.join(', '), pattern: '^\\s*([01]\\d|2[0-3]):[0-5]\\d(\\s*,\\s*([01]\\d|2[0-3]):[0-5]\\d)*\\s*$' }),
         el('label', { class: 'inline-check' }, el('input', { type: 'checkbox', name: 'restaurant_enabled', checked: settings.restaurant_enabled }), ' Verificação diária do RU ligada'),
         field('restaurant_time', 'Horário do RU (HH:MM)', { value: settings.restaurant_time, pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
+        el('label', { class: 'inline-check' }, el('input', { type: 'checkbox', name: 'tamburetei_enabled', checked: settings.tamburetei_enabled }), ' Dados públicos Tamburetei (PAS/DPO) ligados'),
+        field('tamburetei_time', 'Horário do Tamburetei (HH:MM)', { value: settings.tamburetei_time, pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' }),
         NUMBERS.map(([key, label, min, max]) => el('label', {}, label,
             el('input', { name: key, type: 'number', min, max, step: 1, required: true, value: settings[key] }),
             el('small', { class: 'muted' }, `Entre ${fmt(min)} e ${fmt(max)}`)))),
@@ -68,12 +72,12 @@ function historyTable(page, state, render) {
     const pages = Math.max(1, Math.ceil(page.total / page.page_size));
     return el('div', { class: 'panel' },
         el('div', { class: 'toolbar' }, el('h3', { class: 'grow' }, 'Histórico'),
-            select('source', [['', 'Todas as fontes'], ['catalog', 'Catálogo'], ['restaurant', 'Cardápio do RU']]),
+            select('source', [['', 'Todas as fontes'], ['catalog', 'Catálogo'], ['restaurant', 'Cardápio do RU'], ['tamburetei', 'Tamburetei (PAS/DPO)']]),
             select('status', [['', 'Todos os resultados'], ['running', 'Executando'], ['success', 'Atualizado'], ['unchanged', 'Sem mudanças'], ['failed', 'Falhou'], ['skipped', 'Ignorado'], ['cancelled', 'Cancelado']])),
         page.items.length
             ? el('div', { class: 'table-scroll' }, el('table', {}, el('thead', {}, el('tr', {}, ['Quando', 'Fonte', 'Origem', 'Resultado', 'Registros', 'Detalhe'].map((label) => el('th', {}, label)))),
                 el('tbody', {}, page.items.map((run) => el('tr', {},
-                    el('td', {}, date(run.started_at)), el('td', {}, run.source === 'catalog' ? `Catálogo · ${RESOURCES.find(([key]) => key === run.resource)?.[1] || 'completo'}` : 'Cardápio do RU'),
+                    el('td', {}, date(run.started_at)), el('td', {}, run.source === 'catalog' ? `Catálogo · ${RESOURCES.find(([key]) => key === run.resource)?.[1] || 'completo'}` : run.source === 'tamburetei' ? 'Tamburetei (PAS/DPO)' : 'Cardápio do RU'),
                     el('td', {}, TRIGGER[run.trigger] || run.trigger), el('td', {}, STATUS[run.status] || run.status, run.changed ? ' (houve mudança)' : ''),
                     el('td', { class: 'num' }, fmt(run.records)), el('td', {}, run.error || '', Object.keys(run.metrics || {}).length ? el('details', {}, el('summary', {}, 'Medições da carga'), el('p', { class: 'muted' }, `Antes: ${fmt(run.metrics.before)} · Depois: ${fmt(run.metrics.after)} · Inseridos: ${fmt(run.metrics.inserted)} · Alterados: ${fmt(run.metrics.changed)} · Inalterados: ${fmt(run.metrics.unchanged)} · Vínculos removidos: ${fmt(run.metrics.removed)} · Carga: ${fmt(run.metrics.duration_ms)} ms`), el('p', { class: 'muted' }, `Banco: ${fmt(run.metrics.database_bytes_before)} → ${fmt(run.metrics.database_bytes_after)} bytes · Índices: ${fmt(run.metrics.index_bytes_before)} → ${fmt(run.metrics.index_bytes_after)} bytes`)) : null))))))
             : el('p', { class: 'muted' }, 'Nenhuma execução registrada com este filtro.'),

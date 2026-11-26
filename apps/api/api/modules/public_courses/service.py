@@ -22,6 +22,14 @@ from api.schemas import (
     requirement_codes,
     unit_ref,
 )
+from api.tamburetei import (
+    CourseIndicatorsCatalog,
+    CourseIndicatorsDetail,
+    course_indicator_summary,
+    course_indicators,
+    dashboard_summary,
+    snapshot_updated_at,
+)
 
 _REVISION_RE = re.compile(r"/(-?\d+)$")
 _SHIFTS = {"DIURNO": "D", "NOTURNO": "N"}
@@ -113,6 +121,21 @@ class PublicCourseService:
     async def get_course(self, course_id: int) -> PublicCourse:
         return await self._db.read(lambda session: _get_course(session, course_id))
 
+    async def get_indicators_catalog(self) -> CourseIndicatorsCatalog:
+        return await self._db.read(_get_indicators_catalog)
+
+    async def get_course_indicators(
+        self,
+        course_id: int,
+        degree: str | None = None,
+        modality: str | None = None,
+    ) -> CourseIndicatorsDetail:
+        return await self._db.read(
+            lambda session: _get_course_indicators(
+                session, course_id, degree=degree, modality=modality
+            )
+        )
+
     async def get_curriculum(
         self,
         course_id: int,
@@ -150,6 +173,51 @@ async def _get_course(session: AsyncSession, course_id: int) -> PublicCourse:
     if course is None:
         raise HTTPException(404, "Curso não encontrado.")
     return _course(course)
+
+
+async def _get_indicators_catalog(session: AsyncSession) -> CourseIndicatorsCatalog:
+    courses = await PublicCourseRepository(session).list_all_courses()
+    summaries = {}
+    for course in courses:
+        summary = course_indicator_summary(
+            course_id=course.id,
+            name=course.name,
+            shift=course.shift,
+            unit_code=course.unit.code if course.unit else None,
+            unit_name=course.unit.name if course.unit else None,
+        )
+        if (
+            summary.pas_latest is not None
+            or summary.pas_average is not None
+            or summary.latest_metrics is not None
+        ):
+            summaries[str(course.id)] = summary
+    return CourseIndicatorsCatalog(
+        updated_at=snapshot_updated_at(),
+        dashboard=dashboard_summary(),
+        courses=summaries,
+    )
+
+
+async def _get_course_indicators(
+    session: AsyncSession,
+    course_id: int,
+    *,
+    degree: str | None = None,
+    modality: str | None = None,
+) -> CourseIndicatorsDetail:
+    course = await PublicCourseRepository(session).get_course(course_id)
+    if course is None:
+        raise HTTPException(404, "Curso não encontrado.")
+    return course_indicators(
+        course_id=course.id,
+        name=course.name,
+        shift=course.shift,
+        unit_code=course.unit.code if course.unit else None,
+        unit_name=course.unit.name if course.unit else None,
+        degree=degree,
+        modality=modality,
+    )
 
 
 def _course(course: Course) -> PublicCourse:

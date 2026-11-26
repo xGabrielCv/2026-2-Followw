@@ -25,10 +25,12 @@ from api.modules.sync.service import Outcome
 
 ROOT = Path(__file__).resolve().parents[5]
 SCRIPT = ROOT / "scripts" / "update_data.py"
+TAMBURETEI_SCRIPT = ROOT / "scripts" / "sync_tamburetei.py"
 DATA = ROOT / "packages" / "sigaa-client" / "data"
 PROFESSORS = ROOT / ".local" / "data" / "professors.csv"
 # Marca deixada pelo script de atualização; evita refazer na subida o que acabou de ser feito.
 MARKER = ROOT / ".local" / "update.json"
+TAMBURETEI_META = ROOT / ".local" / "data" / "tamburetei" / "meta.json"
 _SECRET = re.compile(r"(://[^/\s:@]+:)[^@\s]+@")
 _WINDOWS = sys.platform == "win32"
 # CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW
@@ -44,6 +46,15 @@ def summarize(output: str) -> str:
 def legacy_last_update() -> datetime | None:
     try:
         value = json.loads(MARKER.read_text(encoding="utf-8"))["updated_at"]
+        moment = datetime.fromisoformat(value)
+    except OSError, ValueError, KeyError, TypeError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def tamburetei_last_update() -> datetime | None:
+    try:
+        value = json.loads(TAMBURETEI_META.read_text(encoding="utf-8"))["checked_at"]
         moment = datetime.fromisoformat(value)
     except OSError, ValueError, KeyError, TypeError:
         return None
@@ -219,3 +230,66 @@ async def run_restaurant(
     if failures == len(campuses):
         return Outcome("failed", error=f"Site do RU indisponível ({last_error}).")
     return Outcome("success", records=days_total, content_hash=digest.hexdigest())
+
+
+async def run_tamburetei(timeout: int) -> Outcome:
+    """Atualiza localmente os dados públicos do Tamburetei UnB (DPO + PAS) com diff e 2 backups."""
+    if not TAMBURETEI_SCRIPT.exists():
+        return Outcome(
+            "skipped", error="Script de sincronização Tamburetei indisponível aqui."
+        )
+    capped_timeout = min(timeout, 300)
+    with tempfile.TemporaryFile() as output:
+        creation = asyncio.create_task(
+            asyncio.to_thread(
+                subprocess.Popen,
+                [sys.executable, str(TAMBURETEI_SCRIPT)],
+                cwd=ROOT,
+                env={**os.environ, "PYTHONUTF8": "1"},
+                stdout=output,
+                stderr=subprocess.STDOUT,
+                creationflags=_WINDOWS_FLAGS if _WINDOWS else 0,
+                start_new_session=not _WINDOWS,
+            )
+        )
+        try:
+            process = await asyncio.shield(creation)
+        except asyncio.CancelledError:
+            process = await creation
+            await _kill_tree(process)
+            raise
+        deadline = time.monotonic() + capped_timeout
+        try:
+            while process.poll() is None:
+                if time.monotonic() >= deadline:
+                    await _kill_tree(process)
+                    return Outcome(
+                        "failed",
+                        error=f"Excedeu o limite de {capped_timeout} segundos.",
+                    )
+                if os.fstat(output.fileno()).st_size > 1024 * 1024:
+                    await _kill_tree(process)
+                    return Outcome(
+                        "failed",
+                        error="Sincronização Tamburetei excedeu o limite de saída.",
+                    )
+                await asyncio.sleep(0.2)
+        except asyncio.CancelledError:
+            await _kill_tree(process)
+            raise
+        output.seek(0)
+        raw_out = output.read().decode("utf-8", errors="replace")
+        if process.returncode != 0:
+            return Outcome(
+                "failed",
+                error=f"Falha na sincronização Tamburetei: {summarize(raw_out)}",
+            )
+    try:
+        lines = [line.strip() for line in raw_out.splitlines() if line.strip()]
+        summary = json.loads(lines[-1]) if lines else {}
+    except ValueError:
+        summary = {}
+    records = summary.get("records") if isinstance(summary.get("records"), int) else 0
+    content_hash = str(summary["content_hash"]) if summary.get("content_hash") else None
+    status = "unchanged" if summary.get("status") == "unchanged" else "success"
+    return Outcome(status, records=records, content_hash=content_hash)

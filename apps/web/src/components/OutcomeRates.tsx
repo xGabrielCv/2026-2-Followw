@@ -9,6 +9,7 @@ import { RatingBadge, useProfessorRatings } from '#/components/community/RatingB
 import { Button } from '#/components/ui/button';
 import { titleCase } from '#/lib/profile';
 import { cn } from '#/lib/shadcn';
+import { resolveOutcomeRates, useStatisticsSource } from '#/lib/statistics-source';
 import {
     nameKey,
     professorOutcomesQueryOptions,
@@ -122,6 +123,7 @@ export function SubjectOutcomesSection({
     professors?: string[];
 }) {
     const query = useQuery(subjectOutcomesQueryOptions(code));
+    const sourceMode = useStatisticsSource();
     const [all, setAll] = useState(false);
     const ratings = useProfessorRatings((query.data?.professors ?? []).map(({ siape }) => siape));
     if (query.isPending)
@@ -131,6 +133,7 @@ export function SubjectOutcomesSection({
             <p className="text-sm text-muted-foreground">Índices de reprovação indisponíveis.</p>
         );
 
+    const resolved = resolveOutcomeRates(query.data.subject, query.data.external, sourceMode);
     const keys = new Set(professors.map(nameKey));
     const list = query.data.professors.toSorted(byFailure);
     const ofClassroom = list.filter((item) => keys.has(nameKey(item.name)));
@@ -142,11 +145,28 @@ export function SubjectOutcomesSection({
             aria-label="Índices de reprovação"
             className="flex flex-col gap-3 rounded-xl border p-4"
         >
-            <h3 className="text-sm font-semibold">Aprovação e reprovação</h3>
-            {query.data.subject ? (
-                <RateBar label="Matéria, todos os docentes" rates={query.data.subject} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Aprovação e reprovação</h3>
+                {resolved.label && (
+                    <span className="rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                        Fonte: {resolved.label}
+                    </span>
+                )}
+            </div>
+            {resolved.rates ? (
+                <RateBar label="Matéria, todos os docentes" rates={resolved.rates} />
             ) : (
                 <p className="text-sm text-muted-foreground">Ainda não há dados desta matéria.</p>
+            )}
+            {resolved.origin === 'tamburetei' && query.data.external && (
+                <p className="text-xs text-muted-foreground">
+                    Base auxiliar DPO/Tamburetei (
+                    {query.data.external.enrolled.toLocaleString('pt-BR')} matrículas agregadas
+                    {query.data.external.semesters.length > 0
+                        ? `, semestres ${query.data.external.semesters.slice(0, 4).join(', ')}`
+                        : ''}
+                    ).
+                </p>
             )}
             {shown.length > 0 && (
                 <ul className="flex flex-col divide-y">
@@ -171,7 +191,13 @@ export function SubjectOutcomesSection({
                         : `Comparar com os ${list.length} docentes da matéria (${withData} com dados)`}
                 </Button>
             )}
-            <p className="text-xs text-muted-foreground">{NOTE}</p>
+            <p className="text-xs text-muted-foreground">
+                {NOTE} Você pode escolher a fonte pública em{' '}
+                <Link to="/perfil" className="text-primary underline underline-offset-4">
+                    Perfil › Conta
+                </Link>
+                .
+            </p>
         </section>
     );
 }

@@ -18,6 +18,7 @@ def brasilia(hora, minuto=0, dia=9):
 def test_padrao_sao_tres_execucoes_por_dia_em_brasilia():
     assert PADRAO == ["00:00", "08:00", "16:00"]
     assert SyncSettings().restaurant_time == "06:00"
+    assert SyncSettings().tamburetei_time == "00:00"
 
 
 @pytest.mark.parametrize(
@@ -83,7 +84,7 @@ def test_campos_desconhecidos_sao_recusados():
 
 
 def test_somente_fontes_conhecidas():
-    assert set(SOURCES) == {"catalog", "restaurant"}
+    assert set(SOURCES) == {"catalog", "restaurant", "tamburetei"}
 
 
 def test_espera_dobra_a_cada_falha_ate_o_teto():

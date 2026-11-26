@@ -20,6 +20,7 @@ KEY = "sync_settings"
 SOURCES = {
     "catalog": "Catálogo do SIGAA público (turmas, matérias e docentes)",
     "restaurant": "Cardápio do RU",
+    "tamburetei": "Dados públicos Tamburetei UnB (PAS e indicadores DPO)",
 }
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]
 MIN_GAP = timedelta(hours=1)
@@ -41,6 +42,8 @@ class SyncSettings(BaseModel):
     )
     restaurant_enabled: bool = True
     restaurant_time: HHMM = "06:00"
+    tamburetei_enabled: bool = True
+    tamburetei_time: HHMM = "00:00"
     timeout_seconds: int = Field(default=5400, ge=60, le=7200)
     backoff_minutes: int = Field(default=15, ge=5, le=120)
     max_backoff_hours: int = Field(default=6, ge=1, le=24)
@@ -63,10 +66,18 @@ class SyncSettings(BaseModel):
         return ordered
 
     def times_for(self, source: str) -> list[str]:
-        return self.catalog_times if source == "catalog" else [self.restaurant_time]
+        if source == "catalog":
+            return self.catalog_times
+        if source == "tamburetei":
+            return [self.tamburetei_time]
+        return [self.restaurant_time]
 
     def enabled_for(self, source: str) -> bool:
-        return self.catalog_enabled if source == "catalog" else self.restaurant_enabled
+        if source == "catalog":
+            return self.catalog_enabled
+        if source == "tamburetei":
+            return self.tamburetei_enabled
+        return self.restaurant_enabled
 
 
 def next_run(after: datetime, times: list[str]) -> datetime:

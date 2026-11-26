@@ -11,6 +11,7 @@ import { CourseSummary } from '#/components/curriculum/CourseSummary';
 import { apiClient } from '#/queries/client';
 import { courseQueryOptions } from '#/queries/courses';
 import { curriculumQueryOptions } from '#/queries/curriculum';
+import { type CourseIndicatorsDetail, courseIndicatorsQueryOptions } from '#/queries/indicators';
 
 import { useDom } from '../../helpers/dom';
 
@@ -39,6 +40,17 @@ const matrix: CourseCurriculum = {
     ],
     complementary: []
 };
+const emptyIndicators = (courseId: number): CourseIndicatorsDetail => ({
+    course_id: courseId,
+    pas_latest: null,
+    pas_average: null,
+    pas_cycle: null,
+    pas_history: [],
+    latest_metrics: null,
+    historical_metrics: [],
+    tamburetei_slug: null,
+    updated_at: null
+});
 let client: QueryClient;
 let middleware: Middleware;
 let requests: string[];
@@ -48,6 +60,14 @@ beforeEach(() => {
     });
     client.setQueryData(courseQueryOptions(course.id).queryKey, course);
     client.setQueryData(curriculumQueryOptions(course.id, '2026.2').queryKey, matrix);
+    client.setQueryData(
+        courseIndicatorsQueryOptions(course.id, matrix.degree, matrix.modality).queryKey,
+        emptyIndicators(course.id)
+    );
+    client.setQueryData(
+        courseIndicatorsQueryOptions(course.id, null, null).queryKey,
+        emptyIndicators(course.id)
+    );
     requests = [];
     middleware = {
         onRequest: ({ request }) => {
@@ -85,6 +105,10 @@ test('resume unidade, turno, grau e matriz do curso com os dados já salvos', ()
 test('consulta a matriz do curso exibido sem reaproveitar a de outro curso', async () => {
     const other = { ...course, id: 99, name: 'ADMINISTRAÇÃO', shift: 'NOTURNO' };
     client.setQueryData(courseQueryOptions(other.id).queryKey, other);
+    client.setQueryData(
+        courseIndicatorsQueryOptions(other.id, null, null).queryKey,
+        emptyIndicators(other.id)
+    );
     const page = renderSummary({ course: other, entrySemester: '2026.2' });
     await dom.testing.waitFor(() =>
         expect(requests).toEqual(['/api/public/courses/99/curriculum'])
@@ -165,4 +189,83 @@ test('usa a unidade recebida do perfil sem consultar o catálogo público', asyn
     expect(page.getByText('FCTE').parentElement?.textContent).toBe('FCTE · Matriz 0123 - 2024.1');
     expect(page.getByText('Faculdade de Ciências e Tecnologias em Engenharia')).toBeDefined();
     expect(requests).toEqual([]);
+});
+
+test('exibe nota de corte PAS, média histórica, indicadores DPO e exportação no drawer', async () => {
+    client.setQueryData(
+        courseIndicatorsQueryOptions(course.id, matrix.degree, matrix.modality).queryKey,
+        {
+            course_id: course.id,
+            pas_latest: 38.131,
+            pas_average: 35.5,
+            pas_cycle: '2023-2025',
+            pas_history: [
+                {
+                    ciclo: '2023-2025',
+                    sistema: 'Sistema Universal',
+                    url: 'https://cdn.cebraspe.org.br/pas.pdf',
+                    modalidades: [
+                        { id: 'universal', sistema: 'Sistema Universal', descricao: 'Ampla' }
+                    ],
+                    nome: 'Engenharia de Software',
+                    campus: 'FCTE',
+                    grau: 'Bacharelado',
+                    graus: ['Bacharelado'],
+                    turno: 'Diurno',
+                    minimo: '38.131',
+                    maximo: '90.000',
+                    pagina: 4,
+                    ingresso_conjunto: true,
+                    cotas: { universal: { minimo: '38.131', maximo: '90.000' } }
+                },
+                {
+                    ciclo: '2022-2024',
+                    sistema: 'Sistema Universal',
+                    url: 'https://cdn.cebraspe.org.br/pas-2022.pdf',
+                    modalidades: [],
+                    nome: 'Engenharia de Software',
+                    campus: 'FCTE',
+                    grau: 'Bacharelado',
+                    graus: ['Bacharelado'],
+                    turno: 'Diurno',
+                    minimo: '32.869',
+                    maximo: '88.000',
+                    pagina: 4,
+                    ingresso_conjunto: true,
+                    cotas: {}
+                }
+            ],
+            latest_metrics: {
+                ano: 2024,
+                matriculados: 1193,
+                ingressantes: 255,
+                concluintes: 178,
+                trancados: 58,
+                desvinculados: 64,
+                taxa_sucesso: 69.8,
+                taxa_evasao: 5.36
+            },
+            historical_metrics: [
+                {
+                    ano: 2024,
+                    matriculados: 1193,
+                    ingressantes: 255,
+                    concluintes: 178,
+                    trancados: 58,
+                    desvinculados: 64,
+                    taxa_sucesso: 69.8,
+                    taxa_evasao: 5.36
+                }
+            ],
+            tamburetei_slug: 'engenharia-de-software-diurno',
+            updated_at: '2026-11-25T03:00:00+00:00'
+        }
+    );
+    const page = renderSummary();
+    const trigger = await page.findByRole('button', { name: /Nota de corte PAS/ });
+    expect(trigger.textContent).toContain('38,131');
+    expect(trigger.textContent).toContain('35,500');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    dom.testing.fireEvent.click(trigger);
+    await dom.testing.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
 });
