@@ -352,3 +352,21 @@ def test_leitor_tamburetei_calcula_media_pas_dpo_e_respeita_supressao_lgpd(
         )["pas_history"]
         == []
     )
+
+
+def test_taxa_sucesso_acima_de_100_em_ingresso_conjunto_e_descartada():
+    # Cursos de ingresso conjunto (ex.: Engenharias FCTE) têm poucos ingressantes diretos no DPO,
+    # gerando razão concluintes/ingressantes > 100% (ex.: 4050%); descartamos valores fora de [0, 100].
+    parsed = tamburetei._parse_year_metrics(
+        {
+            "ano": 2024,
+            "ingressantes": 2,
+            "matriculados": 1140,
+            "concluintes": 81,
+            "taxa_sucesso": 4050.0,
+            "taxa_evasao": 4.1,
+        }
+    )
+    assert parsed is not None
+    assert parsed.taxa_sucesso is None
+    assert parsed.taxa_evasao == 4.1

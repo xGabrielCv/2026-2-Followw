@@ -9,21 +9,23 @@ import { STORAGE_KEYS, localStorageRepository } from '#/lib/local-storage';
 export type ExternalOutcomeRates = components['schemas']['ExternalOutcomeRates'];
 export type ExternalSubjectRate = components['schemas']['ExternalSubjectRate'];
 
-export const STATISTICS_SOURCES = ['hybrid', 'average', 'followw', 'tamburetei'] as const;
+export const STATISTICS_SOURCES = ['average', 'hybrid', 'followw', 'tamburetei'] as const;
 export type StatisticsSource = (typeof STATISTICS_SOURCES)[number];
 export type ResolvedOrigin = 'followw' | 'tamburetei' | 'combined';
 
+export const DEFAULT_STATISTICS_SOURCE: StatisticsSource = 'average';
+
 export const STATISTICS_SOURCE_LABELS: Record<StatisticsSource, string> = {
-    hybrid: 'Followw + auxiliar',
     average: 'Média combinada',
+    hybrid: 'Followw + auxiliar',
     followw: 'Só Followw',
     tamburetei: 'Só Tamburetei'
 };
 
 export const STATISTICS_SOURCE_DESCRIPTIONS: Record<StatisticsSource, string> = {
-    hybrid: 'Prioriza as turmas compartilhadas no Followw e completa lacunas com o histórico público do Tamburetei/DPO.',
     average:
-        'Faz a média ponderada entre Followw e Tamburetei/DPO quando ambos têm dados (ou usa a fonte disponível).',
+        'Combina Followw e Tamburetei/DPO por média ponderada quando ambos têm dados e usa a fonte disponível quando só um tem.',
+    hybrid: 'Prioriza as turmas compartilhadas no Followw e completa lacunas com o histórico público do Tamburetei/DPO.',
     followw: 'Exibe apenas as médias das turmas liberadas por estudantes do Followw.',
     tamburetei: 'Exibe apenas os índices históricos públicos do Tamburetei UnB / DPO.'
 };
@@ -40,7 +42,7 @@ export function isStatisticsSource(value: unknown): value is StatisticsSource {
 
 export function readStatisticsSource(): StatisticsSource {
     const stored = localStorageRepository.get(STORAGE_KEYS.STATS_SOURCE);
-    return isStatisticsSource(stored) ? stored : 'hybrid';
+    return isStatisticsSource(stored) ? stored : DEFAULT_STATISTICS_SOURCE;
 }
 
 const listeners = new Set<() => void>();
@@ -51,7 +53,8 @@ export function subscribeStatisticsSource(listener: () => void): () => void {
 }
 
 export function saveStatisticsSource(mode: StatisticsSource): void {
-    if (mode === 'hybrid') localStorageRepository.remove(STORAGE_KEYS.STATS_SOURCE);
+    if (mode === DEFAULT_STATISTICS_SOURCE)
+        localStorageRepository.remove(STORAGE_KEYS.STATS_SOURCE);
     else localStorageRepository.set(STORAGE_KEYS.STATS_SOURCE, mode);
     for (const listener of listeners) listener();
 }
@@ -60,7 +63,7 @@ export function useStatisticsSource(): StatisticsSource {
     return useSyncExternalStore(
         subscribeStatisticsSource,
         readStatisticsSource,
-        () => 'hybrid' as const
+        () => DEFAULT_STATISTICS_SOURCE
     );
 }
 

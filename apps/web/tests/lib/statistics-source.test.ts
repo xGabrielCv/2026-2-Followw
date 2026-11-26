@@ -14,7 +14,7 @@ import { useDom } from '../helpers/dom';
 useDom();
 
 afterEach(() => {
-    saveStatisticsSource('hybrid');
+    saveStatisticsSource('average');
 });
 
 const FW = { classrooms: 3, approved: 80, failed: 15, dropped: 5 };
@@ -29,14 +29,14 @@ const EXT = {
 };
 
 describe('preferência e resolução da fonte de estatísticas públicas', () => {
-    test('persiste a escolha e volta ao padrão híbrido', () => {
-        expect(readStatisticsSource()).toBe('hybrid');
-        saveStatisticsSource('average');
+    test('persiste a escolha e volta ao padrão média combinada', () => {
         expect(readStatisticsSource()).toBe('average');
-        saveStatisticsSource('tamburetei');
-        expect(readStatisticsSource()).toBe('tamburetei');
         saveStatisticsSource('hybrid');
         expect(readStatisticsSource()).toBe('hybrid');
+        saveStatisticsSource('tamburetei');
+        expect(readStatisticsSource()).toBe('tamburetei');
+        saveStatisticsSource('average');
+        expect(readStatisticsSource()).toBe('average');
     });
 
     test('modo híbrido prioriza Followw e completa lacunas com Tamburetei', () => {

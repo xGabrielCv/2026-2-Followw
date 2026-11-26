@@ -469,3 +469,70 @@ def test_duas_pessoas_liberam_mesma_turma_sem_duplicar_indices_e_revogam_separad
     with database() as session:
         assert session.scalars(select(SharedStatistics)).all() == []
         assert session.scalar(select(Classroom)).statistics == _shares(70)
+
+
+def test_compartilhamento_include_closing_pega_turma_consolidada_sem_duplicar_semestres_diferentes(
+    client, database, cookies, stub_sigaa
+):
+    from sigaa_client import StatisticsShare
+
+    with database.begin() as session:
+        session.add(Subject(code="FGA0003", name="A"))
+        ana = Professor(name="ANA SOUZA", siape=123)
+        session.add(ana)
+        _classroom(session, "FGA0003", "01", "2025.1", _shares(70), ana, shared=False)
+
+    stub_sigaa.classrooms.list_classrooms.return_value = [
+        SigaaClassroom(
+            id="TURMA_ANTIGA",
+            number="01",
+            semester="2025.1",
+            current=False,
+            subject=SigaaSubject(code="FGA0003", name="A"),
+        ),
+        SigaaClassroom(
+            id="TURMA_ATUAL_CONSOLIDADA",
+            number="01",
+            semester="2026.2",
+            current=True,
+            subject=SigaaSubject(code="FGA0003", name="A"),
+        ),
+        SigaaClassroom(
+            id="TURMA_ATUAL_SEM_NOTAS",
+            number="02",
+            semester="2026.2",
+            current=True,
+            subject=SigaaSubject(code="FGA0003", name="A"),
+        ),
+    ]
+
+    async def fake_stats(front_end_id: str):
+        if front_end_id == "TURMA_ATUAL_CONSOLIDADA":
+            return [
+                StatisticsShare(situation="aprovado", count=9, percentage=90.0),
+                StatisticsShare(situation="reprovado", count=1, percentage=10.0),
+            ]
+        return []
+
+    stub_sigaa.classrooms.get_classroom_statistics.side_effect = fake_stats
+    client.cookies.update(cookies(refresh=CREDENCIAIS))
+
+    # Sem include_closing: só compartilha a turma de 2025.1
+    sem_closing = client.put(
+        "/me/statistics-sharing", json={"shared": True, "include_closing": False}
+    ).json()
+    assert sem_closing["classrooms"] == 1
+
+    # Com include_closing (>=98%): inclui 2026.2 consolidada (2 turmas no total) e ignora a sem notas
+    com_closing = client.put(
+        "/me/statistics-sharing",
+        json={
+            "shared": True,
+            "keys": sem_closing["keys"],
+            "include_closing": True,
+        },
+    ).json()
+    assert com_closing["classrooms"] == 2
+    outcomes = client.get("/public/subjects/FGA0003/outcomes").json()["subject"]
+    assert outcomes["classrooms"] == 2
+    assert outcomes["failed"] == 20.0  # média de 30% (2025.1) e 10% (2026.2)

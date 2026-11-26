@@ -120,4 +120,6 @@ async def put_statistics_sharing(
     account: AccountDep,
     db: DatabaseDep,
 ) -> SharingStatus:
-    return await set_sharing(account, db, body.shared, body.keys)
+    return await set_sharing(
+        account, db, body.shared, body.keys, include_closing=bool(body.include_closing)
+    )

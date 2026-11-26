@@ -57,7 +57,9 @@ def fetch_json(client: httpx.Client, url: str) -> Any:
         for chunk in response.iter_bytes():
             total += len(chunk)
             if total > MAX_RESPONSE_BYTES:
-                raise ValueError(f"Resposta excedeu o limite seguro ({MAX_RESPONSE_BYTES} bytes).")
+                raise ValueError(
+                    f"Resposta excedeu o limite seguro ({MAX_RESPONSE_BYTES} bytes)."
+                )
             chunks.append(chunk)
     return json.loads(b"".join(chunks).decode("utf-8"))
 
@@ -109,7 +111,9 @@ def canonical_hash(payload: dict[str, Any]) -> str:
 
 def _atomic_write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
     tmp_path = Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
@@ -122,7 +126,9 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         raise
 
 
-def _rotate_backups(snapshot_path: Path, backups_dir: Path, max_backups: int, now: datetime) -> None:
+def _rotate_backups(
+    snapshot_path: Path, backups_dir: Path, max_backups: int, now: datetime
+) -> None:
     if not snapshot_path.exists() or max_backups <= 0:
         return
     backups_dir.mkdir(parents=True, exist_ok=True)
@@ -141,17 +147,19 @@ def _load_existing_snapshot(snapshot_path: Path) -> dict[str, Any] | None:
     try:
         data = json.loads(snapshot_path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
 
 
-def _is_fresh(meta_path: Path, snapshot_path: Path, max_age_hours: float, now: datetime) -> bool:
+def _is_fresh(
+    meta_path: Path, snapshot_path: Path, max_age_hours: float, now: datetime
+) -> bool:
     if max_age_hours <= 0 or not snapshot_path.exists() or not meta_path.exists():
         return False
     try:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         checked = datetime.fromisoformat(str(meta.get("checked_at") or ""))
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return False
     if checked.tzinfo is None:
         checked = checked.replace(tzinfo=UTC)
@@ -164,15 +172,18 @@ def collect_remote_payload(
     """Coleta cursos, disciplinas com métricas, dashboard geral e ciclos PAS."""
     raw_courses = fetch_json(client, f"{TAMBURETEI_API}/cursos")
     if not isinstance(raw_courses, list):
-        raise ValueError("Formato inesperado em /cursos do Tamburetei.")
+        raise TypeError("Formato inesperado em /cursos do Tamburetei.")
     courses = sorted(
         (_compact_course(item) for item in raw_courses if isinstance(item, dict)),
-        key=lambda item: (str(item.get("slug") or ""), str(item.get("codigo_mec") or "")),
+        key=lambda item: (
+            str(item.get("slug") or ""),
+            str(item.get("codigo_mec") or ""),
+        ),
     )
 
     raw_subjects = fetch_json(client, f"{TAMBURETEI_API}/cadeiras")
     if not isinstance(raw_subjects, list):
-        raise ValueError("Formato inesperado em /cadeiras do Tamburetei.")
+        raise TypeError("Formato inesperado em /cadeiras do Tamburetei.")
     subjects_by_code: dict[str, dict[str, Any]] = {}
     for item in raw_subjects:
         if not isinstance(item, dict):
@@ -195,10 +206,12 @@ def collect_remote_payload(
         cycle_label = filename.removeprefix("pas-").removesuffix(".json")
         try:
             pas_data = fetch_json(client, f"{PAS_RAW_BASE}/{filename}")
-            if isinstance(pas_data, dict) and isinstance(pas_data.get("registros"), list):
+            if isinstance(pas_data, dict) and isinstance(
+                pas_data.get("registros"), list
+            ):
                 pas_cycles.append(pas_data)
                 continue
-        except (httpx.HTTPError, ValueError):
+        except httpx.HTTPError, ValueError:
             if cycle_label in previous_pas:
                 pas_cycles.append(previous_pas[cycle_label])
                 continue
@@ -267,13 +280,17 @@ def sync_tamburetei(
     courses_count = len(payload["courses"])
     subjects_count = len(payload["subjects"])
     pas_cycles_count = len(payload["pas_cycles"])
-    pas_records_count = sum(len(c.get("registros") or []) for c in payload["pas_cycles"])
+    pas_records_count = sum(
+        len(c.get("registros") or []) for c in payload["pas_cycles"]
+    )
     total_records = courses_count + subjects_count + pas_records_count
 
     if previous_hash == digest and snapshot_path.exists():
         meta = {
             "checked_at": current.isoformat(),
-            "updated_at": existing.get("updated_at") if existing else current.isoformat(),
+            "updated_at": existing.get("updated_at")
+            if existing
+            else current.isoformat(),
             "content_hash": digest,
             "records": total_records,
             "courses": courses_count,

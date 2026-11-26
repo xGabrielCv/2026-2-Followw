@@ -97,8 +97,18 @@ class ClassroomRepository:
         shares: Sequence[sigaa_client.StatisticsShare],
         synced_at: datetime,
     ) -> None:
+        payload = [share.model_dump(mode="json") for share in shares]
+        current = (
+            await self._session.execute(
+                select(Classroom.statistics, Classroom.statistics_synced_at).where(
+                    Classroom.id == classroom_id
+                )
+            )
+        ).one()
+        if current.statistics == payload and current.statistics_synced_at is not None:
+            return
         classroom = await self._session.get_one(Classroom, classroom_id)
-        classroom.statistics = [share.model_dump(mode="json") for share in shares]
+        classroom.statistics = payload
         classroom.statistics_synced_at = synced_at
         await self._session.flush()
 

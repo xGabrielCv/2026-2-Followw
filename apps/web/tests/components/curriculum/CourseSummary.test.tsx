@@ -262,10 +262,15 @@ test('exibe nota de corte PAS, média histórica, indicadores DPO e exportação
         }
     );
     const page = renderSummary();
-    const trigger = await page.findByRole('button', { name: /Nota de corte PAS/ });
-    expect(trigger.textContent).toContain('38,131');
-    expect(trigger.textContent).toContain('35,500');
-    expect(trigger.getAttribute('aria-expanded')).toBe('false');
-    dom.testing.fireEvent.click(trigger);
-    await dom.testing.waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+    const pasTrigger = await page.findByRole('button', { name: /Nota de corte PAS/ });
+    expect(pasTrigger.textContent).toContain('38,131');
+    expect(pasTrigger.textContent).toContain('35,500');
+    expect(pasTrigger.getAttribute('aria-expanded')).toBe('false');
+    dom.testing.fireEvent.click(pasTrigger);
+    await dom.testing.waitFor(() => expect(pasTrigger.getAttribute('aria-expanded')).toBe('true'));
+
+    const statsTrigger = await page.findByRole('button', { name: /Estatísticas do curso/ });
+    expect(statsTrigger.textContent).toContain('1.193 matriculados');
+    expect(statsTrigger.textContent).toContain('69,8%');
+    expect(statsTrigger.getAttribute('aria-expanded')).toBe('false');
 });

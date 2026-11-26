@@ -120,3 +120,16 @@ def test_regras_canonicas_estao_no_mkdocs_e_nos_arquivos_de_agentes():
         arquivo = RAIZ / agente
         if arquivo.exists():
             assert "regras-inegociaveis" in arquivo.read_text(encoding="utf-8"), agente
+
+
+def test_todo_cartao_da_aba_mais_esta_registrado_no_painel_admin():
+    """Garante que qualquer cartão adicionado à aba Mais possa ser ocultado no /api/admin."""
+    from api.flags import MENU
+
+    mais = (RAIZ / "apps/web/src/routes/_app/mais.tsx").read_text(encoding="utf-8")
+    chaves_mais = set(re.findall(r"show\(['\"]([a-z0-9_]+)['\"]\)", mais))
+    assert chaves_mais
+    faltando = chaves_mais - set(MENU)
+    assert faltando == set(), (
+        f"Chaves em mais.tsx ausentes de api.flags.MENU: {faltando}"
+    )

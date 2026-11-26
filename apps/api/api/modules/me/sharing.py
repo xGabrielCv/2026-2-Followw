@@ -30,6 +30,8 @@ class SharingInput(BaseModel):
     keys: dict[
         uuid.UUID, Annotated[str, StringConstraints(min_length=32, max_length=64)]
     ] = Field(default_factory=dict, max_length=500)
+    # Quando o semestre atinge >= 98%, verifica também turmas do semestre atual já consolidadas no SIGAA.
+    include_closing: bool | None = None
 
 
 class SharingStatus(BaseModel):
@@ -48,14 +50,18 @@ def _scope(classroom_id: object) -> str:
 
 
 async def set_sharing(
-    account: Account, db: Database, shared: bool, keys: dict[uuid.UUID, str]
+    account: Account,
+    db: Database,
+    shared: bool,
+    keys: dict[uuid.UUID, str],
+    *,
+    include_closing: bool = False,
 ) -> SharingStatus:
     turmas = await ClassroomService(account, db).list_turmas("all")
-    past = [turma.row.id for turma in turmas if not turma.current]
+    eligible = [turma for turma in turmas if not turma.current or include_closing]
+    eligible_ids = [turma.row.id for turma in eligible]
     missing = [
-        turma.row.id
-        for turma in turmas
-        if not turma.current and turma.row.statistics_synced_at is None
+        turma.row.id for turma in eligible if turma.row.statistics_synced_at is None
     ]
     pending = False
     minted: dict[uuid.UUID, str] = {}
@@ -65,12 +71,18 @@ async def set_sharing(
             async with asyncio.timeout(15):
                 minted.update(
                     await fetch_and_share_statistics(
-                        account.connection, db, keys, turmas=turmas
+                        account.connection,
+                        db,
+                        keys,
+                        turmas=turmas,
+                        include_closing=include_closing,
                     )
                 )
         except TimeoutError, SigaaError, httpx.HTTPError:
             pending = True
-    count, more = await db.write(lambda session: _share(session, keys, past, shared))
+    count, more = await db.write(
+        lambda session: _share(session, keys, eligible_ids, shared)
+    )
     minted.update(more)
     return SharingStatus(
         shared=shared,
@@ -86,26 +98,32 @@ async def fetch_and_share_statistics(
     keys: dict[uuid.UUID, str],
     *,
     turmas: list | None = None,
+    include_closing: bool = False,
 ) -> dict[uuid.UUID, str]:
-    """Job: busca os índices das turmas encerradas que faltam e os libera."""
+    """Job: busca os índices das turmas encerradas (ou em encerramento >= 98%) que faltam e os libera."""
     if turmas is None:
         account = Account(connection)
         turmas = await ClassroomService(account, db).list_turmas("all")
     client = await connection.client()
-    past = []
+    eligible_ids = []
     for turma in turmas:
-        if turma.current:
+        if turma.current and not include_closing:
             continue
-        past.append(turma.row.id)
+        eligible_ids.append(turma.row.id)
         if turma.row.statistics_synced_at is not None:
             continue
         shares = await client.classrooms.get_classroom_statistics(turma.front_end_id)
+        # Turma ainda em curso sem consolidação devolve lista vazia: não grava nem marca como sincronizada.
+        if turma.current and not shares:
+            continue
         await db.write(
             lambda session, turma=turma, shares=shares: ClassroomRepository(
                 session
             ).save_statistics(turma.row.id, shares, datetime.now(UTC))
         )
-    _, minted = await db.write(lambda session: _share(session, keys, past, shared=True))
+    _, minted = await db.write(
+        lambda session: _share(session, keys, eligible_ids, shared=True)
+    )
     return minted
 
 

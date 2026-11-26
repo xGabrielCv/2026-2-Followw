@@ -21,6 +21,8 @@ export interface UserSettings {
     shareStatistics?: boolean;
     // "não compartilhar e não perguntar de novo"
     sharePromptDismissed?: boolean;
+    // marco do último reenvio automático das estatísticas (ex.: "2026.2:98" ou "2026.1:closed")
+    lastStatisticsShareKey?: string;
 }
 
 export type UserSettingsPatch = Partial<UserSettings>;
@@ -44,12 +46,12 @@ export function useUserSettings(): UserSettings {
 }
 
 /** Libera ou recolhe as estatísticas das turmas do aluno nos índices públicos. */
-export async function syncStatisticsSharing(shared: boolean) {
+export async function syncStatisticsSharing(shared: boolean, includeClosing = false) {
     const account = localAccount();
     // cada turma liberada tem uma chave aleatória própria, guardada só aqui; sem ela ninguém desfaz
     const keys = shareKeys();
     const { data, error } = await apiClient.PUT('/me/statistics-sharing', {
-        body: { shared, keys }
+        body: includeClosing ? { shared, keys, include_closing: true } : { shared, keys }
     });
     if (error || !data) throw new Error('Não foi possível mudar o compartilhamento');
     if (shared) rememberShareKeys(data.keys ?? {}, account);

@@ -196,28 +196,46 @@ test('painel admin, banner operacional, plano de ensino e modos forçados em mú
         .locator('main')
         .evaluate((el) => el.getBoundingClientRect().width);
     expect(forcedFlowMainWidth).toBeLessThanOrEqual(460);
-    // Abre o drawer de PAS/DPO no modo celular forçado e confirma centralização (não colado à esquerda) + exportação
-    const indicatorsTrigger = page.getByRole('button', {
-        name: /Nota de corte PAS|Indicadores públicos/
-    });
-    await expect(indicatorsTrigger).toBeVisible();
-    await indicatorsTrigger.click();
-    const drawerPopup = page.locator('[data-slot="drawer-popup"]').first();
-    await expect(drawerPopup).toBeVisible();
-    await expect(drawerPopup.getByRole('button', { name: 'Exportar CSV' })).toBeVisible();
-    await expect(drawerPopup.getByRole('button', { name: 'Exportar JSON' })).toBeVisible();
-    const drawerBox = await drawerPopup.boundingBox();
-    expect(drawerBox).not.toBeNull();
-    if (drawerBox) {
-        expect(drawerBox.width).toBeLessThanOrEqual(430);
-        expect(Math.abs(drawerBox.x + drawerBox.width / 2 - 720)).toBeLessThan(30);
+    // Abre os modais de PAS e de Estatísticas do curso em modo celular forçado e confirma centralização + exportação
+    const pasTrigger = page.getByRole('button', { name: /Nota de corte PAS/ });
+    await expect(pasTrigger).toBeVisible();
+    await pasTrigger.click();
+    const pasDialog = page.getByRole('dialog');
+    await expect(pasDialog).toBeVisible();
+    await expect(pasDialog.getByRole('button', { name: 'Exportar CSV' })).toBeVisible();
+    await expect(pasDialog.getByRole('button', { name: 'Exportar JSON' })).toBeVisible();
+    const pasBox = await pasDialog.boundingBox();
+    expect(pasBox).not.toBeNull();
+    if (pasBox) {
+        expect(pasBox.width).toBeLessThanOrEqual(430);
+        expect(Math.abs(pasBox.x + pasBox.width / 2 - 720)).toBeLessThan(30);
     }
     await page.screenshot({
-        path: `${artifacts}/drawer-forced-mobile-1440.png`,
+        path: `${artifacts}/pas-dialog-forced-mobile-1440.png`,
         animations: 'disabled'
     });
-    await drawerPopup.getByRole('button', { name: 'Fechar' }).click();
-    await expect(drawerPopup).toBeHidden();
+    await pasDialog.getByRole('button', { name: 'Fechar' }).first().click();
+    await expect(pasDialog).toBeHidden();
+
+    const statsTrigger = page.getByRole('button', { name: /Estatísticas do curso/ });
+    await expect(statsTrigger).toBeVisible();
+    await statsTrigger.click();
+    const statsDialog = page.getByRole('dialog');
+    await expect(statsDialog).toBeVisible();
+    await expect(statsDialog).toContainText('Indicadores DPO/UnB');
+    await expect(statsDialog.getByRole('button', { name: 'Exportar CSV' })).toBeVisible();
+    const statsBox = await statsDialog.boundingBox();
+    expect(statsBox).not.toBeNull();
+    if (statsBox) {
+        expect(statsBox.width).toBeLessThanOrEqual(430);
+        expect(Math.abs(statsBox.x + statsBox.width / 2 - 720)).toBeLessThan(30);
+    }
+    await page.screenshot({
+        path: `${artifacts}/stats-dialog-forced-mobile-1440.png`,
+        animations: 'disabled'
+    });
+    await statsDialog.getByRole('button', { name: 'Fechar' }).first().click();
+    await expect(statsDialog).toBeHidden();
     await page.screenshot({
         path: `${artifacts}/flow-forced-mobile-1440.png`,
         animations: 'disabled'
@@ -252,5 +270,19 @@ test('painel admin, banner operacional, plano de ensino e modos forçados em mú
     await expect(page.getByRole('link', { name: /Plano de ensino/i })).toHaveCount(0);
     await page.goto('/turmas/BBB/plano-de-ensino');
     await expect(page).toHaveURL(/\/turmas\/BBB$/);
+
+    // 6. Confere modal de Fonte das estatísticas públicas em Perfil > Conta
+    await page.goto('/perfil');
+    await ready(page);
+    const sourceRow = page.getByRole('button', { name: /Fonte das estatísticas públicas/ });
+    await expect(sourceRow).toBeVisible();
+    await expect(sourceRow).toContainText('Média combinada');
+    await sourceRow.click();
+    const sourceDialog = page.getByRole('dialog');
+    await expect(sourceDialog).toBeVisible();
+    await sourceDialog.getByRole('button', { name: /Só Tamburetei/ }).click();
+    await sourceDialog.getByRole('button', { name: 'Aplicar' }).click();
+    await expect(sourceDialog).toBeHidden();
+    await expect(sourceRow).toContainText('Só Tamburetei');
     expect(failures).toEqual([]);
 });

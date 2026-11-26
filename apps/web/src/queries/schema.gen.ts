@@ -2899,6 +2899,8 @@ export interface components {
             keys?: {
                 [key: string]: string;
             };
+            /** Include Closing */
+            include_closing?: boolean | null;
         };
         /** SharingStatus */
         SharingStatus: {
@@ -3287,8 +3289,47 @@ export interface components {
              * @default []
              */
             resumo_campi: components["schemas"]["CampusDashboardSummary"][];
+            /**
+             * Fluxo Estudantes
+             * @default []
+             */
+            fluxo_estudantes: components["schemas"]["UnbYearFlow"][];
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** UnbYearFlow */
+        UnbYearFlow: {
+            /** Ano */
+            ano: number;
+            /**
+             * Ingressantes
+             * @default 0
+             */
+            ingressantes: number;
+            /**
+             * Matriculados
+             * @default 0
+             */
+            matriculados: number;
+            /**
+             * Concluintes
+             * @default 0
+             */
+            concluintes: number;
+            /**
+             * Trancados
+             * @default 0
+             */
+            trancados: number;
+            /**
+             * Evadidos
+             * @default 0
+             */
+            evadidos: number;
+            /** Taxa Formacao */
+            taxa_formacao?: number | null;
+            /** Taxa Evasao */
+            taxa_evasao?: number | null;
         };
         /**
          * UnitRef

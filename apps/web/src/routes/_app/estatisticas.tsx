@@ -275,6 +275,31 @@ function InstitutionalPanorama({
                         ))}
                     </ul>
                 )}
+                {dashboard.fluxo_estudantes && dashboard.fluxo_estudantes.length > 0 && (
+                    <div className="space-y-1.5 rounded-lg border border-border p-3">
+                        <p className="font-semibold text-foreground">
+                            Evolução anual da UnB (2020–2024)
+                        </p>
+                        <ul className="divide-y divide-border">
+                            {dashboard.fluxo_estudantes.map((year) => (
+                                <li
+                                    key={year.ano}
+                                    className="flex flex-wrap items-center justify-between gap-2 py-1.5 tabular-nums"
+                                >
+                                    <span className="font-semibold text-foreground">
+                                        {year.ano}
+                                    </span>
+                                    <span className="text-muted-foreground">
+                                        {formatIndicatorNumber(year.matriculados)} matr. ·{' '}
+                                        {formatIndicatorNumber(year.concluintes)} concl. · formação{' '}
+                                        {formatIndicatorPercent(year.taxa_formacao)} · evasão{' '}
+                                        {formatIndicatorPercent(year.taxa_evasao)}
+                                    </span>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
             </Card>
         );
     }

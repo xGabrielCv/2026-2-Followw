@@ -164,6 +164,19 @@ class CampusDashboardSummary(BaseModel):
     taxa_media_anual: float | None = None
 
 
+class UnbYearFlow(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    ano: int
+    ingressantes: int = 0
+    matriculados: int = 0
+    concluintes: int = 0
+    trancados: int = 0
+    evadidos: int = 0
+    taxa_formacao: float | None = None
+    taxa_evasao: float | None = None
+
+
 class UnbDashboardSummary(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -177,6 +190,7 @@ class UnbDashboardSummary(BaseModel):
     taxa_media_formacao: float | None = None
     taxa_media_evasao: float | None = None
     resumo_campi: list[CampusDashboardSummary] = []
+    fluxo_estudantes: list[UnbYearFlow] = []
     updated_at: str | None = None
 
 
@@ -290,6 +304,13 @@ def _parse_float(value: Any) -> float | None:
     return parsed if math.isfinite(parsed) else None
 
 
+def _bounded_percent(value: Any) -> float | None:
+    parsed = _parse_float(value)
+    if parsed is None or not (0.0 <= parsed <= 100.0):
+        return None
+    return parsed
+
+
 def _parse_year_metrics(raw: Any) -> CourseYearMetrics | None:
     if not isinstance(raw, dict) or raw.get("ano") is None:
         return None
@@ -303,8 +324,8 @@ def _parse_year_metrics(raw: Any) -> CourseYearMetrics | None:
             concluintes=raw.get("concluintes"),
             trancados=raw.get("trancados"),
             desvinculados=raw.get("desvinculados"),
-            taxa_sucesso=_parse_float(raw.get("taxa_sucesso")),
-            taxa_evasao=_parse_float(raw.get("taxa_evasao")),
+            taxa_sucesso=_bounded_percent(raw.get("taxa_sucesso")),
+            taxa_evasao=_bounded_percent(raw.get("taxa_evasao")),
         )
     except TypeError, ValueError:
         return None
@@ -584,6 +605,23 @@ def dashboard_summary() -> UnbDashboardSummary | None:
                 taxa_media_anual=_parse_float(item.get("taxa_media_anual")),
             )
         )
+    flow_years: list[UnbYearFlow] = []
+    for item in raw.get("fluxo_estudantes") or []:
+        if not isinstance(item, dict) or item.get("ano") is None:
+            continue
+        flow_years.append(
+            UnbYearFlow(
+                ano=int(item["ano"]),
+                ingressantes=int(item.get("ingressantes") or 0),
+                matriculados=int(item.get("matriculados") or 0),
+                concluintes=int(item.get("concluintes") or 0),
+                trancados=int(item.get("trancados") or 0),
+                evadidos=int(item.get("evadidos") or 0),
+                taxa_formacao=_parse_float(item.get("taxa_formacao")),
+                taxa_evasao=_parse_float(item.get("taxa_evasao")),
+            )
+        )
+    flow_years.sort(key=lambda item: item.ano)
     return UnbDashboardSummary(
         total_cursos=int(raw.get("total_cursos") or 0),
         total_campi=int(raw.get("total_campi") or 0),
@@ -595,6 +633,7 @@ def dashboard_summary() -> UnbDashboardSummary | None:
         taxa_media_formacao=_parse_float(raw.get("taxa_media_formacao")),
         taxa_media_evasao=_parse_float(raw.get("taxa_media_evasao")),
         resumo_campi=campuses,
+        fluxo_estudantes=flow_years,
         updated_at=snapshot.get("updated_at"),
     )
 

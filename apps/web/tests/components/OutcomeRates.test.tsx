@@ -21,7 +21,7 @@ import { useDom } from '../helpers/dom';
 
 const dom = useDom();
 afterEach(() => {
-    saveStatisticsSource('hybrid');
+    saveStatisticsSource('average');
     dom.testing.cleanup();
 });
 
@@ -118,6 +118,28 @@ test('usa base auxiliar Tamburetei quando Followw ainda não tem turmas e respei
     await dom.testing.waitFor(() =>
         expect(page.getByText('Ainda não há dados desta matéria.')).toBeDefined()
     );
+});
+
+test('modo padrão média combinada pondera Followw e Tamburetei quando ambos existem', async () => {
+    const data: SubjectOutcomes = {
+        subject: { classrooms: 3, approved: 80, failed: 15, dropped: 5 },
+        professors: [],
+        external: {
+            classrooms: 1,
+            approved: 60,
+            failed: 35,
+            dropped: 5,
+            enrolled: 80,
+            source: 'tamburetei',
+            semesters: ['2024.2']
+        }
+    };
+    const page = await render(<SubjectOutcomesSection code="CIC0004" />, (client) =>
+        client.setQueryData(subjectOutcomesQueryOptions('CIC0004').queryKey, data)
+    );
+    const section = await page.findByRole('region', { name: 'Índices de reprovação' });
+    expect(section.textContent).toContain('20% reprovação');
+    expect(section.textContent).toContain('Média Followw + Tamburetei');
 });
 
 test('no perfil, o índice geral do docente e o de cada matéria', async () => {

@@ -1,10 +1,19 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { ShareStatisticsDialog } from '#/components/profile/ShareStatisticsDialog';
-import { localStorageRepository } from '#/lib/local-storage';
+import { flushLocalStorage, localStorageRepository } from '#/lib/local-storage';
+import { nowInBrasilia } from '#/lib/schedule';
+import { evaluateAutoReshare } from '#/lib/statistics-sharing';
+import { appConfigQueryOptions } from '#/queries/app-config';
+import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { meQueryOptions } from '#/queries/me';
-import { syncStatisticsSharing, useUpdateSettings, useUserSettings } from '#/queries/settings';
+import {
+    settingsStore,
+    syncStatisticsSharing,
+    useUpdateSettings,
+    useUserSettings
+} from '#/queries/settings';
 
 // Depois da primeira vez, o convite volta em uma a cada tantas aberturas do app.
 export const PROMPT_CHANCE = 0.25;
@@ -37,6 +46,9 @@ export function SharePrompt() {
     const { data: user } = useSuspenseQuery(meQueryOptions);
     const settings = useUserSettings();
     const update = useUpdateSettings();
+    const sharing = Boolean(user) && settings.shareStatistics === true;
+    const classrooms = useQuery({ ...allClassroomsQueryOptions, enabled: sharing });
+    const config = useQuery({ ...appConfigQueryOptions, enabled: sharing });
     // sorteio e histórico lidos uma vez, ao abrir o app
     const [chance] = useState(() => ({
         seen: localStorageRepository.get<boolean>(SEEN_KEY) === true,
@@ -56,13 +68,29 @@ export function SharePrompt() {
         localStorageRepository.set(SEEN_KEY, true);
     }, [open]);
 
-    // Quem compartilha libera também as turmas que o SIGAA trouxer depois, uma vez por sessão.
-    const sharing = Boolean(user) && settings.shareStatistics === true;
+    // Quem ativou o compartilhamento reenvia automaticamente ao atingir >= 98% do semestre ou fechar novo período.
+    const registration = user?.registration;
+    const lastKey = settings.lastStatisticsShareKey;
     useEffect(() => {
-        if (!sharing || readSession(SHARED_KEY)) return;
+        if (!sharing || !registration || readSession(SHARED_KEY)) return;
+        const decision = evaluateAutoReshare({
+            enabled: sharing,
+            classrooms: classrooms.data,
+            today: nowInBrasilia().date,
+            customCalendar: config.data?.calendar,
+            lastSyncedKey: lastKey
+        });
+        if (!decision.shouldSync || !decision.syncKey) return;
         markSession(SHARED_KEY);
-        syncStatisticsSharing(true).catch(() => {});
-    }, [sharing]);
+        const targetKey = decision.syncKey;
+        void syncStatisticsSharing(true, decision.includeClosing)
+            .then(() => {
+                const store = settingsStore(registration);
+                store.set({ ...store.getSnapshot(), lastStatisticsShareKey: targetKey });
+                return flushLocalStorage();
+            })
+            .catch(() => {});
+    }, [sharing, registration, classrooms.data, config.data?.calendar, lastKey]);
 
     if (!undecided) return null;
     const close = () => setClosed(true);

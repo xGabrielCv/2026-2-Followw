@@ -167,6 +167,36 @@ def test_configuracao_valida_e_auditada(roles, agendador):
     assert "sync.settings" in acoes
 
 
+def test_admin_configura_horario_e_dispara_tamburetei_e_oculta_notas_pas(
+    roles, agendador
+):
+    client, cookies, _ = roles
+    como(client, cookies["owner"])
+    atualiza = client.put(
+        "/admin/api/sync/settings",
+        json={"tamburetei_time": "03:30", "tamburetei_enabled": True},
+        headers=HEADERS,
+    )
+    assert atualiza.status_code == 200, atualiza.text
+    visao = client.get("/admin/api/sync", headers=HEADERS).json()
+    assert visao["settings"]["tamburetei_time"] == "03:30"
+    fonte = next(s for s in visao["sources"] if s["key"] == "tamburetei")
+    assert fonte["scheduled_times"] == ["03:30"]
+
+    disparo = client.post("/admin/api/sync/tamburetei/run", headers=HEADERS)
+    assert disparo.status_code == 202
+    assert disparo.json() == {"status": "started", "source": "tamburetei"}
+    esperar(client, agendador, 1)
+
+    ocultar = client.put(
+        "/admin/api/menu/notas_pas", json={"visible": False}, headers=HEADERS
+    )
+    assert ocultar.status_code == 200
+    assert ocultar.json()["notas_pas"] is False
+    publico = client.get("/public/config").json()
+    assert publico["menu"]["notas_pas"] is False
+
+
 @pytest.mark.parametrize(
     "corpo",
     [
