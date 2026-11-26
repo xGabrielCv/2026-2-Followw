@@ -4,7 +4,7 @@
 
 **O SIGAA e a vida na UnB num só app — rápido, offline e sem guardar seus dados pessoais.**
 
-Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomendações • Comunidade anônima • Estágios
+Agenda do dia • Turmas e frequência • Cardápio e carteirinha do RU • Fluxo e notas do PAS • Comunidade anônima • Estágios
 
 <br>
 
@@ -22,22 +22,18 @@ Agenda do dia • Turmas e frequência • Cardápio do RU • Fluxo e recomenda
 >
 > ## 🍴 Um fork com vida própria
 >
-> Este repositório é um **fork** do [**Followw UnB**](https://github.com/unb-mds/2026-2-Followw), projeto
-> desenvolvido por estudantes na disciplina de Métodos de Desenvolvimento de Software da UnB.
+> Este repositório é um **fork** do [**Followw UnB**](https://github.com/unb-mds/2026-2-Followw)
+> (MDS/UnB) e também incorpora dados abertos, recursos e referências do
+> [**Tamburetei UnB**](https://github.com/unb-mds/2026-02-TambureteiUnB) (como notas de corte
+> históricas do PAS/Cebraspe e exportação em dados abertos), adaptados à arquitetura deste projeto:
+> **zero dados pessoais do aluno no servidor**, cofre local cifrado no navegador (AES-256-GCM),
+> comunidade anônima cifrada em repouso, simulador de grades e IRA/MP, estágios e painel
+> administrativo com RBAC e MFA.
 >
-> Ele parte do **esqueleto e da espinha dorsal** do projeto original (cliente do SIGAA, API, app web e
-> catálogo público), mas traz **muitas adições e uma mudança de arquitetura**: os dados pessoais do
-> aluno deixaram de ficar no servidor, a comunidade anônima ganhou cifra em repouso, e vieram
-> estatísticas comparadas, estágios, simulador de grades, painel de administração e mais.
->
-> Todo o crédito pela base vai para a equipe original. 💚
+> Todo o crédito pelas bases vai às equipes originais. 💚
 
 > [!IMPORTANT]
-> O Followw é **independente** e não tem vínculo oficial com a UnB, o STI ou o SIGAA.
-
-Na instalação local, o servidor web consulta a API em `127.0.0.1:8000` (ou na porta definida por
-`API_PORT`). Se os serviços rodarem em máquinas ou contêineres diferentes, configure `API_INTERNAL_URL`
-com a origem confiável da API, sem credenciais nem caminho. O exemplo Docker já usa `http://api:8000`.
+> O Followw é **independente** e não tem vínculo oficial com a UnB, o STI, o Cebraspe ou o SIGAA.
 
 ---
 
@@ -45,42 +41,28 @@ com a origem confiável da API, sem credenciais nem caminho. O exemplo Docker j�
 
 ### 🌐 Sem entrar na conta
 
-* 🍽️ Cardápio do RU por campus e refeição, com opções vegetarianas, para consultar e compartilhar;
-* 🔎 busca de matérias, cursos e docentes, com horários, vagas, requisitos e perfis;
-* 🧭 fluxo de cada curso por semestre, com carga horária, pré e correquisitos;
-* 🤝 leitura de grupos, avaliações, materiais, dúvidas, posts e guias aprovados, sem conta;
-* 🛟 **suporte anônimo**: abra um chamado sem login e sem se identificar (a chave fica só no seu navegador; um
-  código de recuperação opcional abre o chamado em outro).
+* 🍽️ **Cardápio do RU** por campus e refeição, com opções vegetarianas;
+* 🔎 **Busca pública** de matérias, cursos e docentes (semestre atual e oferta futura), com horários, vagas e requisitos;
+* 🧭 **Fluxo acadêmico** por semestre, com pré/correquisitos e **notas de corte do PAS** (6 ciclos Cebraspe, Sistema Universal e cotas);
+* 🤝 **Comunidade pública**: grupos, avaliações, materiais, dúvidas/posts e guias aprovados;
+* 🛟 **Suporte anônimo**: abra e acompanhe chamados sem login (chave guardada só no navegador, com código de recuperação opcional).
 
 Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias continuam públicas.
 
-### 🎓 Com a conta do SIGAA
+### 🎓 Com a conta do SIGAA (stateless)
 
-* 📅 **agenda do dia**, com a aula em andamento, a próxima e quanto falta para cada uma;
-* 🏫 turmas, notas, postagens e **plano de ensino** (ementa, cronograma, avaliações e bibliografia), com **frequência** e aviso quando as faltas chegam perto dos 25%;
-* 🧪 **simulador de grades** e **simulador de IRA e MP**: compare várias grades, deixe o app **sugerir combinações sem choque** (com dias e
-  turnos bloqueados, menos janelas, menos dias no campus e explicação de cada escolha) e projete o impacto das menções no semestre;
-* 🎓 **planejar a formatura** e **simular integralização**: projeção dos semestres que faltam no fluxo obrigatório (pré e correquisitos,
-  carga por semestre, "e se eu reprovar em...") e avanço percentual por categoria. São estimativas, não confirmam integralização oficial;
-* 🧠 **recomendações** de matérias pelo seu fluxo;
-* 📊 **estatísticas comparadas**: você, seu curso e a UnB, calculado no seu aparelho;
-* 💼 **estágios** do mural do SIGAA, com filtros por curso e bolsa;
-* 💳 saldo e extrato do RU, carteirinha com QR code e histórico em PDF;
-* 📴 tudo abre na hora e funciona **offline**: o app carrega o que você vai usar em segundo plano.
+* 📅 **Agenda do dia**, com aula atual, próxima aula e tempo restante;
+* 🏫 **Minhas turmas**: notas, postagens, downloads de anexos, **plano de ensino** e **frequência** com calendário e alerta de 25%;
+* 🧪 **Simulador de grades** (otimizador em Web Worker), **simulador de IRA e MP** e **projeção de formatura / integralização**;
+* 🧠 **Recomendações** de matérias pelo fluxo e **estatísticas comparadas** (calculadas no aparelho, com exportação em Dados Abertos CSV/JSON);
+* 💼 **Estágios** do mural do SIGAA com filtros por curso e bolsa;
+* 💳 **RU completo**: saldo, extrato, histórico/carteirinha em PDF e **carteirinha preservada offline** no cofre cifrado;
+* 📴 **PWA offline**: abre instantaneamente e sincroniza em segundo plano.
 
-### 🤝 Comunidade anônima
+### 🤝 Comunidade anônima & 🛠️ Administração
 
-* ⭐ avaliações de professores (nota, chamada e comentário);
-* 💬 grupos das turmas (WhatsApp, Telegram, Teams, Aprender 3);
-* 📁 material das matérias (provas, listas, resumos), sem metadados;
-* ❓ dúvidas e posts, filtrados por campus, curso ou pelas matérias que você cursa;
-* 📘 guias da UnB escritos pela comunidade e aprovados pela moderação;
-* 🚩 qualquer pessoa — inclusive um docente — pode pedir a exclusão de um conteúdo.
-
-### 🛠️ Ferramentas e administração
-
-* 🤖 atalhos para ferramentas da matrícula extraordinária, ligados pela administração no período certo;
-* 🖥️ painel do administrador: uso por dia, semana e mês, operação de pools e circuitos, sincronização de catálogos, moderação, suporte, aviso operacional público, funções que ligam e desligam, cartões do menu e auditoria.
+* ⭐ Avaliações de professores, 💬 grupos das turmas, 📁 materiais (varredura `YARA-X`, inspetor PDF/OLE2, ClamAV opcional e reconstrução), ❓ fórum e 📘 guias;
+* 🖥️ Painel em `/api/admin` com RBAC (`moderator`, `administrator`, `owner`), MFA TOTP com step-up de 15 min, operação de pools/circuitos, sincronização agendada, moderação, suporte, aviso operacional público, auditoria imutável e gateway isolado do CloudBeaver Community para o Owner.
 
 ---
 
@@ -88,27 +70,19 @@ Publicar, responder, enviar, editar e apagar exige login do SIGAA. Denúncias co
 
 | O quê | Onde fica |
 | --- | --- |
-| Sessão do SIGAA (matrícula e senha) | 🔐 cookie cifrado, **só no seu navegador** |
-| Perfil, IRA, turmas, menções, frequência, colegas | 📱 **só no seu aparelho**; o servidor busca no SIGAA e esquece |
-| Configurações, calendário, presenças marcadas, grades | 📱 só no seu aparelho, com backup em arquivo |
-| Avaliações, grupos, materiais, posts, guias | ☁️ na nuvem, **sem nome nem matrícula** e cifrados (AES-256-GCM) |
-| Índices de aprovação das turmas | ☁️ só se você liberar, e só a porcentagem da turma |
-| Chamados de suporte | ☁️ texto cifrado; só um verificador da chave (nunca a chave), sem matrícula, nome ou e-mail |
+| Sessão do SIGAA (matrícula e senha) | 🔐 cookie JWE cifrado, **só no navegador** (até 8 h) |
+| Perfil, IRA, turmas, notas, frequência, plano de ensino, carteirinha | 📱 **só no seu aparelho** (cofre Web Crypto AES-256-GCM / IndexedDB); o servidor busca no SIGAA e esquece |
+| Configurações, calendário, presenças, grades e simulações | 📱 só no seu aparelho (retenção configurável: 7, 30, 90 ou 400 dias) |
+| Avaliações, grupos, materiais, posts, guias e chamados | ☁️ PostgreSQL + arquivos cifrados na aplicação (AES-256-GCM), **sem nome nem matrícula** |
+| Índices de aprovação das turmas | ☁️ só se você liberar, e apenas percentuais agregados da turma |
 
-Cada publicação (avaliação, resposta, material, guia, chamado) nasce com uma **chave aleatória própria**, guardada só no seu navegador; o servidor guarda apenas um verificador dela e não associa nome, matrícula, conta ou aparelho às publicações (nem uma publicação à outra). Isso reduz muito, mas não elimina, a chance de alguém ligar publicações: o servidor ainda vê dados de conexão e o texto enviado. O conteúdo compartilhado é público e a moderação
-pode decifrá-lo; não publique informações pessoais no texto ou nos arquivos. Cookies de sessão e perfil são cifrados (JWE AES-GCM), e o cache acadêmico e as preferências locais ficam cifrados no navegador com **Web Crypto AES-256-GCM** (chave não exportável no IndexedDB; protege cópias em disco, mas não substitui bloqueio do aparelho nem proteção contra código malicioso). O arquivo de backup exportado manualmente é um JSON em texto aberto, sem senha, foto, bio nem chaves de autoria. O app explica tudo isso em **Perfil › Uso de dados**.
+Cada publicação ou chamado nasce com uma **credencial aleatória de 256 bits** gerada no navegador; o servidor guarda apenas um verificador HMAC e recusa cookies acadêmicos em escritas comunitárias. A cifra local protege cópias em disco/armazenamento, mas não substitui bloqueio do aparelho nem proteção contra código malicioso na própria página. O backup manual exportado é JSON aberto sem senha, foto, bio nem chaves de autoria.
 
-No banco, a API conecta com um papel PostgreSQL restrito (`followw_app`, sem bypass) e **Row-Level Security**
-protege chamados, contas e sessões administrativas e o log de auditoria (que só aceita inserção). Cada
-consulta externa a fontes públicas (SIGAA, RU) passa por cache, *single-flight* e *circuit breaker*, para
-que milhares de alunos não virem milhares de consultas idênticas. Dados privados continuam indo ao SIGAA a
-cada pedido: o servidor não os guarda.
+No banco, a API conecta com o papel restrito `followw_app` sob **Row-Level Security (`FORCE ROW LEVEL SECURITY`)**. Consultas públicas ao SIGAA/RU passam por cache, *single-flight*, *circuit breaker* e pool HTTP compartilhado.
 
 ---
 
-## 🏠 Execute sua própria instância
-
-No Windows, clone este fork e execute na raiz:
+## 🏠 Execução local (Windows)
 
 ```powershell
 git clone https://github.com/xGabrielCv/2026-2-Followw.git
@@ -116,96 +90,39 @@ cd 2026-2-Followw
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run.ps1
 ```
 
-O inicializador verifica/instala Git, uv, Python 3.14, Node e Bun, prepara um PostgreSQL portátil
-em `.local/`, gera chaves próprias em `apps/api/.env`, instala as dependências e sobe o app em
-<http://localhost:3000>. Requer internet na primeira instalação; o winget pode pedir autorização
-do Windows para instalar ferramentas. Abra <http://localhost:3000/api/admin> para cadastrar
-usuário e senha do administrador local (mínimo 12 caracteres). Se já houver acesso configurado
-e você perdeu os fatores do Owner, execute `.\scripts\admin-password.cmd --recover PSEUDONIMO` no terminal local para redefinir senha e MFA.
+O inicializador prepara PostgreSQL 18 portátil em `.local/`, gera chaves próprias em `apps/api/.env`, importa o catálogo público de referência (`bootstrap_data.py`), instala o CloudBeaver Community em loopback (opcional com `-SkipCloudBeaver`) e sobe o app em <http://localhost:3000>. Cadastre o Owner local em <http://localhost:3000/api/admin>; para recuperar fatores perdidos do Owner, execute `.\scripts\admin-password.cmd --recover PSEUDONIMO`.
 
 ```powershell
 .\scripts\run.ps1 -NoBrowser       # inicia sem abrir o navegador
-.\scripts\run.ps1 -Offline         # sem consultas externas em execução, após instalar e importar o catálogo
+.\scripts\run.ps1 -Offline         # sem consultas externas após o setup inicial
 .\scripts\run.ps1 -SkipDataUpdate  # não agenda atualização pública em segundo plano
-.\scripts\run.ps1 -Check           # confere dependências
-.\scripts\run.ps1 -Test            # valida API, bibliotecas, tipos, lint e testes do front
-.\scripts\run.ps1 -Update          # atualiza catálogo público no SIGAA; pode demorar
-.\scripts\stop.ps1                # encerra a instância
-.\scripts\restart.ps1             # reinicia sem abrir outra aba
+.\scripts\run.ps1 -Test            # lint, tipos e testes da API e do front
+.\scripts\stop.ps1                 # encerra todos os serviços
+.\scripts\restart.ps1              # reinicia sem abrir outra aba
+.\scripts\project-size.ps1         # mede tamanho lógico e em disco (-Clean / -Compress)
 ```
 
-Na primeira execução, `run.cmd`/`run.ps1` também instala o **CloudBeaver Community**, compilado de
-revisões fixadas, com tradução para português, driver PostgreSQL e H2 interno. Isso exige internet,
-espaço temporário e pode demorar; Java e Maven são preparados automaticamente quando necessários.
-As fontes temporárias são removidas após o sucesso. Use `-SkipCloudBeaver` para não instalar/iniciar
-essa ferramenta, ou `-Offline` depois que todas as dependências estiverem disponíveis.
-
-Crie seu administrador do Followw em `/api/admin`, configure MFA e abra **Banco de dados** como
-Owner com MFA recente. No assistente do CloudBeaver, escolha seu próprio usuário e senha adicional:
-nenhuma conta administrativa ou senha pronta é distribuída. A instalação gera somente uma senha
-técnica aleatória, privada, para a conexão PostgreSQL de leitura, sem acesso às tabelas administrativas.
-Contas, senhas, conexões e banco de uma instância existente são preservados. O serviço inicia/reinicia
-junto do app e fica em loopback. O instalador é para Windows; uma VPS exige serviço próprio e HTTPS,
-sem portas públicas do PostgreSQL ou CloudBeaver.
-
-Para medir o espaço ocupado: `.\scripts\project-size.ps1`. Com o app parado, `-Clean` remove apenas
-caches reproduzíveis conhecidos. A meta é menos de 1 GB quando possível; dependências, dados e
-ferramentas instaladas podem ultrapassá-la. Não apague `.local/pgdata`, materiais, workspace do
-CloudBeaver, arquivos privados nem chaves para economizar espaço.
-No Windows/NTFS, `-Compress` aplica compressão transparente somente às dependências e aos binários,
-sem comprimir bancos ou materiais. O relatório separa tamanho lógico e armazenamento no disco;
-metadados do sistema de arquivos não entram nessa medição. Essa opção é local e não afeta o GitHub.
-
-O repositório contém código, testes sintéticos e os scripts de instalação, **sem banco, catálogo
-coletado, materiais, credenciais ou configuração privada da sua instância**. Na primeira execução,
-`bootstrap_data.py` importa o catálogo público de referência do projeto original, numa revisão
-fixada com hashes SHA-256. Depois, `update_data.py` atualiza os dados públicos diretamente do SIGAA.
-O calendário público faz parte do código. Uma instalação própria tem banco e comunidade próprios;
-ela não recebe conteúdos ou chaves da instância de outra pessoa.
-
-O servidor fica no próprio PC, assim como o banco e os arquivos. Login e atualizações acadêmicas
-consultam os serviços oficiais da UnB; `-Offline` usa somente o que já existe localmente.
-Guarde uma cópia segura das chaves, do banco e dos materiais se precisar restaurar a instância.
-A documentação interna de desenvolvimento e os backups locais não são publicados.
-
-### 🐳 Produção (preparada, ainda não testada em contêiner)
-
-A pasta `deploy/` traz Dockerfiles (API e front), um Compose de produção (banco só em rede interna, usuários sem
-privilégio, limites de recursos, HTTPS pelo Caddy), modelo de variáveis **sem segredos** e scripts de backup e
-restauração. **Nada disso foi executado em Docker até agora** (só validado estaticamente): valide em um ambiente
-com Docker antes de publicar uma instância, e guarde a `DATA_ENCRYPTION_KEY` fora do servidor.
-
-Para outra plataforma, use Python 3.14+, uv, Node, Bun e PostgreSQL 18: copie `.env.example` para
-`apps/api/.env`, defina chaves aleatórias próprias, rode `uv sync --all-packages --all-groups --locked`,
-`uv run --no-sync python scripts/bootstrap_data.py`, `uv run --no-sync db-init` e
-`uv run --no-sync api` a partir de `apps/api`. Em outro terminal: `cd apps/web; bun install --frozen-lockfile; bun dev`.
-O exemplo é de desenvolvimento. Hospedagem pública precisa de HTTPS, proxy de `/api` para a API,
-configuração de produção e cópias de segurança; o script local só escuta no próprio computador.
+Na instalação local, o front consulta a API em `127.0.0.1:8000` (ou `API_PORT` / `API_INTERNAL_URL`). A pasta `deploy/` contém preparação para Docker/Caddy (ainda não validada em contêiner); produção exige HTTPS, `ENVIRONMENT=production`, `ADMIN_ALLOWED_IPS`, `RATE_LIMIT_BACKEND=postgres` e `SESSION_LOCK_BACKEND=postgres`.
 
 ---
 
-## 🧪 Testes e carga
+## 🧪 Testes e estrutura
 
 ```powershell
-.\scripts\run.ps1 -Test                      # API, bibliotecas, tipos, lint e testes do front
-cd apps\web; bun run e2e             # Playwright (admin com MFA e chamado do aluno ao atendimento)
+.\scripts\run.ps1 -Test
+cd apps\web; bun run e2e
 cd apps\api; uv run --no-sync python loadtest/run.py --workers 4 --levels 100,250,500 --seconds 20
 ```
 
-O teste de carga usa banco sintético e **simula** o SIGAA e a UnB com a saída de rede bloqueada: nunca é apontado
-para os sistemas reais.
-
----
-
-## 🧱 Estrutura
+Testes automatizados e de carga usam banco sintético e simulador local com saída de rede bloqueada: **nunca** atingem o SIGAA real.
 
 ```text
 apps/
-├── api/              API em FastAPI (Python)
-└── web/              app web em TanStack Start (React)
+├── api/              API em FastAPI (Python 3.14 + PostgreSQL + RLS)
+└── web/              App web em TanStack Start (React 19 + Bun + PWA)
 packages/
-├── sigaa-client/     cliente assíncrono do SIGAA
-└── unb-browser/      serviços públicos da UnB (calendário, RU)
+├── sigaa-client/     Cliente assíncrono do SIGAA
+└── unb-browser/      Serviços públicos da UnB (RU e calendário)
 ```
 
 ---
@@ -229,6 +146,22 @@ packages/
 </tr>
 </table>
 
+**Recursos e dados abertos integrados do [unb-mds/2026-02-TambureteiUnB](https://github.com/unb-mds/2026-02-TambureteiUnB) (Tamburetei UnB):**
+
+<table>
+<tr>
+<td align="center"><a href="https://github.com/bcaueLPS"><img src="https://github.com/bcaueLPS.png?size=96" width="72" height="72" alt="Avatar de bcaueLPS"><br><strong>@bcaueLPS</strong></a></td>
+<td align="center"><a href="https://github.com/diangellis"><img src="https://github.com/diangellis.png?size=96" width="72" height="72" alt="Avatar de diangellis"><br><strong>@diangellis</strong></a></td>
+<td align="center"><a href="https://github.com/LuisGuilherme67"><img src="https://github.com/LuisGuilherme67.png?size=96" width="72" height="72" alt="Avatar de LuisGuilherme67"><br><strong>@LuisGuilherme67</strong></a></td>
+<td align="center"><a href="https://github.com/lucasssmira"><img src="https://github.com/lucasssmira.png?size=96" width="72" height="72" alt="Avatar de lucasssmira"><br><strong>@lucasssmira</strong></a></td>
+</tr>
+<tr>
+<td align="center"><a href="https://github.com/LuizaCarvalho691"><img src="https://github.com/LuizaCarvalho691.png?size=96" width="72" height="72" alt="Avatar de LuizaCarvalho691"><br><strong>@LuizaCarvalho691</strong></a></td>
+<td align="center"><a href="https://github.com/mariav-07"><img src="https://github.com/mariav-07.png?size=96" width="72" height="72" alt="Avatar de mariav-07"><br><strong>@mariav-07</strong></a></td>
+<td align="center"><a href="https://github.com/thamiresellensa"><img src="https://github.com/thamiresellensa.png?size=96" width="72" height="72" alt="Avatar de thamiresellensa"><br><strong>@thamiresellensa</strong></a></td>
+</tr>
+</table>
+
 **Desenvolvimento deste fork:**
 
 <table><tr><td align="center"><a href="https://github.com/xGabrielCv"><img src="https://github.com/xGabrielCv.png?size=96" width="80" height="80" alt="Avatar de Gabriel"><br><strong>@xGabrielCv</strong></a><br>Jesus Gabriel Carvalho Ventura</td></tr></table>
@@ -239,4 +172,4 @@ Veja também o [**Automatrícula UnB (SIGAA Sniper)**](https://github.com/xGabri
 
 ## 📄 Licença
 
-Distribuído sob a licença MIT do projeto original. Veja [LICENSE](LICENSE).
+Distribuído sob a licença MIT, preservando os créditos do [Followw UnB](https://github.com/unb-mds/2026-2-Followw) e do [Tamburetei UnB](https://github.com/unb-mds/2026-02-TambureteiUnB). Veja [LICENSE](LICENSE).

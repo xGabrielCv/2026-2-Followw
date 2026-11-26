@@ -1,6 +1,6 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { Info, ShieldCheck } from 'lucide-react';
+import { Download, Info, ShieldCheck } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { createStandardSchemaV1, parseAsStringLiteral } from 'nuqs/server';
 
@@ -16,8 +16,10 @@ import { BackHeader } from '#/components/HeaderBar';
 import { LoginPromptCard } from '#/components/home/LoginPromptCard';
 import { LoadingText } from '#/components/LoadingText';
 import { TabFilter } from '#/components/TabFilter';
+import { Button } from '#/components/ui/button';
 import { Card } from '#/components/ui/card';
 import { difference, insights } from '#/lib/comparison';
+import { downloadOpenData } from '#/lib/open-data';
 import { cn } from '#/lib/shadcn';
 import { allClassroomsQueryOptions } from '#/queries/classrooms';
 import { comparisonQueryOptions } from '#/queries/comparison';
@@ -126,6 +128,9 @@ function Compare({ courseId }: { courseId?: number }) {
                 empty="Sem índices das matérias que faltam."
                 items={result.hardestAhead}
             />
+            {data.data.subjects.length > 0 && (
+                <OpenDataCard scope={scope} subjects={data.data.subjects} />
+            )}
             <p className="flex gap-2 px-1 text-xs text-muted-foreground">
                 <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden />
                 Cada turma pesa igual nas médias, e a cobertura cresce conforme mais alunos liberam
@@ -136,6 +141,50 @@ function Compare({ courseId }: { courseId?: number }) {
                 </Link>
             </p>
         </div>
+    );
+}
+
+function OpenDataCard({ scope, subjects }: { scope: string; subjects: SubjectRate[] }) {
+    const rows = () =>
+        subjects.map((item) => ({
+            codigo: item.code,
+            disciplina: item.name,
+            aprovacao_pct: item.rates.approved,
+            reprovacao_pct: item.rates.failed,
+            trancamento_pct: item.rates.dropped,
+            turmas: item.rates.classrooms,
+            fonte: 'Followw UnB (médias públicas compartilhadas)'
+        }));
+    return (
+        <Card className="flex flex-col gap-3 p-4 text-xs">
+            <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground">Dados abertos</h2>
+                <p className="mt-0.5 text-muted-foreground">
+                    Baixe as médias públicas agregadas das matérias ({subjects.length} registros),
+                    sem nenhum dado pessoal ou histórico individual.
+                </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => downloadOpenData(`followw-estatisticas-${scope}`, rows(), 'csv')}
+                >
+                    <Download className="size-3.5" aria-hidden="true" />
+                    Exportar CSV
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                        downloadOpenData(`followw-estatisticas-${scope}`, rows(), 'json')
+                    }
+                >
+                    <Download className="size-3.5" aria-hidden="true" />
+                    Exportar JSON
+                </Button>
+            </div>
+        </Card>
     );
 }
 
