@@ -13,7 +13,8 @@ export const STORAGE_KEYS = {
     SUPPORT: 'support',
     // credenciais aleatórias de cada publicação (e o segredo antigo, até migrar)
     AUTHOR: 'author',
-    ALERT_DISMISSED: 'semester-alert-dismissed'
+    ALERT_DISMISSED: 'semester-alert-dismissed',
+    STUDENT_CARD: 'student-card'
 } as const;
 
 function getStorage(): Storage | null {
@@ -44,6 +45,7 @@ const SCOPED_KEYS = new Set<string>([
     STORAGE_KEYS.REVIEWS,
     STORAGE_KEYS.ACADEMIC_SIMULATION,
     STORAGE_KEYS.ALERT_DISMISSED,
+    STORAGE_KEYS.STUDENT_CARD,
     'author'
 ]);
 let activeAccount: string | undefined;
@@ -144,7 +146,8 @@ export const localStorageRepository: LocalStorageRepository = {
 const ACCOUNT_KEYS: string[] = [
     STORAGE_KEYS.SCHEDULE_PLANS,
     STORAGE_KEYS.REVIEWS,
-    STORAGE_KEYS.ACADEMIC_SIMULATION
+    STORAGE_KEYS.ACADEMIC_SIMULATION,
+    STORAGE_KEYS.STUDENT_CARD
 ];
 const stores = new Map<string, { clear: () => void; reset: () => void }>();
 

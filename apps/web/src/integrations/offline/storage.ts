@@ -15,6 +15,9 @@ import { localStorageRepository } from '#/lib/local-storage';
 import { openLocal, sealLocal, retentionDays } from '#/lib/local-vault';
 import { meQueryOptions } from '#/queries/me';
 import { isRecommendationsKey } from '#/queries/recommendations';
+import { credentialsQueryOptions } from '#/queries/restaurant-account';
+
+const CARD_PATH = credentialsQueryOptions('').queryKey[1];
 
 // também é o gcTime das queries no navegador, senão a query sai do cache antes de vencer no disco
 export const PERSIST_MAX_AGE = 400 * 24 * 60 * 60 * 1000;
@@ -63,7 +66,10 @@ export function encryptedQueryPersister(
                                     fetchStatus: 'idle',
                                     error: null,
                                     fetchFailureReason: null,
-                                    fetchFailureCount: 0
+                                    fetchFailureCount: 0,
+                                    ...(query.queryKey[1] === CARD_PATH
+                                        ? { isInvalidated: false }
+                                        : {})
                                 }
                             }))
                         }

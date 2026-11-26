@@ -38,6 +38,7 @@ import { cn } from '#/lib/shadcn';
 import { documentRefusal } from '#/queries/documents';
 import { refreshQuery } from '#/queries/refresh';
 import { credentialsQueryOptions, statementQueryOptions } from '#/queries/restaurant-account';
+import { useStudentCard } from '#/queries/student-card';
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
@@ -64,7 +65,7 @@ export function RestaurantAccount({
     const statementOptions = statementQueryOptions(registration);
     const credentialsOptions = credentialsQueryOptions(registration);
     const statement = useQuery(statementOptions);
-    const credentials = useQuery(credentialsOptions);
+    const credentials = useStudentCard(registration);
     const [refreshing, setRefreshing] = useState(false);
     const [coolingDown, setCoolingDown] = useState(false);
     const [cardOpen, setCardOpen] = useState(false);
