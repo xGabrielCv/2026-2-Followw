@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -49,22 +50,35 @@ def _validate_url(url: str) -> None:
         raise ValueError(f"Host não permitido para sincronização pública: {url}")
 
 
-def fetch_json(client: httpx.Client, url: str) -> Any:
-    """Baixa JSON de host HTTPS estritamente permitido com limite de tamanho."""
+def _retry_delay(response: httpx.Response, attempt: int) -> float:
+    raw = (response.headers.get("retry-after") or "").strip()
+    if raw.isdigit():
+        return min(float(int(raw)), 10.0)
+    return min(1.5 * (attempt + 1), 10.0)
+
+
+def fetch_json(client: httpx.Client, url: str, *, max_attempts: int = 3) -> Any:
+    """Baixa JSON de host HTTPS estritamente permitido com limite de tamanho e retry em 429/503."""
     _validate_url(url)
-    with client.stream("GET", url) as response:
-        _validate_url(str(response.url))
-        response.raise_for_status()
-        chunks: list[bytes] = []
-        total = 0
-        for chunk in response.iter_bytes():
-            total += len(chunk)
-            if total > MAX_RESPONSE_BYTES:
-                raise ValueError(
-                    f"Resposta excedeu o limite seguro ({MAX_RESPONSE_BYTES} bytes)."
-                )
-            chunks.append(chunk)
-    return json.loads(b"".join(chunks).decode("utf-8"))
+    for attempt in range(max_attempts):
+        with client.stream("GET", url) as response:
+            _validate_url(str(response.url))
+            if response.status_code in {429, 503} and attempt < max_attempts - 1:
+                delay = _retry_delay(response, attempt)
+                time.sleep(delay)
+                continue
+            response.raise_for_status()
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in response.iter_bytes():
+                total += len(chunk)
+                if total > MAX_RESPONSE_BYTES:
+                    raise ValueError(
+                        f"Resposta excedeu o limite seguro ({MAX_RESPONSE_BYTES} bytes)."
+                    )
+                chunks.append(chunk)
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    raise RuntimeError(f"Falha ao consultar {url} após {max_attempts} tentativas.")
 
 
 def _compact_course(raw: dict[str, Any]) -> dict[str, Any]:

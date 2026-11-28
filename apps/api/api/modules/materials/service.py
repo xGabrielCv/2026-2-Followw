@@ -451,6 +451,53 @@ class MaterialService:
             raise HTTPException(404, "Material não encontrado.")
         return material, data
 
+    async def update(
+        self,
+        code: str,
+        material_id: uuid.UUID,
+        author: str,
+        meta: MaterialUpload,
+    ) -> MaterialItem:
+        oldest = oldest_semester()
+        newest = academic_calendar.shift_regular_semester(
+            academic_calendar.current_regular_semester(), 1
+        )
+        if not oldest <= meta.semester <= newest:
+            raise HTTPException(
+                422, f"O semestre precisa estar entre {oldest} e {newest}."
+            )
+
+        async def write(session: AsyncSession) -> MaterialItem:
+            material = await session.get(Material, material_id)
+            if (
+                material is None
+                or material.subject_code != code
+                or material.semester < oldest
+                or not owns(material.uploader_key, author, _scope(code))
+            ):
+                raise HTTPException(404, "Material não encontrado.")
+            professors: list[str] = []
+            if meta.classroom_number:
+                classroom = await session.scalar(
+                    select(Classroom).where(
+                        Classroom.subject_code == code,
+                        Classroom.semester == meta.semester,
+                        Classroom.number == meta.classroom_number,
+                    )
+                )
+                if classroom is not None:
+                    professors = [professor.name for professor in classroom.professors]
+            material.title = meta.title
+            material.kind = meta.kind
+            material.semester = meta.semester
+            material.classroom_number = meta.classroom_number
+            material.professors = professors
+            await session.flush()
+            await session.refresh(material)
+            return _item(material, author)
+
+        return await self._db.write(write)
+
     async def delete(self, code: str, material_id: uuid.UUID, author: str) -> None:
         async def write(session: AsyncSession) -> str:
             material = await session.get(Material, material_id)

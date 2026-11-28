@@ -498,3 +498,57 @@ def test_clamav_indisponivel_nao_libera_upload_sem_verificacao(
     response = _enviar(logado, _png())
     assert response.status_code == 503
     assert logado.get(URL).json()["usage"]["files"] == 0
+
+
+def test_so_quem_enviou_pode_editar_metadados_do_material(logado, materia, cookies):
+    enviado = _enviar(logado, _png(), name="prova1.png").json()
+    assert enviado["title"] == "Prova 1"
+    assert enviado["professors"] == []
+
+    # Outro aluno (outra chave anônima) não consegue editar
+    logado.cookies.clear()
+    logado.cookies.update(cookies(refresh=BIA))
+    logado.headers["X-Followw-Author"] = "b" * 64
+    negado = logado.patch(
+        f"{URL}/{enviado['id']}",
+        json={
+            "title": "Tentativa alheia",
+            "kind": "resumo",
+            "semester": "2026.2",
+            "classroom_number": "02",
+        },
+    )
+    assert negado.status_code == 404
+
+    # O autor edita título, tipo e vincula à turma 02 (puxando docentes do catálogo)
+    logado.cookies.clear()
+    logado.cookies.update(cookies(refresh=ANA))
+    logado.headers["X-Followw-Author"] = "a" * 64
+    invalido = logado.patch(
+        f"{URL}/{enviado['id']}",
+        json={
+            "title": "Prova 1 corrigida",
+            "kind": "lista",
+            "semester": "2020.1",
+            "classroom_number": None,
+        },
+    )
+    assert invalido.status_code == 422
+
+    editado = logado.patch(
+        f"{URL}/{enviado['id']}",
+        json={
+            "title": "Prova 1 corrigida",
+            "kind": "lista",
+            "semester": "2026.2",
+            "classroom_number": "02",
+        },
+    )
+    assert editado.status_code == 200, editado.text
+    corpo = editado.json()
+    assert corpo["title"] == "Prova 1 corrigida"
+    assert corpo["kind"] == "lista"
+    assert corpo["classroom_number"] == "02"
+    assert corpo["professors"] == ["MAURICIO SERRANO"]
+    # O arquivo original permanece intacto
+    assert logado.get(f"{URL}/{enviado['id']}").content.startswith(b"\x89PNG")

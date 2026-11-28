@@ -4,6 +4,7 @@ import {
     Eye,
     FileText,
     Image as ImageIcon,
+    Pencil,
     ShieldCheck,
     Trash2,
     Upload
@@ -15,6 +16,7 @@ import type { MaterialItem, SubjectMaterials } from '#/queries/community';
 import { ReportButton } from '#/components/community/ReportButton';
 import { StaleDataNotice } from '#/components/ErrorState';
 import { LoadingText } from '#/components/LoadingText';
+import { EditMaterialDialog } from '#/components/materials/EditMaterialDialog';
 import { FilteredMaterials } from '#/components/materials/FilteredMaterials';
 import { MaterialPreview } from '#/components/materials/MaterialPreview';
 import { UploadMaterialDialog } from '#/components/materials/UploadMaterialDialog';
@@ -152,6 +154,7 @@ export function MaterialsView({
                                                 item={item}
                                                 canEdit={Boolean(onUpload)}
                                                 code={code}
+                                                oldestSemester={data.oldest_semester}
                                                 classroom={classroom}
                                             />
                                         ))}
@@ -219,12 +222,14 @@ export function originLabel(
 function MaterialRow({
     item,
     code,
+    oldestSemester,
     classroom,
     canEdit
 }: {
     item: MaterialItem;
     canEdit: boolean;
     code: string;
+    oldestSemester: string;
     classroom?: SubjectMaterialsPanelProps['classroom'];
 }) {
     const remove = useDeleteMaterial(code);
@@ -233,6 +238,7 @@ function MaterialRow({
     const [busy, setBusy] = useState(false);
     const [failed, setFailed] = useState(false);
     const [previewing, setPreviewing] = useState(false);
+    const [editing, setEditing] = useState(false);
     const origin = originLabel(item, classroom);
     const Icon = item.mime.startsWith('image/') ? ImageIcon : FileText;
     const canPreview = PREVIEW_MIME.has(item.mime);
@@ -305,24 +311,48 @@ function MaterialRow({
                         Baixar
                     </Button>
                     {canEdit && mine ? (
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive"
-                            disabled={remove.isPending}
-                            aria-label={`Apagar ${item.title}`}
-                            onClick={() => {
-                                if (window.confirm('Apagar este material? Não dá para desfazer.'))
-                                    remove.mutate(item.id);
-                            }}
-                        >
-                            <Trash2 aria-hidden="true" />
-                        </Button>
+                        <>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                aria-label={`Editar ${item.title}`}
+                                onClick={() => setEditing(true)}
+                            >
+                                <Pencil aria-hidden="true" />
+                                Editar
+                            </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive"
+                                disabled={remove.isPending}
+                                aria-label={`Apagar ${item.title}`}
+                                onClick={() => {
+                                    if (
+                                        window.confirm(
+                                            'Apagar este material? Não dá para desfazer.'
+                                        )
+                                    )
+                                        remove.mutate(item.id);
+                                }}
+                            >
+                                <Trash2 aria-hidden="true" />
+                            </Button>
+                        </>
                     ) : (
                         <ReportButton target="material" id={item.id} what="este material" />
                     )}
                 </div>
             </div>
+            {canEdit && mine && (
+                <EditMaterialDialog
+                    open={editing}
+                    onOpenChange={setEditing}
+                    code={code}
+                    item={item}
+                    oldestSemester={oldestSemester}
+                />
+            )}
             {canPreview && (
                 <MaterialPreview
                     code={code}

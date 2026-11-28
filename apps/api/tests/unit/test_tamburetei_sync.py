@@ -273,6 +273,22 @@ def test_sync_rejeita_host_fora_da_allowlist():
             mod.fetch_json(client, "https://evil.example/cursos")
 
 
+def test_sync_faz_retry_quando_tamburetei_responde_429():
+    mod = _load_sync_module()
+    tentativas = [0]
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        tentativas[0] += 1
+        if tentativas[0] == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return httpx.Response(200, json={"ok": True})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        resultado = mod.fetch_json(client, "https://api.tambureteiunb.com.br/cursos")
+    assert resultado == {"ok": True}
+    assert tentativas[0] == 2
+
+
 def test_leitor_tamburetei_calcula_media_pas_dpo_e_respeita_supressao_lgpd(
     tmp_path, monkeypatch
 ):

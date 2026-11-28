@@ -41,6 +41,7 @@ _RULES = [
     ("DELETE", re.compile(rf"/forum/{_ID}(?:/replies/{_ID})?")),
     ("PATCH", re.compile(rf"/forum/{_ID}/resolved")),
     ("POST", re.compile(rf"/materials/{_CODE}")),
+    ("PATCH", re.compile(rf"/materials/{_CODE}/{_ID}")),
     ("DELETE", re.compile(rf"/materials/{_CODE}/{_ID}")),
     ("PUT", re.compile(rf"/groups/{_CODE}/[0-9]{{4}}\.[0-9]/[0-9A-Za-z]{{1,4}}")),
     ("POST", re.compile(r"/reviews")),

@@ -41,6 +41,8 @@ def policies() -> list[tuple[str, str, str | None, str | None]]:
         update = f"{ADMIN} OR ({MIGRATE} AND {belongs})"
         if table == "forum_posts":
             update += f" OR ({operation('forum_patch')} AND {belongs} AND id::text = current_setting('app.forum_post', true))"
+        elif table == "materials":
+            update += f" OR ({operation('materials_patch')} AND {belongs} AND subject_code = current_setting('app.material_subject', true) AND id::text = current_setting('app.material_id', true))"
         result.append((table, "UPDATE", update, f"{ADMIN} OR {belongs}"))
         remove = f"{ADMIN} OR ({operation('reply_delete' if table == 'forum_replies' else table.removesuffix('s') + '_delete')} AND {belongs})"
         if table == "forum_posts":

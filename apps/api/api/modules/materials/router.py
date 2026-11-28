@@ -3,7 +3,7 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Form, HTTPException, Path, Query, Response, UploadFile
-from pydantic import StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from api.anonymous import AuthorDep, OptionalAuthorDep
 from api.cache import NoStore
@@ -140,6 +140,50 @@ async def download_material(
             "Content-Security-Policy": "default-src 'none'; sandbox",
             "Cache-Control": "private, max-age=3600",
         },
+    )
+
+
+class MaterialUpdateInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=3, max_length=80)
+    ]
+    kind: MaterialKind
+    semester: Annotated[str, StringConstraints(pattern=r"^[0-9]{4}\.[0-9]$")]
+    classroom_number: (
+        Annotated[
+            str, StringConstraints(strip_whitespace=True, pattern=r"^[0-9A-Za-z]{1,4}$")
+        ]
+        | None
+    ) = None
+
+
+@router.patch(
+    "/{code}/{material_id}",
+    response_model=MaterialItem,
+    summary="Editar título, tipo, semestre ou turma de um material enviado pelo próprio aluno",
+    responses=_NOT_FOUND,
+    dependencies=[require_enabled("materials"), publish_quota("materials", 60)],
+)
+async def update_material(
+    author: AuthorDep,
+    connection: CommunityWriteDep,
+    service: MaterialServiceDep,
+    code: Code,
+    material_id: UUID,
+    body: MaterialUpdateInput,
+) -> MaterialItem:
+    return await service.update(
+        code.upper(),
+        material_id,
+        author,
+        MaterialUpload(
+            title=body.title,
+            kind=body.kind,
+            semester=body.semester,
+            classroom_number=body.classroom_number,
+        ),
     )
 
 

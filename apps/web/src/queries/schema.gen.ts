@@ -983,7 +983,8 @@ export interface paths {
         delete: operations["delete_material_materials__code___material_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /** Editar título, tipo, semestre ou turma de um material enviado pelo próprio aluno */
+        patch: operations["update_material_materials__code___material_id__patch"];
         trace?: never;
     };
     "/forum/{post_id}/resolved": {
@@ -2063,6 +2064,20 @@ export interface components {
          * @enum {string}
          */
         MaterialKind: "file" | "link" | "action";
+        /** MaterialUpdateInput */
+        MaterialUpdateInput: {
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "prova" | "lista" | "resumo" | "anotacao" | "outro";
+            /** Semester */
+            semester: string;
+            /** Classroom Number */
+            classroom_number?: string | null;
+        };
         /** MenuSection */
         MenuSection: {
             key?: components["schemas"]["MenuSectionKey"] | null;
@@ -5912,6 +5927,63 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Credenciais ausentes ou inválidas. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Matéria ou material não encontrado. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description SIGAA indisponível. */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_material_materials__code___material_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: string;
+                material_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialItem"];
+                };
             };
             /** @description Credenciais ausentes ou inválidas. */
             401: {

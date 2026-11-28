@@ -125,7 +125,12 @@ function authorKey({ method, parts }: ReturnType<typeof route>): string | undefi
             child === 'replies' && childId ? keyFor('reply', childId) : keyFor('post', id);
         return stored ?? legacySecret();
     }
-    if (method === 'DELETE' && root === 'materials' && childId === undefined && child)
+    if (
+        (method === 'DELETE' || method === 'PATCH') &&
+        root === 'materials' &&
+        childId === undefined &&
+        child
+    )
         return keyFor('material', child) ?? legacySecret();
     return undefined;
 }

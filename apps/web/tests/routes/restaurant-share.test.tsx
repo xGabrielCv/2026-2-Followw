@@ -178,6 +178,18 @@ describe('compartilhamento do cardápio', () => {
         expect(markup).not.toContain('Salada 2');
     });
 
+    test('renomeia o rótulo de refresco na prévia compartilhada do RU', () => {
+        const markup = renderToStaticMarkup(
+            <RestaurantShareImage
+                selection={selection}
+                sections={[{ key: 'drink', name: 'Bebida (refresco de)', items: ['Caju'] }]}
+            />
+        );
+        expect(markup).toContain('Refresco sabor');
+        expect(markup).toContain('Caju');
+        expect(markup).not.toContain('Bebida (refresco de)');
+    });
+
     test('a imagem inclui a marca, data, campus, prato principal e todas as seções', () => {
         const markup = renderToStaticMarkup(
             <RestaurantShareImage selection={selection} sections={sections} />

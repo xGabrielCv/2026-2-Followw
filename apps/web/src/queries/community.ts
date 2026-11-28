@@ -90,6 +90,28 @@ export function useUploadMaterial(code: string) {
     });
 }
 
+export interface MaterialUpdateForm {
+    id: string;
+    title: string;
+    kind: MaterialKind;
+    semester: string;
+    classroom_number?: string | null;
+}
+
+export function useUpdateMaterial(code: string) {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, ...body }: MaterialUpdateForm) => {
+            const { data } = await apiClient.PATCH('/materials/{code}/{material_id}', {
+                params: { path: { code, material_id: id } },
+                body
+            });
+            return data;
+        },
+        onSettled: () => queryClient.invalidateQueries({ queryKey: ['get', '/materials/{code}'] })
+    });
+}
+
 export function useDeleteMaterial(code: string) {
     const queryClient = useQueryClient();
     return useMutation({

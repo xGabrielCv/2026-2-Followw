@@ -76,7 +76,8 @@ describe('material da matéria', () => {
         expect(page.getByText('Seu envio')).toBeDefined();
         expect(page.getByText('Outro docente: Turma 01 · Glauco Pedrosa')).toBeDefined();
         expect(page.getByText('Turma não informada')).toBeDefined();
-        // só quem enviou apaga; os outros podem denunciar
+        // só quem enviou edita ou apaga; os outros podem denunciar
+        expect(page.getByRole('button', { name: 'Editar P1 resolvida' })).toBeDefined();
         expect(page.getByRole('button', { name: 'Apagar P1 resolvida' })).toBeDefined();
         expect(page.getAllByRole('button', { name: /Denunciar ou pedir exclusão/ })).toHaveLength(
             2
@@ -100,6 +101,7 @@ describe('material da matéria', () => {
         expect(page.getByRole('button', { name: 'Abrir' })).toBeDefined();
         expect(page.getByRole('button', { name: /Baixar/ })).toBeDefined();
         expect(page.queryByRole('button', { name: 'Enviar' })).toBeNull();
+        expect(page.queryByRole('button', { name: /Editar/ })).toBeNull();
         expect(page.queryByRole('button', { name: /Apagar/ })).toBeNull();
         expect(page.queryByText('Seus envios')).toBeNull();
     });
