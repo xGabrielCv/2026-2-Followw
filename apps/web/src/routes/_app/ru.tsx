@@ -1,6 +1,6 @@
 import { environmentManager, noop, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { ChevronLeft, ChevronRight, Coffee, Egg, Leaf, Soup, UtensilsCrossed } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Coffee, Leaf, Soup, UtensilsCrossed } from 'lucide-react';
 import { useQueryStates } from 'nuqs';
 import { lazy, Suspense, useCallback, useSyncExternalStore } from 'react';
 
@@ -11,6 +11,7 @@ import { ErrorState } from '#/components/ErrorState';
 import { HeaderBar, HeaderToggle } from '#/components/HeaderBar';
 import { LoadingText } from '#/components/LoadingText';
 import { usePageState } from '#/components/PageState';
+import { ALTERNATIVES } from '#/components/ru/menu-icons';
 import { ShareButton } from '#/components/ShareButton';
 import { Button } from '#/components/ui/button';
 import { Card, CardContent } from '#/components/ui/card';
@@ -28,9 +29,10 @@ import { useFailureMessage } from '#/lib/online';
 import {
     currentOrNextMeal,
     formatMenuDay,
-    highlightMenu,
     groupSalads,
-    MEAL_TIMES
+    highlightMenu,
+    MEAL_TIMES,
+    renameSections
 } from '#/lib/restaurant';
 import {
     loadRestaurantSearch,
@@ -59,18 +61,6 @@ const MEALS = MEAL_TIMES.map(({ key, label, start, end }) => ({
     end,
     icon: MEAL_ICONS[key]
 }));
-
-interface AlternativeInfo {
-    label: string;
-    icon: React.FC<{ className?: string }>;
-}
-
-const ALTERNATIVES: Partial<Record<NonNullable<MenuSection['key']>, AlternativeInfo>> = {
-    main_dish_vegetarian: { label: 'Ovolactovegetariano', icon: Egg },
-    main_dish_vegan: { label: 'Vegetariano estrito', icon: Leaf },
-    complement_vegetarian: { label: 'Ovolactovegetariano', icon: Egg },
-    complement_vegan: { label: 'Vegetariano estrito', icon: Leaf }
-};
 
 declare module '@tanstack/history' {
     interface HistoryState {
@@ -363,7 +353,7 @@ function RUPage() {
 }
 
 function MealDetails({ sections }: { sections: MenuSection[] }) {
-    const { main, alternatives, others } = highlightMenu(groupSalads(sections));
+    const { main, alternatives, others } = highlightMenu(groupSalads(renameSections(sections)));
 
     return (
         <div className="flex flex-col gap-2">
